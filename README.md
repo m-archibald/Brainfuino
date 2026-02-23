@@ -44,14 +44,13 @@ There are three computer languages involved. Only the first one is really intend
 - **C/C++:** The firmware in the STM32 MCU was written in C. This firmware can be written into the MCU at any time as well.
 
 ## Roadmap/potential features to add
-- Add a default BF program to the STM32 code that gets written to ROM if you hold down reset for 10 seconds
-- Add QSPI flash so the stm32 can store BF programs to be used later
-- change the terminal behaviour so clock speed, and program uploading are only done if you are in program mode (hold button for 3 seconds) this way programs like tictactoe can be run and the user can use the numbers to pick spots to move
-- add a variable clock rate that runs at really high speed, but then slows down to serialize and send bytes from the BF_uP when its time to print something
-- @thalia add whitespace to the uP
-- make a 3d printed case file for the Brainfuino to make it more portable
-- wiki
-- if there are pins free, wire some stm32 pins to the jtag port on the FPGA so the stm32 can program the FPGA 
+- [ ] Add a default BF program to the STM32 code that gets written to ROM if you hold down reset for 10 seconds
+- [ ] Add QSPI flash so the stm32 can store lots of BF programs to be used later
+- [ ] change the terminal behaviour so clock speed, and program uploading are only done if you are in program mode (hold button for 3 seconds) this way programs like tictactoe can be run and the user can use the numbers to pick spots to move
+- [ ] add a variable clock rate that runs at really high speed, but then slows down to serialize and send bytes from the BF_uP when its time to print something
+- [x] make a 3d printed case file for the Brainfuino to make it more portable
+- [ ] wiki
+- [ ] if there are pins free, wire some stm32 pins to the jtag port on the FPGA so the stm32 can program the FPGA 
 
 
 
