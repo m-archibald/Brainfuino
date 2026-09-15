@@ -67,3 +67,8 @@ fp-info-cache
 # OS junk
 .DS_Store
 Thumbs.db
+
+# MkDocs build outputs
+site/
+documentation/site/
+.cache/

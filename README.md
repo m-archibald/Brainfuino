@@ -1,23 +1,33 @@
 # Brainfuino [-]+.
 An Arduino competitor that runs native brainfuck! I've condensed the explanation in this video: https://youtu.be/QloNq8AoHvU
 
-[<img src="./docs/imgs/bfboard2.png" alt="The Brainfuino [-]+." width="700"/>](https://youtu.be/QloNq8AoHvU)
+[<img src="./documentation/docs/imgs/bfboard2.png" alt="The Brainfuino [-]+." width="700"/>](https://youtu.be/QloNq8AoHvU)
 
 Before going further, please make sure you know (or remember) what brainfuck is. [Here's Wikipedia's entry as a refresher](https://en.wikipedia.org/wiki/Brainfuck).
 
 Also, before moving forward: This is not a joke. It ***is*** about a joke programming language, but a joke lots of nerds are very fond of. When I say nerds, I mean real geeks: Not gamers or technophiles, but geeks who like to read [The Art of Computer Programming](https://en.wikipedia.org/wiki/The_Art_of_Computer_Programming) just for kicks!
 
-The Brainfuino [-]+. (pronounced "Brainfuino Uno") is a development board for a brainfuck soft processor I wrote in Verilog, named [***brainfuck_uP***](https://github.com/kuashio/brainfuck_uP) (as in "brainfuck microprocessor"), which runs brainfuck code natively, that is, the plain text of a brainfuck source file, yes, ascii characters.
+The Brainfuino [-]+. (pronounced "Brainfuino Uno") is a development board for a brainfuck soft processor written in Verilog, named [***brainfuck_uP***](./brainfuck_uP-FPGA-softprocessor/) (as in "brainfuck microprocessor"), which runs brainfuck code natively—that is, the plain ASCII text of a brainfuck source file directly in hardware.
 
 Here are some details:
 
-- brainfuck_uP is implemented in a Lattice MachXO2 FPGA, very much like the one in the [TinyFPGA AX2](https://www.sparkfun.com/products/14828) board, but in a TQFP100 package.
-- brainfuck_uP is a *Harvard* machine, so it has two separate buses for its program and data memories. 
-- The Brainfuino has a 128kB RAM chip and a 256kB chip, both with a good old parallel interface to work as the data and program memories of brainfuck_uP respectively.
-- The I/O is adapted from 3.3V logic to TTL with a separate chip (to resemble the Arduino Uno).
-- The host computer interface is a USB Virtual COM port implemented with an STM32F072 MCU, which overrides the input/output ports of brainfuck_uP for easy user-brainfuck interaction.
-- The MCU is also donating its ADC to give Brainfuino the power of analog input. 
-- The board has hardware for updating both the MCU firmware and the FPGA design.
+- **brainfuck_uP** is implemented in a Lattice MachXO2 FPGA, very much like the one in the [TinyFPGA AX2](https://www.sparkfun.com/products/14828) board, but in a TQFP100 package.
+- **Harvard Architecture:** It has two separate parallel buses for its program and data memories.
+- **Dedicated Memory:** The Brainfuino has a 128 kB parallel RAM chip and a 256 kB parallel ROM chip to work as the data and program memories of brainfuck_uP respectively.
+- **5V Level Shifting:** The I/O is adapted from 3.3V logic to TTL with a dedicated transceiver chip to match Arduino Uno shield compatibility.
+- **STM32 Coprocessor:** The host computer interface is a USB Virtual COM port implemented with an STM32F072 MCU, which drives the clock, manages input/output, and handles flashing Brainfuck code to ROM.
+- **Analog Input:** The MCU also donates its ADC to give Brainfuino the power of analog input.
+- **In-System Programming:** The board includes hardware headers for updating both the MCU firmware and the FPGA bitstream.
+
+## Repository Structure
+
+This repository is the consolidated monorepo for the Brainfuino project:
+
+- [`brainfuino-PCB/`](./brainfuino-PCB/): PCB design files for **Rev 1.0** (Autodesk Eagle) and **Rev 1.1** (KiCad with JLCPCB fabrication files, BOM, and CPL).
+- [`brainfuck_uP-FPGA-softprocessor/`](./brainfuck_uP-FPGA-softprocessor/): Lattice MachXO2 soft-processor written in Verilog, constraint files (`.lpf`), and Lattice Diamond project.
+- [`companion-STM32-firmware/`](./companion-STM32-firmware/): STM32F072 firmware (STM32CubeIDE project) providing USB CDC serial terminal, clock synthesis (500 kHz – 48 MHz), and ROM programming.
+- [`3D-printable-case/`](./3D-printable-case/): CAD models (`.SLDPRT` and `.STEP`) for the 3D-printable enclosure.
+- [`documentation/`](./documentation/): Comprehensive MkDocs documentation site.
 
 ## Advantages over the Arduino Uno
 
@@ -26,45 +36,38 @@ This product is intended as anything around brainfuck and esoteric programming l
 So, if we take the Arduino as a competitor, here are some advantages:
 
 - Brainfuino runs brainfuck! You'll get to learn a classic esoteric programming language.
-- Brainfuino is the only brainfuck MCU platform of its kind (that I know of).
+- Brainfuino is the only brainfuck MCU platform of its kind.
 - Brainfuino is capable of at least competing with the Arduino by having an analog input channel.
 - Brainfuino may serve as a teaching tool for several things: FPGA soft-processor development, computer science, esoteric programming languages, tinkering, hardware, etc.
 - Lots of fun by matching the Arduino Community's codebase.
 - Bragging rights for writing code that works! You certainly won't get that from the Arduino. 
 - A *Guinness Record* may come out from the Brainfuino Community. Think an Operating System, or an actual home security system!
 
-
-
 ## Computer Languages
 
 There are three computer languages involved. Only the first one is really intended for the end-user:
 
 - **brainfuck:** Users will write their code in brainfuck, and the Brainfuino will run it.
-- **Verilog:** brainfuck_uP was written in Verilog. The final .jedec file may be written into the FPGA's internal ROM at any time.
+- **Verilog:** brainfuck_uP was written in Verilog. The final `.jed` file may be written into the FPGA's internal ROM at any time.
 - **C/C++:** The firmware in the STM32 MCU was written in C. This firmware can be written into the MCU at any time as well.
 
-## Roadmap/potential features to add
+## Roadmap & Features
+
 - [ ] Add a default BF program to the STM32 code that gets written to ROM if you hold down reset for 10 seconds
 - [ ] Add QSPI flash so the stm32 can store lots of BF programs to be used later
-- [ ] change the terminal behaviour so clock speed, and program uploading are only done if you are in program mode (hold button for 3 seconds) this way programs like tictactoe can be run and the user can use the numbers to pick spots to move
-- [ ] add a variable clock rate that runs at really high speed, but then slows down to serialize and send bytes from the BF_uP when its time to print something
-- [x] make a 3d printed case file for the Brainfuino to make it more portable
-- [ ] wiki
-- [ ] if there are pins free, wire some stm32 pins to the jtag port on the FPGA so the stm32 can program the FPGA 
+- [ ] Change the terminal behavior so clock speed and program uploading are only done if in program mode (hold button for 3 seconds)
+- [ ] Add a variable clock rate that runs at high speed, then slows down to serialize and send bytes from the BF_uP
+- [x] Make a 3D-printed case file for the Brainfuino to make it more portable
+- [ ] Comprehensive MkDocs documentation & GitHub Pages deployment
+- [ ] Wire free STM32 pins to the FPGA JTAG port so the STM32 can flash the FPGA directly
 
+## Project Origins & Acknowledgements
 
+The Brainfuino project was originally conceived and created by **Eduardo Corpeño** ([kuashio](https://github.com/kuashio)). 
+- Original soft-processor: [kuashio/brainfuck_uP](https://github.com/kuashio/brainfuck_up)
+- Original companion MCU firmware: [kuashio/brainfuino-firmware](https://github.com/kuashio/brainfuino-firmware)
+- Brainfuck IDE: [Visual brainfuck](https://sites.google.com/site/visualbf/)
 
-## Related Projects
-
-- [brainfuck_uP](https://github.com/kuashio/brainfuck_up). The soft processor running on the Brainfuino.
-- [Brainfuino MCU firmware](https://github.com/kuashio/brainfuino-firmware). The firmware running in the STM32F072 MCU.
-
-- [Visual brainfuck](https://sites.google.com/site/visualbf/). A brainfuck IDE I finished back in 2011.
-
-
-## Contact
-
-Eduardo Corpeño
-
-For bug report or anything related to Brainfuino, I may be reached at kuashio@gmail.com 
+Continued and maintained by Matthew Archibald (Hardware, KiCad Rev 1.1 redesign, 3D case, and documentation) and Thalia Archibald (Software & [bfcorpus](https://github.com/thaliaarchi/bfcorpus)).
+ 
 
