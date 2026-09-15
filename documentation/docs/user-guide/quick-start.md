@@ -1,29 +1,101 @@
-# Quick Start
+# Quick Start Guide
 
-**The Brainfuino is exceptionally easy to program. To get started follow these quick steps.**
+Getting started with Brainfuino is remarkably simple. Because the board uses standard USB CDC (Virtual COM Port) emulation, no proprietary drivers or software suites are needed—just a serial terminal like PuTTY, Tera Term, minicom, or screen.
 
-1. Connect the Brainfuino to your computer using a USB-C data cable
+---
 
-2. Open your favorite Serial Terminal program
-    - [Putty](https://putty.org/index.html) works well
+## 1. Connect Hardware
 
-3. Connect to the Brainfuino via its COM Port at any Baud Rate
+1. Plug a **USB-C data cable** into your computer and the Brainfuino.
+2. The onboard power LEDs will illuminate, and your computer will detect an **STM32 Virtual COM Port** (e.g., `COM3` on Windows, `/dev/ttyACM0` on Linux, `/dev/cu.usbmodem...` on macOS).
 
-4. Press the reset Button on the Brainfuino to reboot the FPGA based Brainfuck microprocessor and run the currently loaded BF program from ROM
+---
 
-5. As the FPGA computes the BF program, it will print ascii to terminal and you can interact with the program like with a browser based BF interpreter, but instead, in hardware
+## 2. Open a Serial Terminal
 
-6. To program the Brainfuino with new BF code, simply open your favorite BF program with a text editor, copy it all, and paste it into the terminal emulator! The STM32 will handle writing the program to ROM for you, and upon the next reset, the FPGA will compute the new program.
+Open your serial terminal emulator of choice:
 
-7. The STM32 also provides a few other ease of use conveniences. To change the clock speed, input a number `1` through `6`, to dump the currently installed code, input `!`, to send the buffered ascii data last transmitted from the FPGA use `@`. 
+* **Windows:** [PuTTY](https://putty.org/) or [Tera Term](https://ttssh2.osdn.jp/)
+* **Linux:** `screen /dev/ttyACM0 115200` or `minicom -D /dev/ttyACM0`
+* **macOS:** `screen /dev/cu.usbmodem* 115200`
 
-8. Since valid brainfuck code can be as short as a few bytes, some keyboard characters will trigger a program ROM write, for example, insert, or page up, are both extended ascii and contain 4 bytes, pressing one of these will trigger a program write. If you would like to change this behavior, the STM32 code can be recompiled and overwritten. 
+### Recommended Settings
 
-9. Lastly, as the brainfuck microprocessor never stops, if the program does not have a natural stopping point, the processor will keep iterating through the empty ROM until it reaches the end, then it will start over and execute the code again. It can help to implement endless loops at the end of your code if you do not wish for this to happen
-    - +[] is an infinite loop of just 3 bytes
+| Setting | Value |
+| :--- | :--- |
+| **Port** | Assigned Virtual COM Port |
+| **Baud Rate** | Any (Hardware USB CDC ignores baud settings) |
+| **Data Bits** | 8 |
+| **Parity** | None |
+| **Stop Bits** | 1 |
+| **Flow Control** | None |
 
-10. Have fun!
+??? tip "Preventing 'Stair-Stepping' in Serial Terminals"
+    If incoming text steps diagonally across your terminal screen without returning to the left margin on newlines:
+    * **In Tera Term:** Go to **Setup → Terminal → New-Line → Receive** and select **AUTO**.
+    * **In PuTTY:** Under **Terminal**, check **Implicit CR in every LF**.
+    
+    ![Tera Term New-Line Receive Auto Setting](../imgs/teraterm-newline-settings.jpg)
 
-![Brianfuino Ascii Art visible in PuTTY](../imgs/putty-brainfuino-logo.png)
+---
 
-notes: include links or code snippets of example code
+## 3. Run the Installed Program
+
+1. Ensure the **BOOT jumper** is moved back to normal run mode so the STM32 can boot.
+2. Press the **Reset Button** on the Brainfuino board.
+3. The FPGA soft-processor resets its Program Counter (`pc = 0`), resets its Data Pointer (`p = 0`), and begins executing the program stored in parallel Flash ROM.
+4. The board immediately executes the program and streams output directly to your serial console!
+
+---
+
+## 4. Uploading a New Brainfuck Program
+
+The companion STM32 coprocessor monitors incoming serial packets: any pasted text will automatically be written to the parallel Flash memory.
+
+1. Open any Brainfuck source file in your text editor and copy the code to your clipboard.
+2. **Right-click** in your terminal emulator (e.g. Tera Term or PuTTY) to paste the code in.
+3. When the incoming packet length is **3 or more bytes**, the STM32 automatically:
+    * Pulls the FPGA reset line low (`BF_RST = 0`), pausing the soft-processor.
+    * Turns on the status LED.
+    * Erases the parallel Flash ROM sectors.
+    * Writes the new code byte-by-byte into the parallel ROM.
+    * Responds in the terminal: `Wrote <N> bytes`.
+
+    ![Pasting Brainfuck code into Tera Term](../imgs/teraterm-paste-code.jpg)
+
+4. Press the hardware **Reset Button** on the Brainfuino to boot the FPGA into your new program!
+
+```brainfuck title="Simple Hello World Example"
++[-->-[>>+>-----<<]<--<---]>-.>>>+.>>..+++[.>]<<<<.+++------.<<<.>>>>+.[-]+[]
+```
+
+---
+
+## 5. Helpful Tips & Program Halting
+
+??? tip "Stopping your program gracefully: The `[-]+[]` Idiom"
+    **The Processor Never Stops!**
+    
+    The FPGA state machine fetches and executes bytes from ROM relentlessly. When it reaches the end of your code, it will march through empty ROM until it hits address 262,143, wrap back around to address 0, and run the code all over again.
+    
+    To prevent your program from restarting in an endless loop, end your program with an intentional halt loop.
+    
+    **The Flawed Approach (`+[]`):**
+    Many tutorials suggest `+[]`. However, if your current memory cell happens to contain **255**, adding 1 wraps the cell around to **0** (`255 + 1 = 0`). The loop `[]` checks if the cell is non-zero, sees `0`, skips right over the loop, and the program restarts anyway!
+    
+    **The Robust Idiom (`[-]+[]`):**
+    ```brainfuck
+    [-]+[]
+    ```
+    * `[-]`: Decrements the cell until it is guaranteed to be `0` (even if it started at 255).
+    * `+`: Increments `0` to `1`.
+    * `[]`: Enters an infinite loop on `1`, safely halting the processor forever!
+
+??? note "Single-Key Commands"
+    When you press a single key (packet length under 3 bytes), the STM32 interprets hotkeys:
+    
+    * **Keys `1` through `7`:** Change FPGA clock frequency (500 kHz to 48 MHz).
+    * **Key `!`:** Dump the entire program currently stored in ROM.
+    * **Key `@`:** Retransmit buffered serial data from the FPGA output buffer.
+    
+    See the [Terminal Commands Reference](terminal-commands.md) for full details.

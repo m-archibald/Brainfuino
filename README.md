@@ -64,6 +64,8 @@ There are three computer languages involved. Only the first one is really intend
 ## Project Origins & Acknowledgements
 
 The Brainfuino project was originally conceived and created by **Eduardo Corpeño** ([kuashio](https://github.com/kuashio)). 
+- Video Demonstration: [Brainfuino: Hardware Brainfuck Processor (YouTube)](https://youtu.be/QloNq8AoHvU)
+- Project Build Log: [Brainfuino on Hackaday.io](https://hackaday.io/project/176757-brainfuino)
 - Original soft-processor: [kuashio/brainfuck_uP](https://github.com/kuashio/brainfuck_up)
 - Original companion MCU firmware: [kuashio/brainfuino-firmware](https://github.com/kuashio/brainfuino-firmware)
 - Brainfuck IDE: [Visual brainfuck](https://sites.google.com/site/visualbf/)

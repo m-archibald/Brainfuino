@@ -1,3 +1,83 @@
-theme:
-  name: material #terminal #readthedocs
 site_name: "Brainfuino Documentation"
+site_description: "Native Hardware Brainfuck development board running on a Lattice MachXO2 FPGA with STM32 coprocessor."
+site_author: "Matthew Archibald, Thalia Archibald, Eduardo Corpeño"
+site_url: "https://m-archibald.github.io/Brainfuino/"
+repo_url: "https://github.com/m-archibald/Brainfuino"
+repo_name: "m-archibald/Brainfuino"
+
+theme:
+  name: material
+  language: en
+  palette:
+    # Light mode - Clean modern tech look
+    - scheme: default
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode - Slate with indigo accents
+    - scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.keys
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - tables
+  - attr_list
+  - pymdownx.snippets:
+      base_path: ["documentation/docs"]
+
+
+exclude_docs: |
+  snippets/*
+
+nav:
+  - Home: index.md
+  - User Guide:
+      - Quick Start: user-guide/quick-start.md
+      - Terminal Controls: user-guide/terminal-commands.md
+  - Hardware & Mechanics:
+      - Architecture & Specs: hardware/overview.md
+      - Rev 1.0 vs Rev 1.1: hardware/rev1-vs-rev2.md
+      - Manufacturing & Assembly: hardware/manufacturing.md
+      - 3D Printable Case: case/assembly.md
+  - FPGA Soft-Processor:
+      - Architecture & Core: fpga/architecture.md
+      - Lattice Diamond Toolchain: fpga/toolchain.md
+      - Pi Pico DirtyJTAG Guide: fpga/dirty-jtag.md
+  - STM32 Coprocessor:
+      - Firmware Architecture: firmware/architecture.md
+      - Building & Flashing: firmware/building-flashing.md
+  - Brainfuck Reference:
+      - Language & Hardware: brainfuck/language-guide.md
+      - Example Programs: brainfuck/examples.md
+  - Project Roadmap: roadmap.md

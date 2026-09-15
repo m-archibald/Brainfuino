@@ -1,0 +1,45 @@
+/* Custom styles for Brainfuino Documentation */
+
+/* Mermaid diagram enhancements: Make diagrams larger, readable, and well-padded */
+.mermaid {
+    text-align: center;
+    margin: 1.5rem 0;
+    overflow-x: auto;
+}
+
+.mermaid svg {
+    max-width: 100% !important;
+    height: auto !important;
+    min-width: 450px;
+    font-size: 15px !important;
+}
+
+/* Ensure node labels inside Mermaid diagrams are clearly legible */
+.mermaid .nodeLabel {
+    font-family: var(--md-code-font-family, monospace) !important;
+    font-weight: 500;
+}
+
+
+/* Code block adjustments */
+.md-typeset pre > code {
+    font-size: 0.88em;
+}
+
+/* Pinout table styling */
+.pinout-table td, .pinout-table th {
+    padding: 0.5rem 0.75rem;
+}
+
+/* Compact sidebar navigation to prevent excessive vertical scrolling */
+.md-nav__item {
+    padding-top: 0.05rem;
+    padding-bottom: 0.05rem;
+}
+
+.md-nav__link {
+    margin-top: 0.15rem;
+    margin-bottom: 0.15rem;
+    line-height: 1.35;
+}
+

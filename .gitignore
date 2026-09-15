@@ -71,4 +71,8 @@ Thumbs.db
 # MkDocs build outputs
 site/
 documentation/site/
-.cache/
+.cache/
+
+# Local task tracking
+DOCS_TODO.md
+
