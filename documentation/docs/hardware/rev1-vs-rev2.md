@@ -34,3 +34,16 @@ The Brainfuino hardware has evolved through two primary revisions.
 2. **Modern JLCPCB Integration:** Rev 1.1 uses the KiCad JLCPCB Fabrication Toolkit, generating accurate Pick-and-Place (CPL) and Bill of Materials (BOM) files automatically with matched LCSC part numbers.
 3. **USB-C Upgrade:** Eliminates fragile micro-USB connectors in favor of modern, reversible USB Type-C connectivity.
 
+![Brainfuino Rev 1.1 JLCPCB Production Panel](../imgs/brainfuino-rev1-1-panel-jlcpcb.jpg)
+*A manufactured panel of 5 Brainfuino Rev 1.1 boards fresh from JLCPCB: showing bottom silkscreen and top SMT assembly before hand-soldering unstocked memory chips.*
+
+---
+
+## Hand-Soldering Unstocked Components
+
+When ordering small prototype batches from JLCPCB, certain specialized parallel memory ICs (such as the TSOP-32 SRAM or Flash ROM) may occasionally be out of stock in JLCPCB's local parts library.
+
+![Brainfuino Rev 1.1 Hand-Soldered Board](../imgs/brainfuino-rev1-1-board-front-angle.jpg)
+*Completed Brainfuino Rev 1.1 board after hand-soldering TSOP-32 RAM/ROM and pin headers onto the SMT-assembled JLCPCB baseboard.*
+
+

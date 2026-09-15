@@ -37,9 +37,55 @@ The enclosure is optimized for FDM (Fused Deposition Modeling) 3D printers with 
 
 ## Assembly Overview
 
-Assembly takes less than a minute:
+Assembly takes less than a minute with only a single M3 bolt:
 
-1. Press the **M3 nut** into the captive hexagonal pocket in the bottom shell.
-2. Place the Brainfuino PCB into the bottom shell, aligning the USB-C port with its cutout.
-3. Hook the retaining tab on one side of the top lid into the slot on the bottom shell, then swing the lid closed over the board.
-4. Insert the **M3 × 14mm bolt** into the single mounting hole and tighten until snug.
+1. **Insert M3 Nut:** Press the **M3 nut** into the captive hexagonal pocket in the bottom shell.
+2. **Seat the PCB:** Place the Brainfuino PCB into the bottom shell, aligning the USB-C port with its cutout.
+3. **Hook the Retention Tab:** Hook the retaining tab on one side of the top lid into the slot on the bottom shell, then swing the lid closed over the board.
+4. **Fasten M3 Bolt:** Insert the **M3 × 14mm bolt** into the single mounting hole and tighten until snug.
+
+![Brainfuino Enclosure Assembly Exploded View](../imgs/brainfuino-case-assembly-exploded.jpg)
+*Exploded view showing top lid with retention hook, bottom shell with Brainfuino PCB seated, and single M3 mounting screw with washer.*
+
+---
+
+## Enclosure Details & Cutouts
+
+The enclosure includes dedicated cutouts so all programming headers, debug jumpers, and buses remain accessible without opening the case:
+
+<div class="grid cards" markdown>
+
+-   ![Corner BOOT0 Jumper Cutout](../imgs/brainfuino-case-boot-cutout.jpg)
+
+    ---
+
+    **BOOT0 & Reset Jumper Notch**
+    
+    A recessed corner notch provides instant access to the STM32 `BOOT0` jumper and `NRST` header for entering DFU bootloader mode.
+
+-   ![M3 Single Retaining Fastener](../imgs/brainfuino-case-m3-screw.jpg)
+
+    ---
+
+    **Single Fastener Retention**
+    
+    The top lid hooks securely on one edge and locks down with a single M3 socket bolt and washer on the opposite corner.
+
+-   ![JTAG Header and Arduino Headers](../imgs/brainfuino-case-lit-angle2.jpg)
+
+    ---
+
+    **JTAG & Shield Header Access**
+    
+    Recessed openings expose the 6-pin FPGA JTAG programming header (`VCC`, `TCK`, `TMS`, `TDI`, `TDO`, `GND`) and standard Arduino Uno pin headers.
+
+-   ![Fully Assembled Brainfuino Running](../imgs/brainfuino-case-lit-angle1.jpg)
+
+    ---
+
+    **Status LED Illumination**
+    
+    Translucent cutouts illuminate the infinity Brainfuino logo `[ - > < + ] .` and display red power and blue FPGA clock activity LEDs.
+
+</div>
+

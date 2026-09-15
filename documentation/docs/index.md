@@ -2,6 +2,27 @@
 
 > **Yes, this is real. Yes, it runs Brainfuck natively in silicon. No, we will not apologize.**
 
+<div class="grid cards" markdown>
+
+-   ![Brainfuino Rev 1.1 Assembled Hardware](imgs/brainfuino-rev1-1-board-hero.jpg)
+
+    ---
+
+    **Rev 1.1 Hardware**
+    
+    Lattice MachXO2 FPGA soft-processor paired with an STM32F072 coprocessor, parallel SRAM tape memory, and Flash ROM.
+
+-   ![Brainfuino in 3D Printed Case Running](imgs/brainfuino-case-lit-angle1.jpg)
+
+    ---
+
+    **Custom 3D-Printed Enclosure**
+    
+    Protective portable case with status LED illumination, single-screw assembly, and exposed programming cutouts.
+
+</div>
+
+
 ---
 
 ## The Joke That Went Way Too Far

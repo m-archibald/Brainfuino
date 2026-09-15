@@ -2,6 +2,9 @@
 
 The Brainfuino is engineered in the classic **Arduino Uno form factor**. Why? Mostly for the fun and comedy of having an Arduino-compatible board that runs Brainfuck in native silicon! 
 
+![Brainfuino Rev 1.1 Fully Assembled Board](../imgs/brainfuino-rev1-1-board-hero.jpg)
+*The Brainfuino Rev 1.1 hardware: featuring the Lattice MachXO2 FPGA, STM32F072 coprocessor, parallel SRAM/ROM, and Arduino Uno-compatible shield headers.*
+
 While standard Arduino shields can physically plug into the headers ("if you really like pain, lol"), the pin definitions are customized to support Brainfuino's native **8-bit parallel I/O buses**.
 
 ---
@@ -36,8 +39,6 @@ flowchart TD
     PWR --> RAM
 ```
 
-
-
 ---
 
 ## Bill of Materials (Core Silicon)
@@ -56,6 +57,9 @@ flowchart TD
 
 ## Power & Level Shifting (3.3V to 5V)
 
+![Brainfuino Rev 1.1 USB-C and Power Subsystem](../imgs/brainfuino-rev1-1-usbc-macro.jpg)
+*Macro view of the USB Type-C connector J1, reset button S1, Schottky diode D4, and SPX3819 LDO regulator.*
+
 ### Power Rails
 * **5V Rail:** Sourced directly from USB-C VBUS through protection Schottky diodes (`SS12`). Supplies the 5V power header and the 5V side of the `74ALVC164245` transceiver.
 * **3.3V Rail:** Regulated by the `SPX3819` ultra-low-noise LDO. Powers the FPGA core, I/O banks, STM32 MCU, SRAM, and Flash ROM.
@@ -71,6 +75,9 @@ The **74ALVC164245** dual-supply bus transceiver provides bidirectional level tr
 
 Unlike an Arduino Uno, which exposes arbitrary general-purpose GPIOs (D0–D13), the Brainfuino headers directly expose the FPGA soft-processor's native **8-bit parallel buses** (`In0`–`In7`, `Out0`–`Out7`) and handshake control strobes (`InStrobe`, `OutStrobe`, `Incoming`, `AIN`, `AIEN`).
 
+![Brainfuino Rev 1.1 PCB Silk Pin Markings](../imgs/brainfuino-rev1-1-pcb-top-unpopulated.jpg)
+*High-resolution close-up showing physical silkscreen labels for parallel buses Out0–Out7, In0–In7, control strobes, and JTAG.*
+
 ??? info "Pinout Diagram"
     *(Pinout diagram coming soon — graphic will be placed here)*
 
@@ -79,6 +86,14 @@ Unlike an Arduino Uno, which exposes arbitrary general-purpose GPIOs (D0–D13),
     -->
 
 ### Onboard Programming Headers
-* **FPGA JTAG (6-pin):** `TCK`, `TMS`, `TDI`, `TDO`, `GND`, `3.3V` (used with Lattice Diamond).
+* **FPGA JTAG (6-pin):** `TCK`, `TMS`, `TDI`, `TDO`, `GND`, `3.3V` (used with Lattice Diamond or DirtyJTAG).
 * **STM32 SWD (4-pin):** `SWDIO`, `SWCLK`, `GND`, `3.3V` (used with ST-Link).
+
+---
+
+## Board Silkscreen & Artwork
+
+![Brainfuino Rev 1.1 Bottom Silkscreen](../imgs/brainfuino-rev1-1-board-bottom.jpg)
+*The bottom of the Rev 1.1 PCB featuring the full Brainfuino logo and open-source attribution silkscreen.*
+
 
