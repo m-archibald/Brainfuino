@@ -36,19 +36,17 @@ Here are some details:
 - **Analog Input:** The MCU also donates its ADC to give Brainfuino the power of analog input.
 - **In-System Programming:** The board includes hardware headers for updating both the MCU firmware and the FPGA bitstream.
 
-## Advantages over the Arduino Uno
+## Why Brainfuino? (Or: The Arduino "Competitor")
 
-This product is intended as anything around brainfuck and esoteric programming languages: A joke. An elaborate joke. A geek toy.
+This product is intended as anything around brainfuck and esoteric programming languages: An elaborate joke, a technical feat, and a geek toy.
 
-So, if we take the Arduino as a competitor, here are some advantages:
+If we take the Arduino Uno as a playful benchmark, here are the highlights:
 
-- Brainfuino runs brainfuck! You'll get to learn a classic esoteric programming language.
-- Brainfuino is the only brainfuck MCU platform of its kind.
-- Brainfuino is capable of at least competing with the Arduino by having an analog input channel.
-- Brainfuino may serve as a teaching tool for several things: FPGA soft-processor development, computer science, esoteric programming languages, tinkering, hardware, etc.
-- Lots of fun by matching the Arduino Community's codebase.
-- Bragging rights for writing code that works! You certainly won't get that from the Arduino. 
-- A *Guinness Record* may come out from the Brainfuino Community. Think an Operating System, or an actual home security system!
+- **Native Brainfuck Execution:** Brainfuino runs raw Brainfuck ASCII instructions directly in silicon logic gates—no interpreters, emulators, or compilers.
+- **One-of-a-Kind Architecture:** The only dedicated physical development board built around a native Brainfuck soft-processor core.
+- **Arduino Uno Shield Compatibility:** 5V level-shifted parallel digital I/O and an analog input channel provided by the STM32 companion MCU.
+- **Educational Value:** A transparent, full-stack learning platform for FPGA soft-processor development, computer architecture, memory bus design, and esoteric computing.
+- **Unrivaled Bragging Rights:** Nothing compares to the satisfaction of writing non-trivial software in an 8-instruction Turing-complete language and seeing it execute on physical hardware!
 
 ## Computer Languages
 

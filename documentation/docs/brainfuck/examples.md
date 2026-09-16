@@ -26,22 +26,44 @@ This program outputs the official Brainfuino ASCII logo to the serial terminal, 
 
 ## 2. Classic "Hello World!"
 
-The quintessential Brainfuck program. It demonstrates setting up multiplication loops to compute the ASCII values of text characters efficiently, ending with the robust `[-]+[]` halt idiom.
+The quintessential Brainfuck program, taken from the [cwfitzgerald/brainfuck-benchmark](https://github.com/cwfitzgerald/brainfuck-benchmark/blob/master/benches/hello.b) suite. It sets up an initial counter to multiply values into cell targets before printing each ASCII character. Because none of the comment letters contain Brainfuck operator characters, the commented source can be pasted or flashed directly into memory.
 
-```brainfuck title="Hello World with Robust Halt Loop"
-[-->-[>>+>-----<<]<--<---]>-.>>>+.>>..+++[.>]<<<<.+++------.<<<.>>>>+.[-]+[]
+```brainfuck title="Hello World (Benchmark Edition)"
++++++ +++++             initialize counter (cell #0) to 10
+[                       use loop to set the next four cells to 70/100/30/10
+    > +++++ ++              add  7 to cell #1
+    > +++++ +++++           add 10 to cell #2 
+    > +++                   add  3 to cell #3
+    > +                     add  1 to cell #4
+    <<<< -                  decrement counter (cell #0)
+]                   
+> ++ .                  print 'H'
+> + .                   print 'e'
++++++ ++ .              print 'l'
+.                       print 'l'
++++ .                   print 'o'
+> ++ .                  print ' '
+<< +++++ +++++ +++++ .  print 'W'
+> .                     print 'o'
++++ .                   print 'r'
+----- - .               print 'l'
+----- --- .             print 'd'
+> + .                   print '!'
+> .                     print '\n'
 ```
+
+*Source: [cwfitzgerald/brainfuck-benchmark](https://github.com/cwfitzgerald/brainfuck-benchmark/blob/master/benches/hello.b)*
 
 **Terminal Output:**
 ```text
-Hello, World!
+Hello World!
 ```
 
 ---
 
 ## 3. Interactive Character Echo
 
-Reads an incoming character from the terminal and echoes it back immediately.
+Reads an incoming character from the serial terminal and echoes it back immediately.
 
 ```brainfuck title="Echo Program"
 ,[.,]
@@ -56,16 +78,81 @@ Reads an incoming character from the terminal and echoes it back immediately.
 
 ---
 
-## 4. Fibonacci Sequence Generator
+## 4. Sierpinski Triangle Generator
 
-Generates and displays terms of the Fibonacci sequence:
+An iconic Brainfuck fractal program authored by **NYYRIKKI** (2002) formatted in the shape of a Sierpinski triangle. It computes and renders a 32-line Sierpinski fractal pattern across an 80-column display, then enters an infinite halt loop `[]`:
 
-```brainfuck title="Fibonacci Generator"
->++++++++++>+>+[
-    [+++++[>++++++++<-]>.<++++++[>--------<-]+<<]>.>[
-        [-]<[>+<-]>>[<<+>+>-]<[>+<-]>[<<+>>-]<<<<
-    ]
-]+[-]+[]
+```brainfuck title="Sierpinski Triangle by NYYRIKKI (2002)"
+[ This program prints Sierpinski triangle on 80-column display. ]
+                                >    
+                               + +    
+                              +   +    
+                             [ < + +    
+                            +       +    
+                           + +     + +    
+                          >   -   ]   >    
+                         + + + + + + + +    
+                        [               >    
+                       + +             + +    
+                      <   -           ]   >    
+                     > + + >         > > + >    
+                    >       >       +       <    
+                   < <     < <     < <     < <    
+                  <   [   -   [   -   >   +   <    
+                 ] > [ - < + > > > . < < ] > > >    
+                [                               [    
+               - >                             + +    
+              +   +                           +   +    
+             + + [ >                         + + + +    
+            <       -                       ]       >    
+           . <     < [                     - >     + <    
+          ]   +   >   [                   -   >   +   +    
+         + + + + + + + +                 < < + > ] > . [    
+        -               ]               >               ]    
+       ] +             < <             < [             - [    
+      -   >           +   <           ]   +           >   [    
+     - < + >         > > - [         - > + <         ] + + >    
+    [       -       <       -       >       ]       <       <    
+   < ]     < <     < <     ] +     + +     + +     + +     + +    
+  +   .   +   +   +   .   [   -   ]   <   ]   +   +   +   +   +    
+ * * * * * M a d e * B y : * N Y Y R I K K I * 2 0 0 2 * * * * *    
+[]
+```
+
+**Terminal Output:**
+```text
+                                *    
+                               * *    
+                              *   *    
+                             * * * *    
+                            *       *    
+                           * *     * *    
+                          *   *   *   *    
+                         * * * * * * * *    
+                        *               *    
+                       * *             * *    
+                      *   *           *   *    
+                     * * * *         * * * *    
+                    *       *       *       *    
+                   * *     * *     * *     * *    
+                  *   *   *   *   *   *   *   *    
+                 * * * * * * * * * * * * * * * *    
+                *                               *    
+               * *                             * *    
+              *   *                           *   *    
+             * * * *                         * * * *    
+            *       *                       *       *    
+           * *     * *                     * *     * *    
+          *   *   *   *                   *   *   *   *    
+         * * * * * * * *                 * * * * * * * *    
+        *               *               *               *    
+       * *             * *             * *             * *    
+      *   *           *   *           *   *           *   *    
+     * * * *         * * * *         * * * *         * * * *    
+    *       *       *       *       *       *       *       *    
+   * *     * *     * *     * *     * *     * *     * *     * *    
+  *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *    
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *    
 ```
 
 ---
