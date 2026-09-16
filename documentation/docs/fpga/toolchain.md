@@ -75,6 +75,6 @@ The Lattice MachXO2 features onboard non-volatile Flash configuration memory, me
 
 5. Click **Program** (the green icon) in the toolbar.
 
-    ![Lattice Diamond Synthesis and Programmer Session](../imgs/lattice-diamond-programmer.jpg)
+    ![Lattice Diamond Synthesis and Programmer Session](../imgs/lattice-diamond-programmer.png)
 
 6. Once the status bar turns green (**PASS**), the FPGA is configured and ready to execute native Brainfuck!

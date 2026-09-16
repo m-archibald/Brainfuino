@@ -70,7 +70,7 @@ openFPGALoader -c dirtyJtag -f brainfuino_v1.1.jed
 
 The utility will detect the MachXO2 FPGA, erase Flash, and stream the bitstream:
 
-![openFPGALoader programming the Brainfuino FPGA over DirtyJTAG](../imgs/openfpgaloader-terminal.jpg)
+![openFPGALoader programming the Brainfuino FPGA over DirtyJTAG](../imgs/openfpgaloader-terminal.png)
 
 ```text
 write to flash

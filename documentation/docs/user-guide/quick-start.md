@@ -35,7 +35,7 @@ Open your serial terminal emulator of choice:
     * **In Tera Term:** Go to **Setup → Terminal → New-Line → Receive** and select **AUTO**.
     * **In PuTTY:** Under **Terminal**, check **Implicit CR in every LF**.
     
-    ![Tera Term New-Line Receive Auto Setting](../imgs/teraterm-newline-settings.jpg)
+    ![Tera Term New-Line Receive Auto Setting](../imgs/teraterm-newline-settings.png)
 
 ---
 
@@ -61,7 +61,7 @@ The companion STM32 coprocessor monitors incoming serial packets: any pasted tex
     * Writes the new code byte-by-byte into the parallel ROM.
     * Responds in the terminal: `Wrote <N> bytes`.
 
-    ![Pasting Brainfuck code into Tera Term](../imgs/teraterm-paste-code.jpg)
+    ![Pasting Brainfuck code into Tera Term](../imgs/teraterm-paste-code.png)
 
 4. Press the hardware **Reset Button** on the Brainfuino to boot the FPGA into your new program!
 
