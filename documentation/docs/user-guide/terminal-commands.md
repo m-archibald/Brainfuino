@@ -14,14 +14,12 @@ When you send an individual character (payload length under 3 bytes), the STM32 
 
 --8<-- "snippets/clock-speeds.md"
 
-### Buffer & Memory Inspection (Keys `!` and `@`)
+### System Commands (Prefix `!`)
 
-| Key | Function | Description | Terminal Response |
-| :---: | :--- | :--- | :--- |
-| `!` | Dump Program | Reads back the program code currently residing in parallel Flash ROM. | Hex / ASCII dump |
-| `@` | Retransmit Buffer | Re-sends the recent serial stream captured from the FPGA output port buffer. | Flushes output box |
-
-![PuTTY Terminal showing clock frequency switches and Flash ROM code dump](../imgs/putty-brainfuino-logo.png)
+| Command | Action | Description |
+| :---: | :--- | :--- |
+| `!DFU!` | Software DFU Reboot | Reboots STM32 into built-in USB DFU Bootloader mode for firmware updates without moving the `BOOT` jumper. |
+| `!MENU!` / `!CONFIG!` | Config Menu | Opens interactive configuration and clock tuning menu (Phase 3). |
 
 ---
 
@@ -57,34 +55,37 @@ When your Brainfuck program reaches a `,` instruction:
 
 ---
 
-## Uploading New Code
+## Uploading New Code (Dedicated Program Mode)
 
-When you paste Brainfuck code into the terminal emulator:
+To upload new Brainfuck code into Flash ROM:
 
-1. The USB CDC packet length is detected as **3 or more bytes**.
-2. The STM32 automatically detects an incoming payload and enters `STATE_PROGRAM`:
-    * It asserts the FPGA reset line low (`BF_RST = 0`), pausing soft-processor execution.
-    * It illuminates the programming status LED.
-    * It clears existing ROM contents.
-    * It writes the new code byte-by-byte into consecutive parallel Flash ROM addresses.
-3. Upon completion, the terminal displays:
-   ```text
-   Wrote 142 bytes
-   ```
-4. Press the hardware **Reset** button to start executing your new code.
+1. **Enter Program Mode:**
+   * Press and hold the hardware button for **3 seconds**.
+   * The **Red LED** turns on at the 3-second mark to confirm you can release the button.
+   * The FPGA is held in reset (`BF_RST = 0`) to release the ROM bus, and the terminal displays:
+     ```text
+     === BRAINFUINO PROGRAM MODE ===
+     Paste Brainfuck code now (up to 256 kB)...
+     ```
+2. **Paste Your Code:**
+   * Simply paste your Brainfuck code into the terminal emulator.
+   * **Programs $\le$ 4 kB:** The STM32 buffers the code in SRAM. When reception pauses for **100 ms**, it prints the total size, erases ROM, fast-writes to Flash while reporting live percentage progress (`Writing: 50% (2048 / 4096 bytes)...`), verifies against RAM, appends `[-]+[]`, and auto-launches.
+   * **Programs > 4 kB (up to 256 kB):** If the 4 kB buffer fills, the firmware automatically announces:
+     ```text
+     Program larger than RAM buffer. Streaming directly to Flash...
+     ```
+     It erases ROM, writes the first 4 kB, and streams subsequent incoming packets straight into Flash using USB CDC hardware NAK flow control, displaying cumulative bytes written (`Wrote 5120 bytes...`, `Wrote 6144 bytes...`).
+3. **Run Your Code:**
+   * Flashing automatically appends an endless loop (`[-]+[]`) to halt the FPGA program counter cleanly at EOF, and auto-launches the new code immediately!
+   * You can also give the button a **short press (< 3 seconds)** at any time to soft-reset the program.
 
 ---
 
-## Extended Keys & The Future "Program Mode"
+## Hardware Button Behavior
 
-??? tip "Extended Keys & ASCII Gotcha"
-    Because the firmware currently separates single-key commands from code uploads based on packet size (`len < 3`), pressing special keyboard keys can inadvertently trigger a program write:
-    
-    * Keys like ++insert++, ++page-up++, ++page-down++, or arrow keys transmit multi-byte ANSI escape sequences (e.g. `\x1b[2~`).
-    * The STM32 can mistake this for a short code paste and write those bytes to address `0` in Flash ROM!
-    * If this happens, simply re-paste your intended Brainfuck program and hit Reset.
-
-??? note "Roadmap: Dedicated Program Mode"
-    To eliminate this issue and allow interactive programs to freely use any keystrokes (including number keys) without accidentally switching clock frequencies or triggering code writes, future firmware will introduce a **dedicated Program Mode** ([read roadmap details](../roadmap.md#dedicated-program-mode)). 
-    
-    In this update, uploading code or adjusting clock speeds will require explicitly entering Program Mode, allowing all standard terminal keystrokes to pass directly through to running Brainfuck programs.
+| Action | Duration | Red LED | Result |
+| :--- | :---: | :---: | :--- |
+| **Short Press** (in Run Mode) | < 3 seconds | OFF | Resets the running FPGA soft-processor (`BF_RST` pulse). |
+| **Short Press** (in Program Mode) | < 3 seconds | OFF | Exits Program Mode, turns off Red LED, and runs the program. |
+| **Long Hold** | 3 – 10 seconds | Steady ON | Enters **Dedicated Program Mode** (ready for Brainfuck code paste). |
+| **Very Long Hold** | $\ge$ 10 seconds | Rapid Strobe | **Default Demo Restore**: Erases ROM, restores official Brainfuino ASCII logo banner demo to ROM, and auto-launches it! |

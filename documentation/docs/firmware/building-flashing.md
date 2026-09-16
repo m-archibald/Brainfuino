@@ -27,15 +27,41 @@ To modify or rebuild the firmware:
 
 ---
 
+## Automated Command-Line Build & Flash Script
+
+For the fastest development workflow, a cross-platform PowerShell automation script is provided at [`companion-STM32-firmware/build.ps1`](https://github.com/m-archibald/Brainfuino/blob/main/companion-STM32-firmware/build.ps1):
+
+* **Compile Only:**
+  ```powershell
+  pwsh companion-STM32-firmware/build.ps1 -CompileOnly
+  ```
+  Locates the embedded GCC ARM toolchain automatically, compiles startup assembly and C sources, links the ELF binary, and generates `Debug/BrainfuinoMCU.hex`.
+
+* **One-Click Build & Flash (over USB DFU):**
+  ```powershell
+  pwsh companion-STM32-firmware/build.ps1 -Flash
+  ```
+  Automatically compiles, auto-detects the Brainfuino virtual COM port, sends the `!DFU!` trigger command to reboot the STM32 into its factory USB DFU bootloader, connects via `STM32_Programmer_CLI`, flashes the binary, and immediately resumes program execution. **No jumper movement needed!**
+
+---
+
 ## Flashing the Microcontroller
 
-There are two methods to flash the firmware onto the STM32F072:
+There are three methods to flash the firmware onto the STM32F072:
 
-### Method 1: Via Built-in USB DFU (Recommended)
+### Method 1: Automated Software USB DFU (Recommended)
 
-The STM32F072 features a factory-programmed USB DFU (Device Firmware Upgrade) bootloader residing in permanent system ROM. **No external hardware programmer is required!**
+Thanks to an SRAM persistence flag (`0xDEADBEEF` at `0x20003FF0`), the STM32 companion coprocessor can soft-reboot directly into ST's built-in factory ROM DFU bootloader without touching hardware jumpers:
 
-You can flash using either **STM32CubeIDE** or the standalone lightweight **[STM32CubeProgrammer](https://www.st.com/en/development-tools/stm32cubeprog.html)** utility (ideal if you only want to update the binary without installing the full IDE).
+1. Connect Brainfuino to your PC via USB-C.
+2. Run `pwsh companion-STM32-firmware/build.ps1 -Flash`.
+3. Or manually send `!DFU!` over any serial terminal (at 115200 baud). The board will disconnect its USB CDC port, re-enumerate as an ST DFU Device (`0483:df11`), and await firmware download via STM32CubeProgrammer.
+
+---
+
+### Method 2: Manual Hardware Boot Jumper DFU
+
+If you ever flash a corrupt binary that hangs before USB initialization, you can always enter the factory DFU bootloader using the physical hardware header:
 
 1. **Set DFU Mode:**
     * Place the jumper into the **BOOT** position (pulls `BOOT0` HIGH to 3.3V).
@@ -76,7 +102,7 @@ You can flash using either **STM32CubeIDE** or the standalone lightweight **[STM
 
 ---
 
-### Method 2: Via ST-Link Programmer (Hardware Debugging)
+### Method 3: Via ST-Link Programmer (Hardware Debugging)
 
 If you are actively developing code and want live breakpoints, variable watches, and hardware stepping:
 

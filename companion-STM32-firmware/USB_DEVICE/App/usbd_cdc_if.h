@@ -95,7 +95,7 @@
 extern USBD_CDC_ItfTypeDef USBD_Interface_fops_FS;
 
 /* USER CODE BEGIN EXPORTED_VARIABLES */
-
+extern volatile uint8_t cdc_rx_paused;
 /* USER CODE END EXPORTED_VARIABLES */
 
 /**
@@ -110,7 +110,8 @@ extern USBD_CDC_ItfTypeDef USBD_Interface_fops_FS;
 uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len);
 
 /* USER CODE BEGIN EXPORTED_FUNCTIONS */
-__weak void CDC_Receive_Callback(uint8_t *buff, uint32_t len);
+uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len);
+void CDC_Resume_Rx(void);
 /* USER CODE END EXPORTED_FUNCTIONS */
 
 /**

@@ -11,12 +11,13 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 | **3D-Printable Enclosure** | Mechanical | :material-check-circle: **Done** | Custom case with retention hook and single M3 fastener ([Assembly Guide](case/assembly.md)) |
 | **KiCad 9 PCB Revision (Rev 1.1)** | Hardware | :material-check-circle: **Done** | USB-C, length-tuned buses, JLCPCB SMT files ([Comparison](hardware/rev1-vs-rev2.md)) |
 | **Documentation Suite & CI/CD** | Docs | :material-check-circle: **Done** | MkDocs Material suite, automated GitHub Pages deployment |
-| **Dedicated Program Mode** | STM32 Firmware | :material-clock-outline: Planned | Dedicated mode switch between controls and code execution |
+| **Dedicated Program Mode** | STM32 Firmware | :material-check-circle: **Done** | Dedicated mode switch via 3s button hold, fast flasher with progress bar and streaming fallback |
 | **Smart Variable Clock Rate** | STM32 Firmware | :material-clock-outline: Planned | Auto-throttles clock during `.` output to prevent UART buffer overflow |
-| **Default Program Restore** | STM32 Firmware | :material-clock-outline: Planned | 10-second button hold restores burned-in default Brainfuck demo to ROM |
+| **Default Program Restore** | STM32 Firmware | :material-check-circle: **Done** | 10-second button hold restores burned-in default Brainfuck demo to ROM |
 | **In-Circuit FPGA Flashing** | Hardware & FW | :material-lightbulb-outline: Future Idea | Potential concept: wire STM32 GPIOs to MachXO2 JTAG pins for USB bitstream updates |
 | **QSPI Multi-Program Storage** | Hardware (Rev 1.2) | :material-lightbulb-outline: Future Idea | Onboard SPI/QSPI Flash chip to store a library of Brainfuck programs |
 | **Interactive Terminal Menu UI** | STM32 Firmware | :material-clock-outline: Planned | ANSI terminal menu for settings, clock tuning, and program loading |
+| **USB DFU Bootloader Mode** | STM32 Firmware | :material-check-circle: **Done** | Soft-jump into ST factory ROM bootloader over USB (`!DFU!` or `.\build.ps1 -Flash`) |
 
 ---
 
@@ -34,12 +35,16 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 * **The Goal:** Store a default, self-contained Brainfuck demo program directly within the STM32 microcontroller's internal Flash memory.
 * **Operation:** If the user holds down the Reset button for **10 seconds**, the STM32 will automatically erase parallel Flash ROM and write this default program into address `0`. This provides an immediate out-of-the-box demo and quick sanity check without requiring a computer connection.
 
-### Interactive Terminal Menu & UI Improvements
-* **The Goal:** Enhance the companion serial terminal with an interactive, user-friendly text UI for navigating STM32 settings.
-* **Features:**
-    * Visual menu for selecting operating frequencies and checking hardware status.
-    * Integrated program manager to inspect, erase, and load stored programs.
-    * Live monitoring of FPGA status lines (`Incoming`, `InStrobe`, `OutStrobe`).
+### Interactive Terminal Menu & UI Improvements (raspi-config style)
+* **The Goal:** Enhance the companion serial terminal with an interactive, user-friendly text UI (reminiscent of Raspberry Pi's `raspi-config`) for configuring STM32 firmware features, accessible via a dedicated button hold (e.g. 6 seconds with a breathing PWM fade on the Red LED) or terminal command.
+* **Configurable Features & Settings:**
+    * **Auto-Program on Paste:** Toggle whether pasting code in Run Mode automatically enters Program Mode.
+    * **Paste Upload Threshold:** Set the minimum byte threshold to trigger an upload (default: 16 bytes) so terminal escape sequences (Home `\x1b[1~`, End, Arrows, Ctrl combinations) don't trigger false uploads.
+    * **Auto-Reset after Write:** Toggle whether the firmware automatically resets the FPGA and launches the program as soon as flashing completes, or waits for a manual button press.
+    * **Auto-Append Endless Loop (`+[]`):** Automatically injects an infinite loop at the end of pasted code to prevent the FPGA program counter from rolling through unprogrammed ROM space.
+    * **Clock Frequency Selector:** Visual menu for selecting operating frequencies (500 kHz to 48 MHz) and checking hardware status.
+    * **Reboot into USB DFU Bootloader:** Soft-jump into the ST factory ROM DFU bootloader over USB without touching `BOOT0` or using an ST-Link.
+    * **Live Line Monitoring:** Monitor FPGA status lines (`Incoming`, `InStrobe`, `OutStrobe`).
 
 ---
 

@@ -32,7 +32,7 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-
+volatile uint8_t cdc_rx_paused = 0;
 /* USER CODE END PV */
 
 /** @addtogroup STM32_USB_OTG_DEVICE_LIBRARY
@@ -261,8 +261,10 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
-  USBD_CDC_ReceivePacket(&hUsbDeviceFS);
-  CDC_Receive_Callback(Buf,*Len);
+  uint8_t rearm = CDC_Receive_Callback(Buf, *Len);
+  if (rearm){
+    USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+  }
   return (USBD_OK);
   /* USER CODE END 6 */
 }
@@ -293,7 +295,18 @@ uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len)
 }
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_IMPLEMENTATION */
-__weak void CDC_Receive_Callback(uint8_t *buff, uint32_t len){
+__weak uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
+  return 1;
+}
+
+void CDC_Resume_Rx(void){
+  uint32_t primask = __get_PRIMASK();
+  __disable_irq();
+  if (cdc_rx_paused){
+    cdc_rx_paused = 0;
+    USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+  }
+  __set_PRIMASK(primask);
 }
 /* USER CODE END PRIVATE_FUNCTIONS_IMPLEMENTATION */
 

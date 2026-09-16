@@ -83,4 +83,9 @@ brainfuck_uP-FPGA-softprocessor/**/.run_manager.ini
 brainfuck_uP-FPGA-softprocessor/**/*_tcr.dir/
 brainfuck_uP-FPGA-softprocessor/promote.xml
 brainfuck_uP-FPGA-softprocessor/reportview.xml
+
+# STM32 build intermediates (keep .hex)
+companion-STM32-firmware/Debug/*.elf
+companion-STM32-firmware/Debug/*.map
+companion-STM32-firmware/Debug/build/
 

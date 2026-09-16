@@ -52,6 +52,38 @@ Reset_Handler:
   ldr   r0, =_estack
   mov   sp, r0          /* set stack pointer */
 
+  /* Check for software DFU jump request */
+  ldr   r0, =0x20003FF0
+  ldr   r1, [r0]
+  ldr   r2, =0xDEADBEEF
+  cmp   r1, r2
+  bne   Normal_Reset
+  /* Clear magic flag */
+  movs  r1, #0
+  str   r1, [r0]
+  /* Enable SYSCFG clock in RCC_APB2ENR (bit 0) */
+  ldr   r0, =0x40021018
+  ldr   r1, [r0]
+  movs  r2, #1
+  orrs  r1, r2
+  str   r1, [r0]
+  /* Remap System Memory to 0x00000000 in SYSCFG_CFGR1 (bits 1:0 = 01) */
+  ldr   r0, =0x40010000
+  ldr   r1, [r0]
+  movs  r2, #3
+  bics  r1, r2
+  movs  r2, #1
+  orrs  r1, r2
+  str   r1, [r0]
+  /* Set MSP to ST ROM initial stack pointer */
+  ldr   r0, =0x1FFFC800
+  ldr   r1, [r0]
+  mov   sp, r1
+  /* Jump to ST ROM Reset Handler */
+  ldr   r1, [r0, #4]
+  bx    r1
+
+Normal_Reset:
 /* Copy the data segment initializers from flash to SRAM */
   ldr r0, =_sdata
   ldr r1, =_edata
