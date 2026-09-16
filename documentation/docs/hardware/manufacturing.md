@@ -57,7 +57,7 @@ Once your manufactured boards arrive:
 4. **Program FPGA Bitstream:**
     * Connect a programmer to the 6-pin JTAG header:
         * Pins: `TCK`, `TMS`, `TDI`, `TDO`, `GND`, `3.3V`
-    * Write `brainfuck_uP_brainfuck_uP.jed` into the MachXO2 internal flash.
+    * Write `brainfuino_v1.1.jed` (or `brainfuino_v1.0.jed` for Rev 1.0) into the MachXO2 internal flash. Both bitstreams are available in [`brainfuck_uP-FPGA-softprocessor/bitstreams/`](https://github.com/m-archibald/Brainfuino/tree/main/brainfuck_uP-FPGA-softprocessor/bitstreams).
 
 5. **Serial Test:**
     * Unplug the programmers, reconnect via USB-C, and verify that the virtual COM port opens and responds in PuTTY!

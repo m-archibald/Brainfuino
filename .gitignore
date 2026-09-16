@@ -75,4 +75,12 @@ documentation/site/
 
 # Local task tracking
 DOCS_TODO.md
+
+# Lattice Diamond temporary files and logs
+brainfuck_uP-FPGA-softprocessor/**/*.html
+brainfuck_uP-FPGA-softprocessor/**/.build_status
+brainfuck_uP-FPGA-softprocessor/**/.run_manager.ini
+brainfuck_uP-FPGA-softprocessor/**/*_tcr.dir/
+brainfuck_uP-FPGA-softprocessor/promote.xml
+brainfuck_uP-FPGA-softprocessor/reportview.xml
 

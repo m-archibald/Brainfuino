@@ -56,12 +56,12 @@ sudo apt update && sudo apt install openFPGALoader
 *(For other Linux distributions or building from source, see the [openFPGALoader documentation](https://trabucayre.github.io/openFPGALoader/)).*
 
 ### Program the MachXO2 Bitstream
-1. Obtain the compiled `.jed` bitstream file (`brainfuck_uP_brainfuck_uP.jed`).
+1. Obtain the compiled `.jed` bitstream file from [`brainfuck_uP-FPGA-softprocessor/bitstreams/`](https://github.com/m-archibald/Brainfuino/tree/main/brainfuck_uP-FPGA-softprocessor/bitstreams) (`brainfuino_v1.1.jed` for Rev 1.1 boards or `brainfuino_v1.0.jed` for Rev 1.0 boards).
 2. Plug your DirtyJTAG programmer into your USB port and connect the JTAG wires to the Brainfuino.
-3. Run the following command:
+3. Run the following command (substituting `brainfuino_v1.1.jed` or `brainfuino_v1.0.jed`):
 
 ```bash
-openFPGALoader -c dirtyJtag -f brainfuck_uP_brainfuck_uP.jed
+openFPGALoader -c dirtyJtag -f brainfuino_v1.1.jed
 ```
 
 *(If you are using a different programmer cable, replace `dirtyJtag` with your cable type, e.g. `ft2232`, `ft232RL`, etc.)*

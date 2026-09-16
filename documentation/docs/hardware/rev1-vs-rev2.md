@@ -22,9 +22,9 @@ The Brainfuino hardware has evolved through two primary revisions.
 ??? warning "FPGA Pin Mapping Changes (`.lpf`)"
     Revision 1.0 (micro-USB) and Rev 1.1 (USB-C) have slightly different pin assignments for the FPGA. Specifically, in Rev 1.1 the clock input pin was moved to a **dedicated clock-optimized FPGA pin**, which requires a different pin assignment (`.lpf`) file when compiling the firmware in Lattice Diamond:
     
-    * Use the default `brainfuck_uP.lpf` for **Rev 1.1 boards**.
-    * If targeting an older **Rev 1.0 Eagle board**, ensure the constraints file reflects the Rev 1.0 pin mapping.
-    * **Note:** If you are simply flashing precompiled binaries (`.jed`), you do not need to worry about this!
+    * Use `brainfuino_v1.1.jed` (or default `brainfuck_uP.lpf`) for **Rev 1.1 boards**.
+    * Use `brainfuino_v1.0.jed` for older **Rev 1.0 Eagle boards**.
+    * Precompiled `.jed` bitstreams for both revisions are located in [`brainfuck_uP-FPGA-softprocessor/bitstreams/`](https://github.com/m-archibald/Brainfuino/tree/main/brainfuck_uP-FPGA-softprocessor/bitstreams).
 
 ---
 
