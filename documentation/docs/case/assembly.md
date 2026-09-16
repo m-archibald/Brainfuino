@@ -53,7 +53,7 @@ Assembly takes less than a minute with only a single M3 bolt:
 
 The enclosure includes dedicated cutouts so all programming headers, debug jumpers, and buses remain accessible without opening the case:
 
-<div class="grid cards" markdown>
+<div class="grid cards" markdown="1">
 
 -   ![Corner BOOT0 Jumper Cutout](../imgs/brainfuino-case-boot-cutout.jpg)
 

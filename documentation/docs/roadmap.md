@@ -14,7 +14,7 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 | **Dedicated Program Mode** | STM32 Firmware | :material-clock-outline: Planned | 3-second button hold to switch between controls and code execution |
 | **Smart Variable Clock Rate** | STM32 Firmware | :material-clock-outline: Planned | Auto-throttles clock during `.` output to prevent UART buffer overflow |
 | **Default Program Restore** | STM32 Firmware | :material-clock-outline: Planned | 10-second button hold restores burned-in default Brainfuck demo to ROM |
-| **In-Circuit FPGA Flashing** | Hardware & FW | :material-fire: **High Interest** | Wire STM32 GPIOs to MachXO2 JTAG port to program FPGA directly over USB |
+| **In-Circuit FPGA Flashing** | Hardware & FW | :material-lightbulb-outline: Future Idea | Potential concept: wire STM32 GPIOs to MachXO2 JTAG pins for USB bitstream updates |
 | **QSPI Multi-Program Storage** | Hardware (Rev 1.2) | :material-clock-outline: Planned | Onboard SPI/QSPI Flash chip to store a library of Brainfuck programs |
 | **Interactive Terminal Menu UI** | STM32 Firmware | :material-clock-outline: Planned | ANSI terminal menu for settings, clock tuning, and program loading |
 
@@ -45,12 +45,13 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 
 ## Hardware Roadmap (Rev 1.2 & Beyond)
 
-### In-Circuit FPGA Flashing via STM32 (High Interest)
-* **The Goal:** Eliminate the need for external JTAG programmers, FTDI cables, or Raspberry Pi Pico debuggers.
-* **Implementation:**
+### In-Circuit FPGA Flashing via STM32 (Potential Future Idea)
+* **The Concept:** A potential, maybe-someday feature to explore: allowing the STM32 coprocessor to flash the Lattice FPGA in-circuit, eliminating the need for an external JTAG programmer or Raspberry Pi Pico debugger.
+* **Current Status:** Not actively planned for near-term milestones, but kept as a possible future hardware/firmware exploration.
+* **Implementation Concept:**
     * Route unused GPIO pins from the STM32F072 microcontroller to the Lattice MachXO2 JTAG header pins (`TCK`, `TMS`, `TDI`, `TDO`).
     * Port Lattice's open-source **`embedded_jtag`** or **`ispVM Embedded`** C routines into the STM32 firmware.
-    * Users will be able to update the FPGA soft-processor bitstream directly over USB-C using a simple drag-and-drop or command-line utility.
+    * Users would be able to update the FPGA soft-processor bitstream directly over USB-C using a simple utility.
 * **Technical Feasibility:** [Read the technical feasibility analysis](fpga/architecture.md#roadmap-flashing-the-fpga-through-the-stm32).
 
 ### Onboard QSPI Flash for Multi-Program Storage

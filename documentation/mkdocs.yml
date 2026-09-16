@@ -7,6 +7,8 @@ repo_name: "m-archibald/Brainfuino"
 
 theme:
   name: material
+  logo: imgs/brainfuino-icon.svg
+  favicon: imgs/brainfuino-icon.png
   language: en
   palette:
     # Light mode - Clean modern tech look
@@ -53,6 +55,7 @@ markdown_extensions:
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - tables
   - attr_list
+  - md_in_html
   - pymdownx.snippets:
       base_path: ["documentation/docs"]
 

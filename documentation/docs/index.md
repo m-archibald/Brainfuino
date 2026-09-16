@@ -2,7 +2,7 @@
 
 > **Yes, this is real. Yes, it runs Brainfuck natively in silicon. No, we will not apologize.**
 
-<div class="grid cards" markdown>
+<div class="grid cards" markdown="1">
 
 -   ![Brainfuino Rev 1.1 Assembled Hardware](imgs/brainfuino-rev1-1-board-hero.jpg)
 
@@ -106,3 +106,4 @@ Use the left sidebar to navigate the guides:
 * **[STM32 Firmware](firmware/architecture.md):** Coprocessor architecture, clock generator, USB CDC, and memory flashing.
 * **[3D Printed Case](case/assembly.md):** Printing specs and assembly instructions.
 * **[Brainfuck Guide & Examples](brainfuck/language-guide.md):** Language cheat sheet, hardware quirks, and tested sample programs.
+* **[Project Roadmap](roadmap.md):** Planned firmware modes, dynamic clock throttling, multi-program storage, and potential future ideas.

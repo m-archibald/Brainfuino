@@ -147,4 +147,4 @@ Because the counter is 18 bits wide, the processor supports loops nested up to *
     ### What This Enables
     When implemented, Brainfuino users will never need an external JTAG programmer or FTDI cable to update the FPGA soft-processor. A user will simply be able to drag-and-drop a new bitstream over USB, and the STM32 will flash the FPGA in-circuit!
     
-    *Track progress and related hardware goals on the [Project Roadmap](../roadmap.md#in-circuit-fpga-flashing-via-stm32-high-interest).*
+    *Read more on the [Project Roadmap](../roadmap.md#in-circuit-fpga-flashing-via-stm32-potential-future-idea).*
