@@ -86,7 +86,24 @@ Unlike an Arduino Uno, which exposes arbitrary general-purpose GPIOs (D0–D13),
 
 ## Board Silkscreen & Artwork
 
-![Brainfuino Rev 1.1 Bottom Silkscreen](../imgs/brainfuino-rev1-1-board-bottom.jpg)
-*The bottom of the Rev 1.1 PCB featuring the full Brainfuino logo and open-source attribution silkscreen.*
+The underside of the Brainfuino Rev 1.1 PCB showcases custom silkscreen graphics celebrating the Brainfuck instruction set and open-source origins:
+
+<div class="grid cards" markdown="1">
+
+-   ![Brainfuino Rev 1.1 Bottom Silkscreen Render](../imgs/brainfuino-rev1-1-pcb-bottom-diagram.png)
+    
+    ---
+    
+    **Bottom Artwork Layout**
+    Vector silkscreen rendering highlighting the Arduino-style infinity loop transformed into `[-><+]`, project URLs, and attribution to Ignacio and Eduardo Corpeño.
+
+-   ![Brainfuino Rev 1.1 Manufactured Board Bottom](../imgs/brainfuino-rev1-1-board-bottom.jpg)
+    
+    ---
+    
+    **Fabricated Physical Board**
+    The finished Rev 1.1 board fresh from fabrication, showing the crisp white silkscreen artwork on blue solder mask.
+
+</div>
 
 
