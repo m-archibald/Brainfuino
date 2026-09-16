@@ -47,15 +47,30 @@ You can flash using either **STM32CubeIDE** or the standalone lightweight **[STM
 
 3. **Connect in STM32CubeProgrammer:**
     * Launch **STM32CubeProgrammer**.
-    * In the top-right connection panel, select **USB** from the drop-down menu, click refresh if needed, and click **Connect**.
-
-4. **Flash the Binary:**
-    * Click **Open file** and select `BrainfuinoMCU.hex` (located under `companion-STM32-firmware/Debug/`).
-    * Click **Download** to flash the firmware.
+    * In the top-right connection panel, select **USB** from the drop-down menu, verify that **Port USB1** appears (click the refresh icon if needed), and click **Connect**.
     
-    ![Programming the STM32 via USB DFU in STM32CubeProgrammer](../imgs/cubeprogrammer-dfu.png)
+    ![Select USB and click Connect in STM32CubeProgrammer](../imgs/cubeprog-step1-connect.png)
 
-5. **Return to Run Mode:**
+4. **Open the Firmware Binary:**
+    * Click the **Open file** tab in the top bar:
+    
+    ![Click Open file in STM32CubeProgrammer](../imgs/cubeprog-step2-openfile.png)
+    
+    * Browse and select `BrainfuinoMCU.hex` (found under `companion-STM32-firmware/Debug/` or downloaded from the GitHub release).
+    * The **BrainfuinoMCU.hex** tab will load, showing the firmware mapped to starting flash address `0x08000000`:
+    
+    ![BrainfuinoMCU.hex loaded into memory view](../imgs/cubeprog-step3-fileloaded.png)
+
+5. **Download & Flash Firmware:**
+    * Click the blue **Download** button:
+    
+    ![Click Download to flash STM32](../imgs/cubeprog-step4-download.png)
+    
+    * The programmer will erase sectors and write the firmware. Verify the console displays **File download complete**:
+    
+    ![File download complete verification in STM32CubeProgrammer log](../imgs/cubeprog-step5-complete.png)
+
+6. **Return to Run Mode:**
     * Unplug the board, move the `BOOT` jumper back so the STM32 can boot normally, and plug the USB-C cable back in.
     * The STM32 coprocessor is now fully programmed and ready to run!
 
