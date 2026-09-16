@@ -68,6 +68,7 @@ nav:
   - User Guide:
       - Quick Start: user-guide/quick-start.md
       - Terminal Controls: user-guide/terminal-commands.md
+      - Configuration Menu: user-guide/config-menu.md
   - Hardware & Mechanics:
       - Architecture & Specs: hardware/overview.md
       - Rev 1.0 vs Rev 1.1: hardware/rev1-vs-rev2.md

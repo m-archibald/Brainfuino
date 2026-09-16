@@ -42,6 +42,7 @@
 #define T 				10
 #define STATE_RUN 		0
 #define STATE_PROGRAM 	1
+#define STATE_CONFIG    2
 #define OUTBOX_CAPACITY 1024
 
 #define PROG_BUF_SIZE           4096
@@ -50,19 +51,13 @@
 #define PROG_IDLE_TIMEOUT_MS    100
 #define STREAM_REPORT_INTERVAL  1024
 
-// Configurable features (ready for upcoming interactive terminal menu)
-#define CFG_AUTO_PROG_RUN_MODE   1   // 1 = Auto-enter program mode if code paste detected in RUN mode
-#define CFG_AUTO_PROG_MIN_BYTES  16  // Minimum packet size to trigger upload (safe against 3-5 byte ANSI escape keys)
-#define CFG_AUTO_RESET_AFTER_PGM 1   // 1 = Automatically reset and launch program after write finishes
-#define CFG_APPEND_ENDLESS_LOOP  1   // 1 = Automatically append '[-]+[]' infinite loop at EOF to halt PC cleanly
-
 // Run Mode speed hotkey options
 #define SPEED_HOTKEY_NONE        0   // Disabled
 #define SPEED_HOTKEY_PGUP_PGDN   1   // Page Up / Page Down (\x1b[5~ / \x1b[6~)
 #define SPEED_HOTKEY_UP_DOWN     2   // Up Arrow / Down Arrow (\x1b[A / \x1b[B)
 #define SPEED_HOTKEY_PLUS_MINUS  3   // '+' / '-'
 
-#define CFG_SPEED_HOTKEY_MODE    SPEED_HOTKEY_PGUP_PGDN
+#define MENU_ITEM_COUNT          9
 
 #define DFU_MAGIC_ADDR          (*((volatile uint32_t *)0x20003FF0))
 #define DFU_MAGIC_VALUE         0xDEADBEEF
@@ -99,12 +94,27 @@ uint32_t leaving;
 uint32_t tail;
 uint32_t tail_temp;
 
+// Runtime configuration settings (modifiable in interactive configuration menu)
+uint8_t  cfg_auto_prog_run_mode   = 1;   // 1 = Auto-enter program mode if code paste detected in RUN mode
+uint32_t cfg_auto_prog_min_bytes  = 16;  // Minimum packet size to trigger upload (safe against 3-5 byte ANSI escape keys)
+uint8_t  cfg_auto_reset_after_pgm = 1;   // 1 = Automatically reset and launch program after write finishes
+uint8_t  cfg_append_endless_loop  = 1;   // 1 = Automatically append '[-]+[]' infinite loop at EOF to halt PC cleanly
+uint8_t  cfg_speed_hotkey_mode    = SPEED_HOTKEY_PGUP_PGDN;
+
+int8_t   menu_cursor = 0;
+volatile uint8_t menu_needs_render = 0;
+volatile uint8_t menu_exit_requested = 0;
+volatile int8_t  menu_action_pending = -1;
+
 volatile uint8_t dfu_requested;
 
 // Button debounce and hold tracking
-uint8_t btn_last_state;
+uint8_t btn_debounced;
+uint8_t btn_last_raw;
+uint32_t btn_raw_change_tick;
 uint32_t btn_press_tick;
 uint8_t btn_held_3s;
+uint8_t btn_held_6s;
 uint8_t btn_held_10s;
 
 // Dedicated program mode buffers and state
@@ -158,6 +168,11 @@ void Execute_DFU_Jump(void);
 const char *get_freq_name(uint8_t f);
 void speed_step_up(void);
 void speed_step_down(void);
+void menu_enter(void);
+void menu_exit(void);
+void menu_render(void);
+void menu_execute_action(uint8_t item);
+void led_update_pulse(uint32_t period_ms);
 
 /* USER CODE END PFP */
 
@@ -268,6 +283,186 @@ void CDC_Printf(const char *format, ...){
 	CDC_Print(msg);
 }
 
+void led_update_pulse(uint32_t period_ms){
+	if (period_ms == 0) return;
+	uint32_t tick = HAL_GetTick();
+	uint32_t phase = tick % period_ms;
+	uint32_t half = period_ms / 2;
+	uint32_t duty;
+	if (phase < half){
+		duty = (phase * 1000) / half;
+	} else {
+		duty = ((period_ms - phase) * 1000) / half;
+	}
+
+	// Quadratic curve for smooth, natural human eye brightness perception
+	uint32_t load = SysTick->LOAD;
+	if (load == 0) load = 48000;
+	uint32_t threshold = ((duty * duty) / 1000) * load / 1000;
+
+	uint32_t current_val = load - SysTick->VAL;
+	if (current_val < threshold){
+		LED_GPIO_Port->BSRR = LED_Pin;
+	} else {
+		LED_GPIO_Port->BRR = LED_Pin;
+	}
+}
+
+void menu_render(void){
+	// Clear screen and home cursor (VT100 / ANSI)
+	CDC_Print("\x1b[2J\x1b[H\r\n");
+	CDC_Print("+-----------------------------------------------+\r\n");
+	CDC_Print("|         BRAINFUINO CONFIGURATION MENU         |\r\n");
+	CDC_Print("+-----------------------------------------------+\r\n");
+	CDC_Print("|  Use [Up/Down] & [Enter], or type [1-8, 0]    |\r\n");
+	CDC_Print("+-----------------------------------------------+\r\n");
+
+	for (int i = 0; i < MENU_ITEM_COUNT; i++){
+		char val_str[16];
+		const char *label = "";
+		switch(i){
+			case 0:
+				label = "1. Auto-Program on Paste  ";
+				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_prog_run_mode ? "ENABLED" : "DISABLED");
+				break;
+			case 1:
+				label = "2. Paste Upload Threshold ";
+				snprintf(val_str, sizeof(val_str), "[   %2lu B   ]", (unsigned long)cfg_auto_prog_min_bytes);
+				break;
+			case 2:
+				label = "3. Auto-Reset after Flash ";
+				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_reset_after_pgm ? "ENABLED" : "DISABLED");
+				break;
+			case 3:
+				label = "4. Append Endless Loop    ";
+				snprintf(val_str, sizeof(val_str), "[  %-6s  ]", cfg_append_endless_loop ? "[-]+[]" : "NONE");
+				break;
+			case 4:
+				label = "5. FPGA Clock Frequency   ";
+				snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_freq_name(freq));
+				break;
+			case 5:
+				label = "6. Run Mode Speed Hotkeys ";
+				{
+					const char *hname = "NONE";
+					if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PGUP_PGDN) hname = "PgUp/Dn";
+					else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_UP_DOWN) hname = "Up/Down";
+					else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PLUS_MINUS) hname = "+ / -";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", hname);
+				}
+				break;
+			case 6:
+				label = "7. Restore Default Demo   ";
+				snprintf(val_str, sizeof(val_str), "[ RESTORE  ]");
+				break;
+			case 7:
+				label = "8. Reboot to USB DFU      ";
+				snprintf(val_str, sizeof(val_str), "[  REBOOT  ]");
+				break;
+			case 8:
+				label = "0. Save & Exit            ";
+				snprintf(val_str, sizeof(val_str), "[   EXIT   ]");
+				break;
+		}
+
+		if (i == menu_cursor){
+			// Highlighted row: Inverted video (\x1b[7m) + cursor indicators '> ' and ' <'
+			CDC_Printf("| \x1b[7m> %s : %-12s <\x1b[0m |\r\n", label, val_str);
+		} else {
+			CDC_Printf("|   %s : %-12s   |\r\n", label, val_str);
+		}
+	}
+
+	CDC_Print("+-----------------------------------------------+\r\n");
+	CDC_Print("|  Hardware: STM32F072 | Parallel ROM: 256 kB   |\r\n");
+	CDC_Print("+-----------------------------------------------+\r\n");
+	CDC_Print("Select option [0-8] or use arrows + Enter: ");
+}
+
+void menu_execute_action(uint8_t item){
+	switch(item){
+		case 0:
+			cfg_auto_prog_run_mode = !cfg_auto_prog_run_mode;
+			break;
+		case 1:
+			if (cfg_auto_prog_min_bytes == 4) cfg_auto_prog_min_bytes = 8;
+			else if (cfg_auto_prog_min_bytes == 8) cfg_auto_prog_min_bytes = 16;
+			else if (cfg_auto_prog_min_bytes == 16) cfg_auto_prog_min_bytes = 32;
+			else if (cfg_auto_prog_min_bytes == 32) cfg_auto_prog_min_bytes = 64;
+			else cfg_auto_prog_min_bytes = 4;
+			break;
+		case 2:
+			cfg_auto_reset_after_pgm = !cfg_auto_reset_after_pgm;
+			break;
+		case 3:
+			cfg_append_endless_loop = !cfg_append_endless_loop;
+			break;
+		case 4:
+			if (freq < '7') freq++;
+			else freq = '1';
+			set_freq(freq);
+			break;
+		case 5:
+			cfg_speed_hotkey_mode = (cfg_speed_hotkey_mode + 1) % 4;
+			break;
+		case 6:
+			CDC_Print("\r\nRestoring Default Demo to Flash...\r\n");
+			flashDefaultLogoProgram();
+			break;
+		case 7:
+			CDC_Print("\r\nRebooting to STM32 USB DFU Bootloader...\r\n");
+			HAL_Delay(200);
+			dfu_requested = 1;
+			state = STATE_RUN;
+			break;
+		case 8:
+			menu_exit();
+			break;
+		default:
+			break;
+	}
+}
+
+void menu_enter(void){
+	state = STATE_CONFIG;
+	menu_cursor = 0;
+	menu_action_pending = -1;
+	menu_exit_requested = 0;
+	menu_needs_render = 1;
+	// Hold soft-processor in reset while configuring
+	HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+}
+
+void menu_exit(void){
+	state = STATE_RUN;
+	HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+	LED_GPIO_Port->BRR = LED_Pin;
+	CDC_Printf("\r\n\x1b[0m[Config Saved] Resuming Brainfuino (Clock: %s)...\r\n", get_freq_name(freq));
+	initROMNormal();
+	wait(1000);
+	HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
+	wait(1000);
+	// Pulse FPGA reset to restart execution cleanly with any new settings
+	HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+	HAL_Delay(10);
+	HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+	LED_GPIO_Port->BRR = LED_Pin;
+}
+
+static uint8_t is_prefix_ci(const uint8_t *b, uint32_t len, const char *prefix){
+	uint32_t plen = strlen(prefix);
+	if (len < plen) return 0;
+	for (uint32_t i = 0; i < plen; i++){
+		char c1 = (char)b[i];
+		char c2 = prefix[i];
+		if (c1 >= 'a' && c1 <= 'z') c1 -= 32;
+		if (c2 >= 'a' && c2 <= 'z') c2 -= 32;
+		if (c1 != c2) return 0;
+	}
+	return 1;
+}
+
 uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 	// Automated USB DFU trigger command (from build script or terminal)
 	if (len >= 5 && strncmp((char *)buff, "!DFU!", 5) == 0){
@@ -276,7 +471,12 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 	}
 
 	if (state == STATE_RUN){
-		if (CFG_AUTO_PROG_RUN_MODE && (len >= CFG_AUTO_PROG_MIN_BYTES)){
+		if (is_prefix_ci(buff, len, "!MENU") || is_prefix_ci(buff, len, "!CONFIG")){
+			menu_enter();
+			return 1;
+		}
+
+		if (cfg_auto_prog_run_mode && (len >= cfg_auto_prog_min_bytes)){
 			// Auto-detected code paste in Run Mode! Transition to Program Mode
 			state = STATE_PROGRAM;
 			HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
@@ -301,7 +501,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		}
 
 		// Run Mode dynamic speed switching hotkeys
-		if (CFG_SPEED_HOTKEY_MODE == SPEED_HOTKEY_PGUP_PGDN){
+		if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PGUP_PGDN){
 			if (len == 4 && buff[0] == 0x1B && buff[1] == '[' && buff[2] == '5' && buff[3] == '~'){
 				speed_step_up();
 				return 1;
@@ -311,7 +511,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				return 1;
 			}
 		}
-		else if (CFG_SPEED_HOTKEY_MODE == SPEED_HOTKEY_UP_DOWN){
+		else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_UP_DOWN){
 			if (len == 3 && buff[0] == 0x1B && (buff[1] == '[' || buff[1] == 'O') && buff[2] == 'A'){
 				speed_step_up();
 				return 1;
@@ -321,7 +521,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				return 1;
 			}
 		}
-		else if (CFG_SPEED_HOTKEY_MODE == SPEED_HOTKEY_PLUS_MINUS){
+		else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PLUS_MINUS){
 			if (len == 1 && buff[0] == '+'){
 				speed_step_up();
 				return 1;
@@ -338,6 +538,68 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			HAL_GPIO_WritePin(BF_INCMG_GPIO_Port, BF_INCMG_Pin, GPIO_PIN_SET);
 			serial_input = 1;
 		}
+		return 1;
+	}
+
+	if (state == STATE_CONFIG){
+		static uint32_t last_num_key_tick = 0;
+		if (len == 0) return 1;
+
+		// Standalone Spacebar: execute/toggle selected item
+		if (len == 1 && buff[0] == ' '){
+			menu_action_pending = menu_cursor;
+			return 1;
+		}
+
+		uint32_t idx = 0;
+		while (idx < len && (buff[idx] == ' ' || buff[idx] == '\t')) idx++;
+		if (idx >= len) return 1;
+
+		// 1. ANSI / VT100 arrow keys & Escape
+		if (buff[idx] == 0x1B){
+			if (idx + 2 < len && (buff[idx+1] == '[' || buff[idx+1] == 'O')){
+				if (buff[idx+2] == 'A'){ // Up Arrow
+					menu_cursor--;
+					if (menu_cursor < 0) menu_cursor = MENU_ITEM_COUNT - 1;
+					menu_needs_render = 1;
+					return 1;
+				}
+				else if (buff[idx+2] == 'B'){ // Down Arrow
+					menu_cursor++;
+					if (menu_cursor >= MENU_ITEM_COUNT) menu_cursor = 0;
+					menu_needs_render = 1;
+					return 1;
+				}
+			}
+			// Standalone ESC: exit menu
+			menu_exit_requested = 1;
+			return 1;
+		}
+
+		// 2. Direct numbered shortcuts (1-8, 0) and quick exit ('q' / 'Q')
+		if (buff[idx] >= '1' && buff[idx] <= '8'){
+			last_num_key_tick = HAL_GetTick();
+			menu_cursor = buff[idx] - '1';
+			menu_action_pending = menu_cursor;
+			return 1;
+		}
+		if (buff[idx] == '0' || buff[idx] == 'q' || buff[idx] == 'Q'){
+			menu_exit_requested = 1;
+			return 1;
+		}
+
+		// 3. Enter / Return or Space: execute selected cursor item
+		if (buff[idx] == '\r' || buff[idx] == '\n'){
+			if (HAL_GetTick() - last_num_key_tick > 100){
+				menu_action_pending = menu_cursor;
+			}
+			return 1;
+		}
+		if (buff[idx] == ' '){
+			menu_action_pending = menu_cursor;
+			return 1;
+		}
+
 		return 1;
 	}
 
@@ -470,9 +732,13 @@ int main(void)
   freq = '1';
   set_freq(freq);
 
-  btn_last_state = 1;
+  uint8_t init_btn = HAL_GPIO_ReadPin(BRD_RST_GPIO_Port, BRD_RST_Pin);
+  btn_debounced = init_btn;
+  btn_last_raw = init_btn;
+  btn_raw_change_tick = HAL_GetTick();
   btn_press_tick = 0;
   btn_held_3s = 0;
+  btn_held_6s = 0;
   btn_held_10s = 0;
 
   prog_rx_count = 0;
@@ -497,97 +763,153 @@ int main(void)
 		  Execute_DFU_Jump();
 	  }
 
-	  // 1. Debounced button state machine
-	  uint8_t btn_curr = HAL_GPIO_ReadPin(BRD_RST_GPIO_Port, BRD_RST_Pin);
+	  // 1. Debounced button state machine (35ms stable window to filter mechanical chatter)
+	  uint8_t btn_raw = HAL_GPIO_ReadPin(BRD_RST_GPIO_Port, BRD_RST_Pin);
 
-	  if (btn_curr == GPIO_PIN_RESET){
-		  // Button is pressed (active LOW)
-		  if (btn_last_state == GPIO_PIN_SET){
-			  // Button just pressed down
-			  btn_press_tick = HAL_GetTick();
-			  btn_held_3s = 0;
-			  btn_held_10s = 0;
-			  // Hold FPGA in reset while physical button is held down
-			  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+	  if (btn_raw != btn_last_raw){
+		  btn_last_raw = btn_raw;
+		  btn_raw_change_tick = HAL_GetTick();
+	  }
+
+	  if ((HAL_GetTick() - btn_raw_change_tick) >= 35){
+		  if (btn_debounced != btn_last_raw){
+			  btn_debounced = btn_last_raw;
+			  if (btn_debounced == GPIO_PIN_RESET){
+				  // Button officially PRESSED (held down)
+				  btn_press_tick = HAL_GetTick();
+				  btn_held_3s = 0;
+				  btn_held_6s = 0;
+				  btn_held_10s = 0;
+				  // Hold FPGA in reset while physical button is held down
+				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+			  }
+			  else {
+				  // Button officially RELEASED
+				  uint32_t press_duration = HAL_GetTick() - btn_press_tick;
+
+				  if (btn_held_10s || (press_duration >= 10000)){
+					  // Held >= 10s: Restore Default Brainfuino ASCII Logo Demo!
+					  flashDefaultLogoProgram();
+				  }
+				  else if (btn_held_6s || (press_duration >= 6000)){
+					  // Held >= 6s: Enter Interactive Configuration Menu
+					  menu_enter();
+				  }
+				  else if (btn_held_3s || (press_duration >= 3000)){
+					  // Held >= 3s: Enter Program Mode
+					  state = STATE_PROGRAM;
+					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET); // Hold soft-processor in reset
+
+					  prog_rx_count = 0;
+					  prog_total_received = 0;
+					  prog_flash_addr = 0;
+					  prog_active = 0;
+					  prog_is_streaming = 0;
+					  staging_head = 0;
+					  staging_tail = 0;
+					  stream_init_done = 0;
+
+					  CDC_Print("\r\n\r\n=== BRAINFUINO PROGRAM MODE ===\r\nPaste Brainfuck code now (up to 256 kB)...\r\n");
+					  CDC_Resume_Rx();
+				  }
+				  else if (press_duration >= 20){
+					  // Short press (< 3s)
+					  if (state == STATE_CONFIG){
+						  // In Config Menu: short press exits menu and resumes program
+						  menu_exit();
+					  }
+					  else if (state == STATE_PROGRAM){
+						  // In Program Mode: short press exits Program Mode and runs the program
+						  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+						  initROMNormal();
+						  wait(1000);
+						  HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
+						  wait(1000);
+						  // Pulse FPGA reset
+						  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+						  HAL_Delay(10);
+						  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+						  state = STATE_RUN;
+						  CDC_Print("\r\n[Running program]\r\n");
+					  }
+					  else {
+						  // In Run Mode: short press resets the running soft-processor and blips the LED!
+						  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+						  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+						  HAL_Delay(10);
+						  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+						  HAL_Delay(60);
+						  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+						  CDC_Print("\r\n[Reset]\r\n");
+					  }
+				  }
+				  btn_held_3s = 0;
+				  btn_held_6s = 0;
+				  btn_held_10s = 0;
+				  if (state == STATE_RUN){
+					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+				  }
+			  }
+		  }
+	  }
+
+	  if (btn_debounced == GPIO_PIN_RESET){
+		  // Button is currently being held down
+		  uint32_t hold_time = HAL_GetTick() - btn_press_tick;
+		  if (hold_time >= 10000){
+			  btn_held_10s = 1;
+			  // Rapid Red LED strobe (toggle every 50ms) at 10s mark
+			  if ((hold_time / 50) % 2){
+				  LED_GPIO_Port->BSRR = LED_Pin;
+			  } else {
+				  LED_GPIO_Port->BRR = LED_Pin;
+			  }
+		  }
+		  else if (hold_time >= 6000){
+			  btn_held_6s = 1;
+			  // Visual indication: smooth pulse (period 600ms) at 6s mark for Config Menu threshold
+			  led_update_pulse(600);
+		  }
+		  else if (hold_time >= 3000){
+			  btn_held_3s = 1;
+			  // Visual indication: Red LED turns ON solid at 3.0s (Program Mode threshold)
+			  LED_GPIO_Port->BSRR = LED_Pin;
 		  }
 		  else {
-			  // Button is being held down
-			  uint32_t hold_time = HAL_GetTick() - btn_press_tick;
-			  if (hold_time >= 10000){
-				  btn_held_10s = 1;
-				  // Visual indication: rapid Red LED strobe (toggle every 100ms) at 10s mark
-				  if ((hold_time / 100) % 2){
-					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-				  } else {
-					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-				  }
-			  }
-			  else if (hold_time >= 3000){
-				  btn_held_3s = 1;
-				  // Visual indication: Red LED turns ON solid at 3.0s!
-				  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+			  // 0 to 3s hold: in config mode, keep solid ON for immediate tactile feedback
+			  if (state == STATE_CONFIG){
+				  LED_GPIO_Port->BSRR = LED_Pin;
 			  }
 		  }
 	  }
-	  else {
-		  // Button is unpressed (HIGH)
-		  if (btn_last_state == GPIO_PIN_RESET){
-			  // Button just released!
-			  uint32_t press_duration = HAL_GetTick() - btn_press_tick;
 
-			  if (btn_held_10s || (press_duration >= 10000)){
-				  // Held >= 10s: Restore Default Brainfuino ASCII Logo Demo!
-				  flashDefaultLogoProgram();
+	  // 2. Interactive Configuration Menu handling (Thread Mode)
+	  if (state == STATE_CONFIG){
+		  if (menu_exit_requested){
+			  menu_exit_requested = 0;
+			  menu_exit();
+		  }
+		  else if (menu_action_pending >= 0){
+			  uint8_t act = (uint8_t)menu_action_pending;
+			  menu_action_pending = -1;
+			  menu_execute_action(act);
+			  if (state == STATE_CONFIG){
+				  menu_render();
 			  }
-			  else if (btn_held_3s || (press_duration >= 3000)){
-				  // Held >= 3s: Enter Program Mode
-				  state = STATE_PROGRAM;
-				  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET); // Hold soft-processor in reset
+		  }
+		  else if (menu_needs_render){
+			  menu_needs_render = 0;
+			  menu_render();
+		  }
 
-				  prog_rx_count = 0;
-				  prog_total_received = 0;
-				  prog_flash_addr = 0;
-				  prog_active = 0;
-				  prog_is_streaming = 0;
-				  staging_head = 0;
-				  staging_tail = 0;
-				  stream_init_done = 0;
-
-				  CDC_Print("\r\n\r\n=== BRAINFUINO PROGRAM MODE ===\r\nPaste Brainfuck code now (up to 256 kB)...\r\n");
-				  CDC_Resume_Rx();
-			  }
-			  else if (press_duration > 20){
-				  // Short press (< 3s)
-				  if (state == STATE_PROGRAM){
-					  // In Program Mode: short press exits Program Mode and runs the program
-					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-					  initROMNormal();
-					  wait(1000);
-					  HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
-					  wait(1000);
-					  // Pulse FPGA reset
-					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
-					  HAL_Delay(10);
-					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
-					  state = STATE_RUN;
-					  CDC_Print("\r\n[Running program]\r\n");
-				  }
-				  else {
-					  // In Run Mode: short press resets the running soft-processor
-					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
-					  HAL_Delay(10);
-					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
-					  CDC_Print("\r\n[Reset]\r\n");
-				  }
-			  }
-			  btn_held_3s = 0;
-			  btn_held_10s = 0;
+		  else if (btn_debounced == GPIO_PIN_SET){
+			  // Continuous smooth LED breathing/pulsing while in Config Menu (only when actively in menu)
+			  led_update_pulse(1200);
 		  }
 	  }
-	  btn_last_state = btn_curr;
 
-	  // 2. Program Mode flashing handling
+	  // 3. Program Mode flashing handling
 	  if (state == STATE_PROGRAM){
 		  if (prog_is_streaming){
 			  if (!stream_init_done){
@@ -643,7 +965,7 @@ int main(void)
 
 			  // Idle timeout detection in streaming mode
 			  if (stream_init_done && (staging_head == staging_tail) && ((HAL_GetTick() - prog_last_rx_tick) >= PROG_IDLE_TIMEOUT_MS)){
-				  if (CFG_APPEND_ENDLESS_LOOP && (prog_flash_addr + 6 <= FLASH_CAPACITY)){
+				  if (cfg_append_endless_loop && (prog_flash_addr + 6 <= FLASH_CAPACITY)){
 					  writeROMFast(prog_flash_addr++, '[');
 					  writeROMFast(prog_flash_addr++, '-');
 					  writeROMFast(prog_flash_addr++, ']');
@@ -655,7 +977,7 @@ int main(void)
 				  uint32_t written = (prog_flash_addr > FLASH_CAPACITY) ? FLASH_CAPACITY : prog_flash_addr;
 				  CDC_Printf("\r\nFinished! Wrote %lu bytes total.\r\n", written);
 
-				  if (CFG_AUTO_RESET_AFTER_PGM){
+				  if (cfg_auto_reset_after_pgm){
 					  CDC_Print("Auto-launching program...\r\n");
 					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 					  initROMNormal();
@@ -680,7 +1002,7 @@ int main(void)
 		  }
 		  else if (prog_active && ((HAL_GetTick() - prog_last_rx_tick) >= PROG_IDLE_TIMEOUT_MS)){
 			  // Program <= 4 kB: paste complete! Flash via unified engine
-			  flashBufferToROM(prog_buffer, prog_rx_count, NULL, CFG_APPEND_ENDLESS_LOOP, CFG_AUTO_RESET_AFTER_PGM);
+			  flashBufferToROM(prog_buffer, prog_rx_count, NULL, cfg_append_endless_loop, cfg_auto_reset_after_pgm);
 
 			  prog_active = 0;
 			  prog_rx_count = 0;
@@ -704,7 +1026,7 @@ int main(void)
 	  }
 
 	  // Send data out to host computer
-	  if((head != tail) && !TxBusy()){
+	  if((state == STATE_RUN) && (head != tail) && !TxBusy()){
 		  HAL_NVIC_DisableIRQ(EXTI2_3_IRQn);
 		  tail_temp = tail;                  // Critical Section
 	  	  HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
@@ -737,7 +1059,7 @@ int main(void)
 
 	  // update hardware input (digital or analog)
 	  __disable_irq();
-	  if(!serial_input){
+	  if((state == STATE_RUN) && !serial_input){
 		  __enable_irq();
 		  board_incoming = HAL_GPIO_ReadPin(BRD_INCMG_GPIO_Port, BRD_INCMG_Pin);
 		  if(board_incoming){

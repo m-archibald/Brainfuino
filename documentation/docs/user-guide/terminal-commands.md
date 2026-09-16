@@ -83,9 +83,14 @@ To upload new Brainfuck code into Flash ROM:
 
 ## Hardware Button Behavior
 
-| Action | Duration | Red LED | Result |
+The Brainfuino button utilizes a 35 ms hardware debounce filter to eliminate tactile contact chatter. The coprocessor measures the steady hold duration to provide intuitive 4-tier control:
+
+| Action | Duration | Red LED Feedback | Result |
 | :--- | :---: | :---: | :--- |
-| **Short Press** (in Run Mode) | < 3 seconds | OFF | Resets the running FPGA soft-processor (`BF_RST` pulse). |
-| **Short Press** (in Program Mode) | < 3 seconds | OFF | Exits Program Mode, turns off Red LED, and runs the program. |
-| **Long Hold** | 3 – 10 seconds | Steady ON | Enters **Dedicated Program Mode** (ready for Brainfuck code paste). |
-| **Very Long Hold** | $\ge$ 10 seconds | Rapid Strobe | **Default Demo Restore**: Erases ROM, restores official Brainfuino ASCII logo banner demo to ROM, and auto-launches it! |
+| **Short Press** (Run Mode) | < 3 seconds | **70 ms Blip** | Resets the running FPGA soft-processor (`BF_RST` pulse) and prints `[Reset]`. |
+| **Short Press** (Config Mode) | < 3 seconds | Turns OFF | Exits configuration menu, saves settings, and resumes execution. |
+| **Short Press** (Program Mode) | < 3 seconds | Turns OFF | Exits Program Mode and executes the program currently in ROM. |
+| **Program Mode Hold** | 3 – 6 seconds | **Solid ON** | Enters **Dedicated Program Mode** (ready for Brainfuck code paste). |
+| **Config Menu Hold** | 6 – 10 seconds | **Smooth Breathing / Pulse** | Enters **[Configuration Menu](config-menu.md)** (`STATE_CONFIG`) for tuning clock, hotkeys, and features. |
+| **Factory Demo Restore** | $\ge$ 10 seconds | **Rapid Strobe** (50 ms) | Erases parallel ROM, restores official Brainfuino ASCII logo demo, and auto-launches it! |
+
