@@ -130,21 +130,3 @@ Handling nested loops in hardware is typically challenging. `brainfuck_uP` achie
 
 Because the counter is 18 bits wide, the processor supports loops nested up to **262,143 levels deep**—vastly exceeding any practical Brainfuck program!
 
----
-
-## Roadmap: Flashing the FPGA Through the STM32
-
-??? info "Technical Feasibility Analysis"
-    **Can the STM32 coprocessor flash the Lattice MachXO2 FPGA directly?**
-    
-    **Verdict: 100% Technically Feasible!**
-    
-    ### How It Works
-    1. **Dedicated Programming Port:** The Lattice MachXO2 features built-in non-volatile configuration memory (NVCM/Flash) that natively supports **Slave JTAG** and **Slave SPI (SSPI)** programming modes.
-    2. **Lattice Embedded C Engines:** Lattice provides open-source reference implementations (**`embedded_jtag`** and **`ispVM Embedded`**) written in portable C specifically designed for microcontrollers to program MachXO2 FPGAs from a `.jed` bitstream.
-    3. **Hardware Wiring:** If spare GPIO pins on the STM32F072 are bridged to the MachXO2 JTAG header (`TCK`, `TMS`, `TDI`, `TDO`) or SPI pins, the STM32 can clock and shift the programming algorithms directly into the FPGA.
-    
-    ### What This Enables
-    When implemented, Brainfuino users will never need an external JTAG programmer or FTDI cable to update the FPGA soft-processor. A user will simply be able to drag-and-drop a new bitstream over USB, and the STM32 will flash the FPGA in-circuit!
-    
-    *Read more on the [Project Roadmap](../roadmap.md#in-circuit-fpga-flashing-via-stm32-potential-future-idea).*

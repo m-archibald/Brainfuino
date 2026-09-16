@@ -10,8 +10,8 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 | :--- | :--- | :---: | :--- |
 | **3D-Printable Enclosure** | Mechanical | :material-check-circle: **Done** | Custom case with retention hook and single M3 fastener ([Assembly Guide](case/assembly.md)) |
 | **KiCad 9 PCB Revision (Rev 1.1)** | Hardware | :material-check-circle: **Done** | USB-C, length-tuned buses, JLCPCB SMT files ([Comparison](hardware/rev1-vs-rev2.md)) |
-| **Documentation Suite & CI/CD** | Docs | :material-progress-clock: **Almost Done** | MkDocs Material suite, automated GitHub Pages deployment |
-| **Dedicated Program Mode** | STM32 Firmware | :material-clock-outline: Planned | 3-second button hold to switch between controls and code execution |
+| **Documentation Suite & CI/CD** | Docs | :material-check-circle: **Done** | MkDocs Material suite, automated GitHub Pages deployment |
+| **Dedicated Program Mode** | STM32 Firmware | :material-clock-outline: Planned | Dedicated mode switch between controls and code execution |
 | **Smart Variable Clock Rate** | STM32 Firmware | :material-clock-outline: Planned | Auto-throttles clock during `.` output to prevent UART buffer overflow |
 | **Default Program Restore** | STM32 Firmware | :material-clock-outline: Planned | 10-second button hold restores burned-in default Brainfuck demo to ROM |
 | **In-Circuit FPGA Flashing** | Hardware & FW | :material-lightbulb-outline: Future Idea | Potential concept: wire STM32 GPIOs to MachXO2 JTAG pins for USB bitstream updates |
@@ -22,9 +22,9 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 
 ## Firmware & Software Roadmap
 
-### Dedicated Program Mode (3-Second Button Hold)
+### Dedicated Program Mode
 * **The Problem:** Single-key commands (`1`–`7` for clock speed, `!` for dump) currently intercept terminal keystrokes directly. Interactive programs cannot accept number keys without accidentally switching clock speeds, and ANSI escape sequences from arrow keys can trigger unintended code writes.
-* **The Solution:** Require holding the hardware button for **3 seconds** to enter a dedicated **Program / Config Mode**. When in standard execution mode, all incoming characters pass cleanly through to the running Brainfuck soft-processor without interception.
+* **The Solution:** Implement a dedicated **Program / Config Mode**. When in standard execution mode, all incoming characters pass cleanly through to the running Brainfuck soft-processor without interception.
 
 ### Smart Variable Clock Rate
 * **The Problem:** The MachXO2 FPGA executes instructions with extreme parallelism. At clock speeds of **8 MHz and above**, write-intensive loops (such as Mandelbrot fractals or large ASCII art dumps) output bytes faster than the STM32 can package and send them over USB CDC, resulting in dropped characters.
@@ -52,7 +52,6 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
     * Route unused GPIO pins from the STM32F072 microcontroller to the Lattice MachXO2 JTAG header pins (`TCK`, `TMS`, `TDI`, `TDO`).
     * Port Lattice's open-source **`embedded_jtag`** or **`ispVM Embedded`** C routines into the STM32 firmware.
     * Users would be able to update the FPGA soft-processor bitstream directly over USB-C using a simple utility.
-* **Technical Feasibility:** [Read the technical feasibility analysis](fpga/architecture.md#roadmap-flashing-the-fpga-through-the-stm32).
 
 ### Onboard QSPI Flash for Multi-Program Storage
 * **The Goal:** Expand Brainfuino's onboard library capacity beyond the single active program in parallel Flash ROM.

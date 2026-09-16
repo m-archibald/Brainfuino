@@ -75,15 +75,8 @@ The **74ALVC164245** dual-supply bus transceiver provides bidirectional level tr
 
 Unlike an Arduino Uno, which exposes arbitrary general-purpose GPIOs (D0–D13), the Brainfuino headers directly expose the FPGA soft-processor's native **8-bit parallel buses** (`In0`–`In7`, `Out0`–`Out7`) and handshake control strobes (`InStrobe`, `OutStrobe`, `Incoming`, `AIN`, `AIEN`).
 
-![Brainfuino Rev 1.1 PCB Silk Pin Markings](../imgs/brainfuino-rev1-1-pcb-top-unpopulated.jpg)
-*High-resolution close-up showing physical silkscreen labels for parallel buses Out0–Out7, In0–In7, control strobes, and JTAG.*
-
-??? info "Pinout Diagram"
-    *(Pinout diagram coming soon — graphic will be placed here)*
-
-    <!-- Placeholder for pinout diagram:
-    ![Brainfuino Header Pinout](../imgs/brainfuino-pinout.png)
-    -->
+![Brainfuino Rev 1.1 PCB Layout & Pinout](../imgs/brainfuino-rev1-1-pcb-diagram.png)
+*Top-down PCB layout diagram showing IC designators, parallel I/O buses (In0–In7, Out0–Out7), control strobes, and programming headers.*
 
 ### Onboard Programming Headers
 * **FPGA JTAG (6-pin):** `TCK`, `TMS`, `TDI`, `TDO`, `GND`, `3.3V` (used with Lattice Diamond or DirtyJTAG).

@@ -85,6 +85,6 @@ When you paste Brainfuck code into the terminal emulator:
     * If this happens, simply re-paste your intended Brainfuck program and hit Reset.
 
 ??? note "Roadmap: Dedicated Program Mode"
-    To eliminate this issue and allow interactive programs to freely use any keystrokes (including number keys) without accidentally switching clock frequencies or triggering code writes, we are updating the firmware with a **dedicated Program Mode** ([read roadmap details](../roadmap.md#dedicated-program-mode-3-second-button-hold)). 
+    To eliminate this issue and allow interactive programs to freely use any keystrokes (including number keys) without accidentally switching clock frequencies or triggering code writes, future firmware will introduce a **dedicated Program Mode** ([read roadmap details](../roadmap.md#dedicated-program-mode)). 
     
-    In this upcoming update, uploading code or adjusting clock speeds will require holding down a button for 3 seconds to enter Program Mode. Normal terminal keystrokes will pass cleanly through to the running Brainfuck application.
+    In this update, uploading code or adjusting clock speeds will require explicitly entering Program Mode, allowing all standard terminal keystrokes to pass directly through to running Brainfuck programs.
