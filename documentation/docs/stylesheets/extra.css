@@ -70,4 +70,19 @@
     margin-bottom: 0.5rem;
 }
 
+/* ASCII Text Art Banner */
+pre.ascii-banner, .ascii-banner {
+    font-family: 'Cascadia Mono', 'Fira Code', 'Courier New', Consolas, monospace !important;
+    font-size: 0.95rem !important;
+    line-height: 1.15 !important;
+    letter-spacing: 0 !important;
+    white-space: pre !important;
+    overflow-x: auto;
+    color: var(--md-primary-fg-color);
+    border: 1px solid var(--md-default-fg-color--lightest);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    margin: 1rem 0;
+}
+
 

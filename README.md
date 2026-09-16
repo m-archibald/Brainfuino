@@ -1,5 +1,13 @@
 # Brainfuino [-]+.
 
+```text
+  ____            _        __       _             
+ | __ ) _ __ __ _(_)_ __  / _|_   _(_)_ __   ___  
+ |  _ \| '__/ _` | | '_ \| |_| | | | | '_ \ / _ \ 
+ | |_) | | | (_| | | | | |  _| |_| | | | | | (_) |
+ |____/|_|  \__,_|_|_| |_|_|  \__,_|_|_| |_|\___/ 
+```
+
 An Arduino competitor that runs native brainfuck! I've condensed the explanation in this video: https://youtu.be/QloNq8AoHvU
 
 [<img src="./documentation/docs/imgs/bfboard2.png" alt="The Brainfuino [-]+." width="700"/>](https://youtu.be/QloNq8AoHvU)

@@ -15,7 +15,7 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 | **Smart Variable Clock Rate** | STM32 Firmware | :material-clock-outline: Planned | Auto-throttles clock during `.` output to prevent UART buffer overflow |
 | **Default Program Restore** | STM32 Firmware | :material-clock-outline: Planned | 10-second button hold restores burned-in default Brainfuck demo to ROM |
 | **In-Circuit FPGA Flashing** | Hardware & FW | :material-lightbulb-outline: Future Idea | Potential concept: wire STM32 GPIOs to MachXO2 JTAG pins for USB bitstream updates |
-| **QSPI Multi-Program Storage** | Hardware (Rev 1.2) | :material-clock-outline: Planned | Onboard SPI/QSPI Flash chip to store a library of Brainfuck programs |
+| **QSPI Multi-Program Storage** | Hardware (Rev 1.2) | :material-lightbulb-outline: Future Idea | Onboard SPI/QSPI Flash chip to store a library of Brainfuck programs |
 | **Interactive Terminal Menu UI** | STM32 Firmware | :material-clock-outline: Planned | ANSI terminal menu for settings, clock tuning, and program loading |
 
 ---
