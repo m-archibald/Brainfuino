@@ -12,7 +12,9 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 | **KiCad 9 PCB Revision (Rev 1.1)** | Hardware | :material-check-circle: **Done** | USB-C, length-tuned buses, JLCPCB SMT files ([Comparison](hardware/rev1-vs-rev2.md)) |
 | **Documentation Suite & CI/CD** | Docs | :material-check-circle: **Done** | MkDocs Material suite, automated GitHub Pages deployment |
 | **Dedicated Program Mode** | STM32 Firmware | :material-check-circle: **Done** | Dedicated mode switch via 3s button hold, fast flasher with progress bar and streaming fallback |
-| **Smart Variable Clock Rate** | STM32 Firmware | :material-clock-outline: Planned | Auto-throttles clock during `.` output to prevent UART buffer overflow |
+| **Smart Clock-Pausing & Throttle** | STM32 Firmware | :material-check-circle: **Done** | 1-cycle MCO gating on falling edge with bus settle and outbox backpressure |
+| **13-Speed Frequency Ladder** | STM32 Firmware | :material-check-circle: **Done** | 62.5 kHz to 12 MHz ladder, compliant with 55 ns parallel Flash silicon timing |
+| **Non-Volatile Settings Storage** | STM32 Firmware | :material-check-circle: **Done** | Flash Page 63 emulated EEPROM preserves user configuration across power cycles |
 | **Default Program Restore** | STM32 Firmware | :material-check-circle: **Done** | 10-second button hold restores burned-in default Brainfuck demo to ROM |
 | **In-Circuit FPGA Flashing** | Hardware & FW | :material-lightbulb-outline: Future Idea | Potential concept: wire STM32 GPIOs to MachXO2 JTAG pins for USB bitstream updates |
 | **QSPI Multi-Program Storage** | Hardware (Rev 1.2) | :material-lightbulb-outline: Future Idea | Onboard SPI/QSPI Flash chip to store a library of Brainfuck programs |
@@ -23,13 +25,20 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 
 ## Firmware & Software Roadmap
 
-### Dedicated Program Mode
-* **The Problem:** Single-key commands (`1`–`7` for clock speed, `!` for dump) currently intercept terminal keystrokes directly. Interactive programs cannot accept number keys without accidentally switching clock speeds, and ANSI escape sequences from arrow keys can trigger unintended code writes.
-* **The Solution:** Implement a dedicated **Program / Config Mode**. When in standard execution mode, all incoming characters pass cleanly through to the running Brainfuck soft-processor without interception.
+### Dedicated Program Mode — :material-check-circle: Completed
+* **The Problem:** Single-key commands (`1`–`7` for clock speed, `!` for dump) previously intercepted terminal keystrokes directly. Interactive programs could not accept number keys without accidentally switching clock speeds.
+* **The Solution:** Implemented a dedicated **Program Mode** entered via a 3-second button hold. When in standard Run Mode, incoming characters pass cleanly through to the running Brainfuck soft-processor without interception.
 
-### Smart Variable Clock Rate
-* **The Problem:** The MachXO2 FPGA executes instructions with extreme parallelism. At clock speeds of **8 MHz and above**, write-intensive loops (such as Mandelbrot fractals or large ASCII art dumps) output bytes faster than the STM32 can package and send them over USB CDC, resulting in dropped characters.
-* **The Solution:** Implement a dynamic clock throttle. The FPGA runs at full maximum speed (up to **48 MHz**) during computation, but whenever the FPGA asserts its output strobe (`portWR`), the STM32 temporarily suspends or slows the clock pulses until its serial transmission queue is emptied.
+### Smart Variable Clock Rate & Output Throttle — :material-check-circle: Completed
+* **The Problem:** At high clock speeds, output instructions (`.`) hold data on the bus for only 20 clock cycles ($1.66\ \mu\text{s}$ at 12 MHz). Closely-spaced prints (e.g. `\r\n` line endings in Mandelbrot) outpaced Cortex-M0 interrupt latency, causing dropped characters.
+* **The Solution:** Implemented hardware clock-pausing directly in `EXTI2_3_IRQHandler` on `BF_OUTSTRB` falling edge. The STM32 gates MCO in 1 instruction (`RCC->CFGR &= ~RCC_CFGR_MCO`), latches data with zero bus skew, and resumes or throttles based on USB queue capacity.
+
+### 13-Speed Frequency Ladder (62.5 kHz – 12 MHz) — :material-check-circle: Completed
+* **The Finding:** Discovered that the `SST39LF020-55` parallel Flash ROM has a maximum address access time of $55\text{ ns}$ ($18.18\text{ MHz}$ physical limit). Speeds of 24 MHz ($41.6\text{ ns}$) and 48 MHz ($20.8\text{ ns}$) violated silicon access times during single-cycle fetch.
+* **The Solution:** Replaced out-of-spec speeds with a granular 13-speed table ranging from **62.5 kHz** up to **12 MHz** ($+28.3\text{ ns}$ margin above ROM access time). Verified across all 13 speeds with 100.0% character fidelity.
+
+### Non-Volatile Flash Configuration Persistence — :material-check-circle: Completed
+* **The Feature:** All configuration menu settings (active clock frequency, upload threshold, auto-reset, endless loop injection, and run mode speed hotkeys) automatically write to the STM32's top internal Flash page (Page 63: `0x0801F800`) on exit with CRC verification and wear-mitigation checking. Settings persist across power cycles and hard reboots.
 
 ### Default Burned-in Program (10-Second Reset Hold)
 * **The Goal:** Store a default, self-contained Brainfuck demo program directly within the STM32 microcontroller's internal Flash memory.

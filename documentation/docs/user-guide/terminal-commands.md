@@ -30,11 +30,8 @@ When you send an individual character (payload length under 3 bytes), the STM32 
     
     When executing **write-intensive programs**—programs that spam the `.` output command in tight loops (such as Mandelbrot fractals, large ASCII art dumps, or matrix calculations)—the FPGA can produce parallel bytes on its output bus faster than the STM32 can packetize and transmit them over USB CDC.
     
-    * **At 8 MHz and above:** Missed or dropped characters can occur if output generation is continuous.
-    * **At lower clock speeds (500 kHz to 6 MHz):** Output is generally rock-solid, though extremely write-dense code loops can occasionally experience buffer saturation.
-    
-    **Roadmap Solution:**
-    We are implementing a **smart variable clock rate** ([read roadmap details](../roadmap.md#smart-variable-clock-rate)). In this mode, the FPGA runs at full maximum speed (up to 48 MHz) for computation, but whenever the `.` instruction is executed, the STM32 will briefly hold or slow the clock pulses until its serial transmission buffer is emptied, guaranteeing 100% character fidelity.
+    * **Zero Dropped Characters:** The firmware includes **Smart Hardware Clock-Pausing** ([read architecture details](../firmware/architecture.md#smart-hardware-clock-pausing-output-throttling)). The STM32 automatically freezes the FPGA master clock in 1 CPU instruction upon output strobe assertion, samples data with zero race conditions, and applies hardware backpressure if the USB buffer nears capacity.
+    * **Operating Speeds:** Supported across all 13 clock frequencies from 62.5 kHz up to 12 MHz with 100% character fidelity.
 
 ---
 

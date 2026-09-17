@@ -84,6 +84,18 @@ Reset_Handler:
   bx    r1
 
 Normal_Reset:
+  /* Ensure 0x00000000 is mapped to Main Flash */
+  ldr   r0, =0x40021018        /* RCC_APB2ENR */
+  ldr   r1, [r0]
+  movs  r2, #1                 /* SYSCFGEN bit 0 */
+  orrs  r1, r2
+  str   r1, [r0]
+  ldr   r0, =0x40010000        /* SYSCFG_CFGR1 */
+  ldr   r1, [r0]
+  movs  r2, #3                 /* MEM_MODE bits 1:0 */
+  bics  r1, r2                 /* 00 = Main Flash at 0x00000000 */
+  str   r1, [r0]
+
 /* Copy the data segment initializers from flash to SRAM */
   ldr r0, =_sdata
   ldr r1, =_edata

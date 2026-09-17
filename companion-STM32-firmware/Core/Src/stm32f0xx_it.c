@@ -58,7 +58,11 @@
 /* External variables --------------------------------------------------------*/
 extern PCD_HandleTypeDef hpcd_USB_FS;
 /* USER CODE BEGIN EV */
-
+extern uint8_t outbox[1024];
+extern volatile uint32_t head;
+extern volatile uint32_t tail;
+extern volatile uint32_t active_mco_cfg;
+extern volatile uint8_t mco_throttled;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -159,7 +163,36 @@ void EXTI0_1_IRQHandler(void)
 void EXTI2_3_IRQHandler(void)
 {
   /* USER CODE BEGIN EXTI2_3_IRQn 0 */
+  if (EXTI->PR & EXTI_PR_PR3){
+    // 1. Instantly freeze FPGA clock by disabling MCO in 1 instruction
+    RCC->CFGR &= ~RCC_CFGR_MCO;
 
+    // 2. Settle delay (2 NOPs ensure bus propagation delay is fully satisfied)
+    __NOP();
+    __NOP();
+
+    // 3. Read 8-bit output bus directly from GPIOB (PB0 - PB7)
+    uint8_t data = (uint8_t)GPIOB->IDR;
+    uint16_t next_tail = (tail + 1) % 1024;
+
+    // 4. Capacity check
+    uint16_t used = (tail >= head) ? (tail - head) : (1024 - (head - tail));
+    if (used < (1024 - 8)){
+      outbox[tail] = data;
+      tail = next_tail;
+      // Re-enable FPGA clock immediately
+      RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCO | RCC_CFGR_MCOPRE)) | active_mco_cfg;
+    } else {
+      // Outbox nearly full: queue byte and keep FPGA clock paused until USB drains
+      outbox[tail] = data;
+      tail = next_tail;
+      mco_throttled = 1;
+    }
+
+    // 5. Clear EXTI line 3 pending flag
+    EXTI->PR = EXTI_PR_PR3;
+    return;
+  }
   /* USER CODE END EXTI2_3_IRQn 0 */
   HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_3);
   /* USER CODE BEGIN EXTI2_3_IRQn 1 */

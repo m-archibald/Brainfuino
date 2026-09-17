@@ -89,10 +89,12 @@ uint8_t adc_input;
 uint8_t ADC_ON;
 uint32_t code_size;
 uint8_t outbox[OUTBOX_CAPACITY];
-uint32_t head;
+volatile uint32_t head;
 uint32_t leaving;
-uint32_t tail;
+volatile uint32_t tail;
 uint32_t tail_temp;
+volatile uint32_t active_mco_cfg = 0;
+volatile uint8_t  mco_throttled = 0;
 
 // Runtime configuration settings (modifiable in interactive configuration menu)
 uint8_t  cfg_auto_prog_run_mode   = 1;   // 1 = Auto-enter program mode if code paste detected in RUN mode
@@ -173,6 +175,8 @@ void menu_exit(void);
 void menu_render(void);
 void menu_execute_action(uint8_t item);
 void led_update_pulse(uint32_t period_ms);
+void settings_load(void);
+void settings_save(void);
 
 /* USER CODE END PFP */
 
@@ -180,66 +184,50 @@ void led_update_pulse(uint32_t period_ms);
 /* USER CODE BEGIN 0 */
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
-
-  if(GPIO_Pin == GPIO_PIN_3){  //OutStrobe
-	  //outbox[tail] = readBFOutput();
-	  //tail = (tail==(OUTBOX_CAPACITY-1))?0:(tail + 1);
-	  outbox[tail] = (uint8_t)GPIOB->IDR;
-	  tail = (tail+1) % OUTBOX_CAPACITY;
-  }
-  else
-	  if (GPIO_Pin == GPIO_PIN_1){  //InStrobe
-		  HAL_GPIO_WritePin(BF_INCMG_GPIO_Port, BF_INCMG_Pin, GPIO_PIN_RESET);
-		  serial_input = 0;
-  }
+	if (GPIO_Pin == GPIO_PIN_1){  // InStrobe
+		HAL_GPIO_WritePin(BF_INCMG_GPIO_Port, BF_INCMG_Pin, GPIO_PIN_RESET);
+		serial_input = 0;
+	}
 }
 
-void set_freq(uint8_t f){
-	// ICS VERSION
-	//return;
-	switch(f){
-		case '1': // 500kHz
-			  HAL_RCC_MCOConfig(RCC_MCO, RCC_MCO1SOURCE_HSI, RCC_MCODIV_16);
-			break;
-		case '2': // 3MHz
-			HAL_RCC_MCOConfig(RCC_MCO, RCC_MCO1SOURCE_HSI48, RCC_MCODIV_16);
-			break;
-		case '3': // 6MHz
-		    HAL_RCC_MCOConfig(RCC_MCO, RCC_MCO1SOURCE_HSI48, RCC_MCODIV_8);
-			break;
-		case '4': // 8MHz
-			  HAL_RCC_MCOConfig(RCC_MCO, RCC_MCO1SOURCE_HSI, RCC_MCODIV_1);
-			break;
-		case '5': // 12MHz
-			HAL_RCC_MCOConfig(RCC_MCO, RCC_MCO1SOURCE_HSI48, RCC_MCODIV_4);
-			break;
-		case '6': // 24MHz
-			HAL_RCC_MCOConfig(RCC_MCO, RCC_MCO1SOURCE_HSI48, RCC_MCODIV_2);
-			break;
-		case '7': // 48MHz
-			HAL_RCC_MCOConfig(RCC_MCO, RCC_MCO1SOURCE_HSI48, RCC_MCODIV_1);
-			break;
-	}
+typedef struct {
+	const char *name;
+	uint32_t mco_cfg;
+} FreqConfig;
 
+static const FreqConfig freq_table[] = {
+	{ "62.5 kHz", RCC_MCO1SOURCE_HSI   | RCC_MCODIV_128 },
+	{ "125 kHz",  RCC_MCO1SOURCE_HSI   | RCC_MCODIV_64  },
+	{ "250 kHz",  RCC_MCO1SOURCE_HSI   | RCC_MCODIV_32  },
+	{ "500 kHz",  RCC_MCO1SOURCE_HSI   | RCC_MCODIV_16  },
+	{ "750 kHz",  RCC_MCO1SOURCE_HSI48 | RCC_MCODIV_64  },
+	{ "1 MHz",    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_8   },
+	{ "1.5 MHz",  RCC_MCO1SOURCE_HSI48 | RCC_MCODIV_32  },
+	{ "2 MHz",    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_4   },
+	{ "3 MHz",    RCC_MCO1SOURCE_HSI48 | RCC_MCODIV_16  },
+	{ "4 MHz",    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_2   },
+	{ "6 MHz",    RCC_MCO1SOURCE_HSI48 | RCC_MCODIV_8   },
+	{ "8 MHz",    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_1   },
+	{ "12 MHz",   RCC_MCO1SOURCE_HSI48 | RCC_MCODIV_4   },
+};
+#define FREQ_COUNT ((uint8_t)(sizeof(freq_table) / sizeof(freq_table[0])))
+#define DEFAULT_FREQ_INDEX 3 // 500 kHz
+
+void set_freq(uint8_t idx){
+	if (idx >= FREQ_COUNT) idx = DEFAULT_FREQ_INDEX;
+	freq = idx;
+	active_mco_cfg = freq_table[idx].mco_cfg;
+	HAL_RCC_MCOConfig(RCC_MCO, active_mco_cfg & RCC_CFGR_MCO, active_mco_cfg & RCC_CFGR_MCOPRE);
 }
 
-const char *get_freq_name(uint8_t f){
-	switch(f){
-		case '1': return "500 kHz";
-		case '2': return "3 MHz";
-		case '3': return "6 MHz";
-		case '4': return "8 MHz";
-		case '5': return "12 MHz";
-		case '6': return "24 MHz";
-		case '7': return "48 MHz";
-		default:  return "Unknown";
-	}
+const char *get_freq_name(uint8_t idx){
+	if (idx >= FREQ_COUNT) return "Unknown";
+	return freq_table[idx].name;
 }
 
 void speed_step_up(void){
-	if (freq < '7'){
-		freq++;
-		set_freq(freq);
+	if (freq + 1 < FREQ_COUNT){
+		set_freq(freq + 1);
 		// Transient overlay: save cursor, print dimmed clock status, restore cursor so BF code overwrites it naturally
 		CDC_Printf("\x1b[s\x1b[2m[Clock: %s]\x1b[0m\x1b[u", get_freq_name(freq));
 		HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
@@ -249,9 +237,8 @@ void speed_step_up(void){
 }
 
 void speed_step_down(void){
-	if (freq > '1'){
-		freq--;
-		set_freq(freq);
+	if (freq > 0){
+		set_freq(freq - 1);
 		// Transient overlay: save cursor, print dimmed clock status, restore cursor so BF code overwrites it naturally
 		CDC_Printf("\x1b[s\x1b[2m[Clock: %s]\x1b[0m\x1b[u", get_freq_name(freq));
 		HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
@@ -398,9 +385,7 @@ void menu_execute_action(uint8_t item){
 			cfg_append_endless_loop = !cfg_append_endless_loop;
 			break;
 		case 4:
-			if (freq < '7') freq++;
-			else freq = '1';
-			set_freq(freq);
+			set_freq((freq + 1) % FREQ_COUNT);
 			break;
 		case 5:
 			cfg_speed_hotkey_mode = (cfg_speed_hotkey_mode + 1) % 4;
@@ -423,6 +408,90 @@ void menu_execute_action(uint8_t item){
 	}
 }
 
+#define SETTINGS_FLASH_ADDR   0x0801F800UL
+#define SETTINGS_MAGIC        0xBF072C01UL
+
+typedef struct {
+	uint32_t magic;
+	uint8_t  freq;
+	uint8_t  auto_prog_run_mode;
+	uint8_t  auto_reset_after_pgm;
+	uint8_t  append_endless_loop;
+	uint8_t  speed_hotkey_mode;
+	uint8_t  reserved1;
+	uint8_t  reserved2;
+	uint8_t  reserved3;
+	uint32_t auto_prog_min_bytes;
+	uint32_t checksum;
+} PersistentSettings;
+
+static uint32_t calc_settings_checksum(const PersistentSettings *s){
+	return s->magic + (uint32_t)s->freq + (uint32_t)s->auto_prog_run_mode +
+	       (uint32_t)s->auto_reset_after_pgm + (uint32_t)s->append_endless_loop +
+	       (uint32_t)s->speed_hotkey_mode + s->auto_prog_min_bytes;
+}
+
+void settings_load(void){
+	const PersistentSettings *flash_cfg = (const PersistentSettings *)SETTINGS_FLASH_ADDR;
+	if (flash_cfg->magic == SETTINGS_MAGIC && flash_cfg->checksum == calc_settings_checksum(flash_cfg)){
+		if (flash_cfg->freq < FREQ_COUNT) freq = flash_cfg->freq;
+		else freq = DEFAULT_FREQ_INDEX;
+
+		cfg_auto_prog_run_mode = flash_cfg->auto_prog_run_mode ? 1 : 0;
+		cfg_auto_reset_after_pgm = flash_cfg->auto_reset_after_pgm ? 1 : 0;
+		cfg_append_endless_loop = flash_cfg->append_endless_loop ? 1 : 0;
+		cfg_speed_hotkey_mode = (flash_cfg->speed_hotkey_mode <= 3) ? flash_cfg->speed_hotkey_mode : SPEED_HOTKEY_PGUP_PGDN;
+		if (flash_cfg->auto_prog_min_bytes >= 4 && flash_cfg->auto_prog_min_bytes <= 64){
+			cfg_auto_prog_min_bytes = flash_cfg->auto_prog_min_bytes;
+		} else {
+			cfg_auto_prog_min_bytes = 16;
+		}
+	} else {
+		freq = DEFAULT_FREQ_INDEX;
+		cfg_auto_prog_run_mode = 1;
+		cfg_auto_reset_after_pgm = 1;
+		cfg_append_endless_loop = 1;
+		cfg_speed_hotkey_mode = SPEED_HOTKEY_PGUP_PGDN;
+		cfg_auto_prog_min_bytes = 16;
+	}
+}
+
+void settings_save(void){
+	PersistentSettings new_cfg;
+	memset(&new_cfg, 0, sizeof(new_cfg));
+	new_cfg.magic = SETTINGS_MAGIC;
+	new_cfg.freq = freq;
+	new_cfg.auto_prog_run_mode = cfg_auto_prog_run_mode;
+	new_cfg.auto_reset_after_pgm = cfg_auto_reset_after_pgm;
+	new_cfg.append_endless_loop = cfg_append_endless_loop;
+	new_cfg.speed_hotkey_mode = cfg_speed_hotkey_mode;
+	new_cfg.auto_prog_min_bytes = cfg_auto_prog_min_bytes;
+	new_cfg.checksum = calc_settings_checksum(&new_cfg);
+
+	const PersistentSettings *flash_cfg = (const PersistentSettings *)SETTINGS_FLASH_ADDR;
+	if (memcmp(flash_cfg, &new_cfg, sizeof(new_cfg)) == 0){
+		return; // Flash already up to date, save write cycles
+	}
+
+	HAL_FLASH_Unlock();
+
+	FLASH_EraseInitTypeDef erase_init;
+	uint32_t page_error = 0;
+	erase_init.TypeErase = FLASH_TYPEERASE_PAGES;
+	erase_init.PageAddress = SETTINGS_FLASH_ADDR;
+	erase_init.NbPages = 1;
+
+	if (HAL_FLASHEx_Erase(&erase_init, &page_error) == HAL_OK){
+		uint32_t *src = (uint32_t *)&new_cfg;
+		uint32_t words = sizeof(new_cfg) / sizeof(uint32_t);
+		for (uint32_t i = 0; i < words; i++){
+			HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, SETTINGS_FLASH_ADDR + (i * 4), src[i]);
+		}
+	}
+
+	HAL_FLASH_Lock();
+}
+
 void menu_enter(void){
 	state = STATE_CONFIG;
 	menu_cursor = 0;
@@ -434,6 +503,7 @@ void menu_enter(void){
 }
 
 void menu_exit(void){
+	settings_save();
 	state = STATE_RUN;
 	HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 	LED_GPIO_Port->BRR = LED_Pin;
@@ -690,6 +760,9 @@ int main(void)
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
 
+  __HAL_RCC_SYSCFG_CLK_ENABLE();
+  __HAL_SYSCFG_REMAPMEMORY_FLASH();
+
   /* USER CODE BEGIN Init */
 
   /* USER CODE END Init */
@@ -703,6 +776,18 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+
+  // Force clean USB re-enumeration so PC host disconnects from any previous DFU session
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  GPIO_InitTypeDef usb_disc = {0};
+  usb_disc.Pin = GPIO_PIN_12;
+  usb_disc.Mode = GPIO_MODE_OUTPUT_PP;
+  usb_disc.Pull = GPIO_NOPULL;
+  usb_disc.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &usb_disc);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
+  HAL_Delay(100);
+
   MX_USB_DEVICE_Init();
   MX_ADC_Init();
   /* USER CODE BEGIN 2 */
@@ -728,8 +813,8 @@ int main(void)
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
   state = STATE_RUN;
 
-  // Default clock frequency: 500 kHz
-  freq = '1';
+  // Load persistent settings from internal Flash
+  settings_load();
   set_freq(freq);
 
   uint8_t init_btn = HAL_GPIO_ReadPin(BRD_RST_GPIO_Port, BRD_RST_Pin);
@@ -1016,25 +1101,23 @@ int main(void)
 		  }
 	  }
 
-	  // Stop BF clock when BF output buffer is full
-	  if( ((tail < leaving) && ((leaving-tail) < 3)) ||
-		((leaving < 4) && (tail > OUTBOX_CAPACITY-4))  ){
-		  //pause_clock()vvvvvvvvvvv
-		  HAL_RCC_MCOConfig(RCC_MCO, RCC_MCO1SOURCE_NOCLOCK, RCC_MCODIV_1);
-		  // ICS VERSION
-	  	  //HAL_GPIO_WritePin(BF_CLK_INH_GPIO_Port,BF_CLK_INH_Pin,GPIO_PIN_SET);
+	  // Check if throttled FPGA clock can resume after buffer drained
+	  if (mco_throttled){
+		  uint16_t used = (tail >= head) ? (tail - head) : (OUTBOX_CAPACITY - (head - tail));
+		  if (used < (OUTBOX_CAPACITY / 2)){
+			  mco_throttled = 0;
+			  RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCO | RCC_CFGR_MCOPRE)) | active_mco_cfg;
+		  }
 	  }
 
 	  // Send data out to host computer
 	  if((state == STATE_RUN) && (head != tail) && !TxBusy()){
-		  HAL_NVIC_DisableIRQ(EXTI2_3_IRQn);
-		  tail_temp = tail;                  // Critical Section
-	  	  HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
+		  uint32_t cur_tail = tail;
 		  leaving = head;
-	  	  if(head < tail_temp){
-	  		  if( (tail_temp-head) < 60 ){ // easy case
-				  CDC_Transmit_FS(outbox+head, tail_temp-head);
-				  head = tail_temp;
+	  	  if(head < cur_tail){
+	  		  if( (cur_tail - head) < 60 ){ // easy case
+				  CDC_Transmit_FS(outbox+head, cur_tail - head);
+				  head = cur_tail;
 	  		  }
 	  		  else{ 				// chunk it
 				  CDC_Transmit_FS(outbox+head, 60);
@@ -1042,8 +1125,8 @@ int main(void)
 	  		  }
 	  	  }
 	  	  else{
-	  		  if(head >= (OUTBOX_CAPACITY-60)){ // easy case
-				  CDC_Transmit_FS(outbox+head, OUTBOX_CAPACITY-head);
+	  		  if(head >= (OUTBOX_CAPACITY - 60)){ // easy case
+				  CDC_Transmit_FS(outbox+head, OUTBOX_CAPACITY - head);
 				  head = 0;
 	  		  }
 	  		  else{ 				// chunk it
@@ -1051,10 +1134,14 @@ int main(void)
 				  head += 60;
 	  		  }
 	  	  }
-		  //resume_clock()vvvvvvvv
-	  	  set_freq(freq);
-	  	  //ICS VERSION
-	  	  //HAL_GPIO_WritePin(BF_CLK_INH_GPIO_Port,BF_CLK_INH_Pin,GPIO_PIN_RESET);
+
+		  if (mco_throttled){
+			  uint16_t used = (tail >= head) ? (tail - head) : (OUTBOX_CAPACITY - (head - tail));
+			  if (used < (OUTBOX_CAPACITY / 2)){
+				  mco_throttled = 0;
+				  RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCO | RCC_CFGR_MCOPRE)) | active_mco_cfg;
+			  }
+		  }
 	  }
 
 	  // update hardware input (digital or analog)
@@ -1307,7 +1394,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : BF_OUTSTRB_Pin */
   GPIO_InitStruct.Pin = BF_OUTSTRB_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(BF_OUTSTRB_GPIO_Port, &GPIO_InitStruct);
 
