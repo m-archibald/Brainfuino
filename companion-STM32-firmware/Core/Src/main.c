@@ -55,6 +55,7 @@
 #define LIB_ADD_VERIFY_PROMPT   3
 #define LIB_ADD_VERIFYING       4
 #define LIB_ADD_COMMIT          5
+#define LIB_ADD_CAPACITY_WARN   6
 
 #define LIBRARY_TOC_ADDR        0x0800C000UL
 #define LIBRARY_POOL_ADDR       0x0800C800UL
@@ -177,6 +178,7 @@ volatile uint8_t lib_add_substate = LIB_ADD_NAME;
 char     lib_name_buf[LIB_NAME_MAX_LEN];
 uint8_t  lib_name_len = 0;
 uint32_t lib_code_size = 0;
+uint32_t lib_raw_rx_size = 0;
 uint32_t lib_add_last_rx_tick = 0;
 uint32_t lib_verify_start_tick = 0;
 uint8_t  lib_verify_requested = 0;
@@ -186,18 +188,19 @@ volatile int8_t  lib_load_pending_slot = -1;
 volatile uint8_t lib_verify_choice_pending = 0;
 volatile uint8_t lib_verify_choice = 0;
 volatile uint8_t lib_verify_early_commit = 0;
+volatile int8_t  lib_capacity_delete_slot = -1;
 
 volatile uint8_t dfu_requested;
 volatile uint8_t reset_requested;
 
 // Button debounce and hold tracking
-uint8_t btn_debounced;
-uint8_t btn_last_raw;
-uint32_t btn_raw_change_tick;
-uint32_t btn_press_tick;
-uint8_t btn_held_3s;
-uint8_t btn_held_6s;
-uint8_t btn_held_10s;
+uint8_t  btn_is_pressed = 0;
+uint8_t  btn_last_sample = 1;
+uint32_t btn_last_stable_tick = 0;
+uint32_t btn_press_tick = 0;
+uint8_t  btn_held_1s = 0;
+uint8_t  btn_held_3s = 0;
+uint8_t  btn_held_8s = 0;
 
 // Dedicated program mode buffers and state
 uint8_t prog_buffer[PROG_BUF_SIZE];
@@ -206,6 +209,7 @@ volatile uint16_t staging_head;
 volatile uint16_t staging_tail;
 volatile uint32_t prog_rx_count;
 volatile uint32_t prog_total_received;
+volatile uint32_t prog_raw_received;
 volatile uint32_t prog_flash_addr;
 volatile uint32_t prog_last_rx_tick;
 volatile uint8_t prog_active;
@@ -632,6 +636,7 @@ uint8_t lib_save_program(const char *name, uint32_t size, uint8_t pruned){
 		if (total_active + size > LIBRARY_POOL_SIZE) return 0; // Exceeds physical capacity
 
 		// Defrag / Compact active programs using upper 128 kB of external parallel ROM as scratchpad
+		CDC_Print("\r\n[Contiguous space needed: Defragmenting Library Partition...]\r\n");
 		uint32_t scratch_addr = 0x20000;
 		uint32_t cur_scratch = scratch_addr;
 		uint32_t new_offsets[MAX_LIB_SLOTS];
@@ -639,6 +644,7 @@ uint8_t lib_save_program(const char *name, uint32_t size, uint8_t pruned){
 
 		for (uint8_t s = 1; s < MAX_LIB_SLOTS; s++){
 			if (lib_toc[s].status == 0x01){
+				CDC_Printf("  Compacting Slot %02d: '%s' (%lu B)...\r\n", s, lib_toc[s].name, (unsigned long)lib_toc[s].size);
 				new_offsets[s] = cur_new_offset;
 				const uint8_t *pdata = (const uint8_t *)(LIBRARY_POOL_ADDR + lib_toc[s].flash_offset);
 				initROMProgramming();
@@ -650,6 +656,7 @@ uint8_t lib_save_program(const char *name, uint32_t size, uint8_t pruned){
 			}
 		}
 
+		CDC_Print("Rewriting Flash pool... ");
 		HAL_FLASH_Unlock();
 		FLASH_EraseInitTypeDef erase;
 		uint32_t err = 0;
@@ -677,6 +684,7 @@ uint8_t lib_save_program(const char *name, uint32_t size, uint8_t pruned){
 		}
 		HAL_FLASH_Lock();
 
+		CDC_Print("Done.\r\n[Compaction complete: Active programs packed forward]\r\n\r\n");
 		lib_rewrite_toc_compact();
 		offset = cur_new_offset;
 	}
@@ -763,30 +771,7 @@ void lib_load_and_run(uint8_t slot){
 	uint32_t size = lib_toc[slot].size;
 	const uint8_t *src = (const uint8_t *)(LIBRARY_POOL_ADDR + lib_toc[slot].flash_offset);
 
-	HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
-	initROMProgramming();
-	eraseROMFast();
-
-	for (uint32_t i = 0; i < size; i++){
-		writeROMFast(i, src[i]);
-	}
-
-	if (cfg_append_endless_loop){
-		writeROMFast(size, '[');
-		writeROMFast(size + 1, '-');
-		writeROMFast(size + 2, ']');
-		writeROMFast(size + 3, '+');
-		writeROMFast(size + 4, '[');
-		writeROMFast(size + 5, ']');
-	}
-
-	initROMNormal();
-	HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
-	HAL_Delay(10);
-	HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
-
-	CDC_Printf("\r\n[Loaded and running: %s (%lu bytes)]\r\n", lib_toc[slot].name, (unsigned long)size);
+	flashBufferToROM(src, size, (const char *)lib_toc[slot].name, cfg_append_endless_loop, cfg_auto_reset_after_pgm);
 	menu_exit();
 }
 
@@ -1617,11 +1602,33 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		}
 		else if (lib_add_substate == LIB_ADD_PASTE){
 			lib_add_last_rx_tick = HAL_GetTick();
+			lib_raw_rx_size += len;
 			for (uint32_t i = 0; i < len; i++){
 				char c = (char)buff[i];
 				if (cfg_prune_in_library && !is_bf_cmd(c)) continue;
 				if (lib_code_size < FLASH_CAPACITY){
 					writeROMFast(lib_code_size++, (uint8_t)c);
+				}
+			}
+			return 1;
+		}
+		else if (lib_add_substate == LIB_ADD_CAPACITY_WARN){
+			for (uint32_t i = 0; i < len; i++){
+				char c = (char)buff[i];
+				if (c == 0x1B || c == '0' || c == 'q' || c == 'Q'){
+					state = STATE_CONFIG;
+					menu_page = MENU_PAGE_LIBRARY;
+					menu_needs_render = 1;
+					return 1;
+				}
+				if (c >= '1' && c <= '9'){
+					uint8_t slot = (uint8_t)(c - '0');
+					if (i + 1 < len && buff[i+1] >= '0' && buff[i+1] <= '9'){
+						slot = slot * 10 + (uint8_t)(buff[i+1] - '0');
+						i++;
+					}
+					lib_capacity_delete_slot = slot;
+					return 1;
 				}
 			}
 			return 1;
@@ -1660,6 +1667,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 	if (state == STATE_PROGRAM){
 		prog_last_rx_tick = HAL_GetTick();
 		prog_active = 1;
+		prog_raw_received += len;
 
 		uint8_t filtered_buff[64];
 		const uint8_t *in_data = buff;
@@ -1821,13 +1829,13 @@ int main(void)
   set_freq(freq);
 
   uint8_t init_btn = HAL_GPIO_ReadPin(BRD_RST_GPIO_Port, BRD_RST_Pin);
-  btn_debounced = init_btn;
-  btn_last_raw = init_btn;
-  btn_raw_change_tick = HAL_GetTick();
+  btn_last_sample = init_btn;
+  btn_is_pressed = (init_btn == GPIO_PIN_RESET) ? 1 : 0;
+  btn_last_stable_tick = HAL_GetTick();
   btn_press_tick = 0;
+  btn_held_1s = 0;
   btn_held_3s = 0;
-  btn_held_6s = 0;
-  btn_held_10s = 0;
+  btn_held_8s = 0;
 
   prog_rx_count = 0;
   prog_total_received = 0;
@@ -1869,127 +1877,126 @@ int main(void)
 		  }
 	  }
 
-	  // 1. Debounced button state machine (35ms stable window to filter mechanical chatter)
+	  // 1. Rock-solid debounced button state machine (15ms stable window to filter mechanical chatter)
 	  uint8_t btn_raw = HAL_GPIO_ReadPin(BRD_RST_GPIO_Port, BRD_RST_Pin);
 
-	  if (btn_raw != btn_last_raw){
-		  btn_last_raw = btn_raw;
-		  btn_raw_change_tick = HAL_GetTick();
+	  if (btn_raw != btn_last_sample){
+		  btn_last_sample = btn_raw;
+		  btn_last_stable_tick = HAL_GetTick();
 	  }
+	  else if ((HAL_GetTick() - btn_last_stable_tick) >= 15){
+		  if ((btn_raw == GPIO_PIN_RESET) && !btn_is_pressed){
+			  // Button officially PRESSED (held down)
+			  btn_is_pressed = 1;
+			  btn_press_tick = HAL_GetTick();
+			  btn_held_1s = 0;
+			  btn_held_3s = 0;
+			  btn_held_8s = 0;
+			  // Hold FPGA in reset while physical button is held down
+			  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+		  }
+		  else if ((btn_raw == GPIO_PIN_SET) && btn_is_pressed){
+			  // Button officially RELEASED
+			  btn_is_pressed = 0;
+			  uint32_t press_duration = HAL_GetTick() - btn_press_tick;
 
-	  if ((HAL_GetTick() - btn_raw_change_tick) >= 35){
-		  if (btn_debounced != btn_last_raw){
-			  btn_debounced = btn_last_raw;
-			  if (btn_debounced == GPIO_PIN_RESET){
-				  // Button officially PRESSED (held down)
-				  btn_press_tick = HAL_GetTick();
-				  btn_held_3s = 0;
-				  btn_held_6s = 0;
-				  btn_held_10s = 0;
-				  // Hold FPGA in reset while physical button is held down
-				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+			  if (btn_held_8s || (press_duration >= 8000)){
+				  // Held >= 8s: Restore Default Brainfuino ASCII Logo Demo!
+				  flashDefaultLogoProgram();
 			  }
-			  else {
-				  // Button officially RELEASED
-				  uint32_t press_duration = HAL_GetTick() - btn_press_tick;
+			  else if (btn_held_3s || (press_duration >= 3000)){
+				  // Held >= 3s: Enter Interactive Configuration Menu
+				  menu_enter();
+			  }
+			  else if (btn_held_1s || (press_duration >= 1000)){
+				  // Held >= 1s: Enter Program Mode
+				  state = STATE_PROGRAM;
+				  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET); // Hold soft-processor in reset
 
-				  if (btn_held_10s || (press_duration >= 10000)){
-					  // Held >= 10s: Restore Default Brainfuino ASCII Logo Demo!
-					  flashDefaultLogoProgram();
-				  }
-				  else if (btn_held_6s || (press_duration >= 6000)){
-					  // Held >= 6s: Enter Interactive Configuration Menu
-					  menu_enter();
-				  }
-				  else if (btn_held_3s || (press_duration >= 3000)){
-					  // Held >= 3s: Enter Program Mode
-					  state = STATE_PROGRAM;
-					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET); // Hold soft-processor in reset
+				  prog_rx_count = 0;
+				  prog_total_received = 0;
+				  prog_raw_received = 0;
+				  prog_flash_addr = 0;
+				  prog_active = 0;
+				  prog_is_streaming = 0;
+				  staging_head = 0;
+				  staging_tail = 0;
+				  stream_init_done = 0;
 
-					  prog_rx_count = 0;
-					  prog_total_received = 0;
-					  prog_flash_addr = 0;
-					  prog_active = 0;
-					  prog_is_streaming = 0;
-					  staging_head = 0;
-					  staging_tail = 0;
-					  stream_init_done = 0;
-
-					  CDC_Print("\r\n\r\n=== BRAINFUINO PROGRAM MODE ===\r\nPaste Brainfuck code now (up to 256 kB)...\r\n");
-					  CDC_Resume_Rx();
+				  CDC_Print("\r\n\r\n=== BRAINFUINO PROGRAM MODE ===\r\nPaste Brainfuck code now (up to 256 kB)...\r\n");
+				  CDC_Resume_Rx();
+			  }
+			  else if (press_duration >= 15){
+				  // Short tap (< 1s)
+				  if (state == STATE_CONFIG){
+					  // In Config Menu: short press exits menu and resumes program
+					  menu_exit();
 				  }
-				  else if (press_duration >= 20){
-					  // Short press (< 3s)
-					  if (state == STATE_CONFIG){
-						  // In Config Menu: short press exits menu and resumes program
-						  menu_exit();
-					  }
-					  else if (state == STATE_PROGRAM){
-						  // In Program Mode: short press exits Program Mode and runs the program
-						  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-						  initROMNormal();
-						  wait(1000);
-						  HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
-						  wait(1000);
-						  // Pulse FPGA reset
-						  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
-						  HAL_Delay(10);
-						  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
-						  state = STATE_RUN;
-						  CDC_Print("\r\n[Running program]\r\n");
-					  }
-					  else {
-						  // In Run Mode: short press resets the running soft-processor and blips the LED!
-						  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-						  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
-						  HAL_Delay(10);
-						  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
-						  HAL_Delay(60);
-						  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-						  manual_step_ticks_pending = 0;
-						  set_freq(freq);
-						  CDC_Printf("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
-						  if (cfg_manual_step_enabled){
-							  CDC_Printf("[Manual Step Mode Active: Press %s to step %s]\r\n",
-							             get_step_key_name(cfg_manual_step_key), get_step_ticks_name(cfg_manual_step_ticks));
-						  }
-					  }
-				  }
-				  btn_held_3s = 0;
-				  btn_held_6s = 0;
-				  btn_held_10s = 0;
-				  if (state == STATE_RUN){
+				  else if (state == STATE_PROGRAM){
+					  // In Program Mode: short press exits Program Mode and runs the program
 					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+					  initROMNormal();
+					  wait(1000);
+					  HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
+					  wait(1000);
+					  // Pulse FPGA reset
+					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+					  HAL_Delay(10);
+					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+					  state = STATE_RUN;
+					  CDC_Print("\r\n[Running program]\r\n");
 				  }
+				  else {
+					  // In Run Mode: short press resets the running soft-processor and blips the LED!
+					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+					  HAL_Delay(10);
+					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+					  HAL_Delay(60);
+					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+					  manual_step_ticks_pending = 0;
+					  set_freq(freq);
+					  CDC_Printf("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
+					  if (cfg_manual_step_enabled){
+						  CDC_Printf("[Manual Step Mode Active: Press %s to step %s]\r\n",
+						             get_step_key_name(cfg_manual_step_key), get_step_ticks_name(cfg_manual_step_ticks));
+					  }
+				  }
+			  }
+			  btn_held_1s = 0;
+			  btn_held_3s = 0;
+			  btn_held_8s = 0;
+			  if (state == STATE_RUN){
+				  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 			  }
 		  }
 	  }
 
-	  if (btn_debounced == GPIO_PIN_RESET){
+	  if (btn_is_pressed){
 		  // Button is currently being held down
 		  uint32_t hold_time = HAL_GetTick() - btn_press_tick;
-		  if (hold_time >= 10000){
-			  btn_held_10s = 1;
-			  // Rapid Red LED strobe (toggle every 50ms) at 10s mark
+		  if (hold_time >= 8000){
+			  btn_held_8s = 1;
+			  // Rapid Red LED strobe (toggle every 50ms) at 8s mark for Factory Demo Reset
 			  if ((hold_time / 50) % 2){
 				  LED_GPIO_Port->BSRR = LED_Pin;
 			  } else {
 				  LED_GPIO_Port->BRR = LED_Pin;
 			  }
 		  }
-		  else if (hold_time >= 6000){
-			  btn_held_6s = 1;
-			  // Visual indication: smooth pulse (period 600ms) at 6s mark for Config Menu threshold
-			  led_update_pulse(600);
-		  }
 		  else if (hold_time >= 3000){
 			  btn_held_3s = 1;
-			  // Visual indication: Red LED turns ON solid at 3.0s (Program Mode threshold)
+			  // Visual indication: smooth pulse (period 600ms) at 3s mark for Settings Menu threshold
+			  led_update_pulse(600);
+		  }
+		  else if (hold_time >= 1000){
+			  btn_held_1s = 1;
+			  // Visual indication: Red LED turns ON solid at 1.0s (Program Mode threshold)
 			  LED_GPIO_Port->BSRR = LED_Pin;
 		  }
 		  else {
-			  // 0 to 3s hold: in config mode, keep solid ON for immediate tactile feedback
+			  // 0 to 1s hold: in config mode, keep solid ON for immediate tactile feedback
 			  if (state == STATE_CONFIG){
 				  LED_GPIO_Port->BSRR = LED_Pin;
 			  }
@@ -2032,7 +2039,7 @@ int main(void)
 			  menu_needs_render = 0;
 			  menu_render();
 		  }
-		  else if (btn_debounced == GPIO_PIN_SET){
+		  else if (!btn_is_pressed){
 			  // Continuous smooth LED breathing/pulsing while in Config Menu (only when actively in menu)
 			  led_update_pulse(1200);
 		  }
@@ -2048,14 +2055,66 @@ int main(void)
 			  CDC_Print("Ready.\r\n");
 			  CDC_Print("Paste Brainfuck code now (press Enter or pause 100ms when done)...\r\n");
 			  lib_code_size = 0;
+			  lib_raw_rx_size = 0;
 			  lib_add_last_rx_tick = HAL_GetTick();
 			  lib_add_substate = LIB_ADD_PASTE;
 		  }
 		  else if (lib_add_substate == LIB_ADD_PASTE && lib_code_size > 0){
 			  if (HAL_GetTick() - lib_add_last_rx_tick >= PROG_IDLE_TIMEOUT_MS){
 				  CDC_Printf("\r\nReceived %lu valid bytes.\r\n", (unsigned long)lib_code_size);
-				  CDC_Print("Run on FPGA to verify before saving? [Y/n]: ");
-				  lib_add_substate = LIB_ADD_VERIFY_PROMPT;
+				  if (cfg_prune_in_library && lib_raw_rx_size > 0){
+					  uint32_t saved = (lib_raw_rx_size > lib_code_size) ? (lib_raw_rx_size - lib_code_size) : 0;
+					  uint32_t pct = (saved * 100) / lib_raw_rx_size;
+					  uint32_t pct_dec = (saved * 1000 / lib_raw_rx_size) % 10;
+					  CDC_Printf("[Prune Stats: Received %lu B | Kept %lu B | Saved %lu.%lu%% non-BF comments]\r\n",
+					             (unsigned long)lib_raw_rx_size, (unsigned long)lib_code_size, (unsigned long)pct, (unsigned long)pct_dec);
+				  }
+
+				  uint32_t used_bytes = lib_get_total_used_bytes();
+				  uint32_t free_bytes = (used_bytes < LIBRARY_POOL_SIZE) ? (LIBRARY_POOL_SIZE - used_bytes) : 0;
+
+				  if (lib_code_size > LIBRARY_POOL_SIZE){
+					  CDC_Printf("\r\n[ERROR: Program size (%lu B) exceeds total Library capacity (76 kB)]\r\n\r\n", (unsigned long)lib_code_size);
+					  HAL_Delay(2000);
+					  state = STATE_CONFIG;
+					  menu_page = MENU_PAGE_LIBRARY;
+					  menu_needs_render = 1;
+				  }
+				  else if (lib_code_size > free_bytes){
+					  CDC_Printf("\r\n[Warning: Program requires %lu B, but only %lu B free (need %lu B more)]\r\n",
+					             (unsigned long)lib_code_size, (unsigned long)free_bytes, (unsigned long)(lib_code_size - free_bytes));
+					  CDC_Print("Active programs that can be deleted to make room:\r\n");
+					  for (uint8_t s = 1; s < MAX_LIB_SLOTS; s++){
+						  if (lib_toc[s].status == 0x01){
+							  CDC_Printf("  Slot %02d: %-15s [%lu B]\r\n", s, lib_toc[s].name, (unsigned long)lib_toc[s].size);
+						  }
+					  }
+					  CDC_Print("Type slot number to delete, or [0] to cancel: ");
+					  lib_capacity_delete_slot = -1;
+					  lib_add_substate = LIB_ADD_CAPACITY_WARN;
+				  }
+				  else {
+					  CDC_Print("Run on FPGA to verify before saving? [Y/n]: ");
+					  lib_add_substate = LIB_ADD_VERIFY_PROMPT;
+				  }
+			  }
+		  }
+		  else if (lib_add_substate == LIB_ADD_CAPACITY_WARN){
+			  if (lib_capacity_delete_slot >= 0){
+				  uint8_t del_s = (uint8_t)lib_capacity_delete_slot;
+				  lib_capacity_delete_slot = -1;
+				  lib_delete_program(del_s);
+				  CDC_Printf("\r\n[Deleted Slot %02d]\r\n", del_s);
+				  uint32_t used_bytes = lib_get_total_used_bytes();
+				  uint32_t free_bytes = (used_bytes < LIBRARY_POOL_SIZE) ? (LIBRARY_POOL_SIZE - used_bytes) : 0;
+				  if (lib_code_size <= free_bytes){
+					  CDC_Printf("[Sufficient space cleared: %lu B free. Proceeding!]\r\n\r\n", (unsigned long)free_bytes);
+					  CDC_Print("Run on FPGA to verify before saving? [Y/n]: ");
+					  lib_add_substate = LIB_ADD_VERIFY_PROMPT;
+				  } else {
+					  CDC_Printf("Still need %lu B more. Type another slot to delete (or 0 to cancel): ",
+					             (unsigned long)(lib_code_size - free_bytes));
+				  }
 			  }
 		  }
 		  else if (lib_add_substate == LIB_ADD_VERIFY_PROMPT){
@@ -2069,7 +2128,7 @@ int main(void)
 				  else {
 					  CDC_Print("Yes\r\n\r\nRunning on FPGA soft-processor...\r\n");
 					  CDC_Print("Press RESET button (or type !RST) within 10s to abort.\r\n");
-					  CDC_Print("Auto-saving in 10s (or press Enter to save now)...\r\n");
+					  CDC_Print("Auto-saving in 10s (or press Enter to save now)...\r\n\r\n");
 					  lib_verify_requested = 1;
 					  if (cfg_append_endless_loop){
 						  writeROMFast(lib_code_size, '[');
@@ -2080,7 +2139,12 @@ int main(void)
 						  writeROMFast(lib_code_size + 5, ']');
 					  }
 					  initROMNormal();
+					  wait(1000);
 					  HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
+					  wait(1000);
+					  set_freq(freq);
+					  head = tail = 0;
+					  mco_throttled = 0;
 					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
 					  HAL_Delay(10);
 					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
@@ -2090,11 +2154,11 @@ int main(void)
 			  }
 		  }
 		  else if (lib_add_substate == LIB_ADD_VERIFYING){
-			  if (reset_requested || (btn_debounced == GPIO_PIN_RESET)){
+			  if (reset_requested || btn_is_pressed){
 				  reset_requested = 0;
 				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
 				  flashDefaultLogoProgram();
-				  CDC_Print("\r\n[Upload Cancelled: Program was NOT saved to Library]\r\n\r\n");
+				  CDC_Print("\r\n\r\n[Upload Cancelled: Program was NOT saved to Library]\r\n\r\n");
 				  HAL_Delay(1200);
 				  state = STATE_CONFIG;
 				  menu_page = MENU_PAGE_LIBRARY;
@@ -2103,12 +2167,12 @@ int main(void)
 			  else if (lib_verify_early_commit){
 				  lib_verify_early_commit = 0;
 				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
-				  CDC_Print("\r\n[Verification complete: Saving to Library...]\r\n");
+				  CDC_Print("\r\n\r\n[Verification complete: Saving to Library...]\r\n");
 				  lib_add_substate = LIB_ADD_COMMIT;
 			  }
 			  else if (HAL_GetTick() - lib_verify_start_tick >= 10000){
 				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
-				  CDC_Print("\r\n[10s Verification Elapsed: Auto-saving to Library...]\r\n");
+				  CDC_Print("\r\n\r\n[10s Verification Elapsed: Auto-saving to Library...]\r\n");
 				  lib_add_substate = LIB_ADD_COMMIT;
 			  }
 		  }
@@ -2218,12 +2282,20 @@ int main(void)
 			  }
 		  }
 		  else if (prog_active && ((HAL_GetTick() - prog_last_rx_tick) >= PROG_IDLE_TIMEOUT_MS)){
+			  if (cfg_prune_on_paste && prog_raw_received > 0){
+				  uint32_t saved = (prog_raw_received > prog_rx_count) ? (prog_raw_received - prog_rx_count) : 0;
+				  uint32_t pct = (saved * 100) / prog_raw_received;
+				  uint32_t pct_dec = (saved * 1000 / prog_raw_received) % 10;
+				  CDC_Printf("\r\n[Prune Stats: Received %lu B | Kept %lu B | Saved %lu.%lu%% non-BF comments]\r\n",
+				             (unsigned long)prog_raw_received, (unsigned long)prog_rx_count, (unsigned long)pct, (unsigned long)pct_dec);
+			  }
 			  // Program <= 4 kB: paste complete! Flash via unified engine
 			  flashBufferToROM(prog_buffer, prog_rx_count, NULL, cfg_append_endless_loop, cfg_auto_reset_after_pgm);
 
 			  prog_active = 0;
 			  prog_rx_count = 0;
 			  prog_total_received = 0;
+			  prog_raw_received = 0;
 			  prog_flash_addr = 0;
 			  prog_is_streaming = 0;
 			  staging_head = 0;
@@ -2251,7 +2323,7 @@ int main(void)
 	  }
 
 	  // Send data out to host computer
-	  if((state == STATE_RUN) && (head != tail) && !TxBusy()){
+	  if(((state == STATE_RUN) || (state == STATE_LIB_ADD && lib_add_substate == LIB_ADD_VERIFYING)) && (head != tail) && !TxBusy()){
 		  uint32_t cur_tail = tail;
 		  leaving = head;
 	  	  if(head < cur_tail){

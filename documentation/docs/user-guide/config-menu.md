@@ -10,10 +10,11 @@ You can enter the Configuration Menu at any time using either the hardware butto
 
 === "Physical Hardware Button"
     1. Press and hold the **Reset Button** on the Brainfuino.
-    2. At **3 seconds**, the Red LED turns solid ON (Program Mode threshold).
-    3. Keep holding! At **6 seconds**, the Red LED begins **smoothly breathing / pulsing**.
-    4. **Release the button** during this pulsing window (between 6s and 10s).
+    2. At **1 second**, the Red LED turns solid ON (Dedicated Program Mode threshold).
+    3. Keep holding! At **3 seconds**, the Red LED begins **smoothly breathing / pulsing** (Settings Menu threshold).
+    4. **Release the button** during this breathing window (between 3s and 8s).
     5. The soft-processor halts in reset, the Red LED pulses continuously, and the configuration menu appears in your terminal.
+    6. *(Holding past **8 seconds** triggers a rapid LED strobe and restores the burned-in factory demo).*
 
 === "Serial Terminal Command"
     * While running, send either of the following commands:
@@ -120,8 +121,13 @@ The STM32 internal Flash features a dedicated **76 kB storage partition** and a 
 ### 1. Running a Stored Program
 From the **Program Library** submenu:
 1. Use Up/Down arrows to highlight the desired program (or type its two-digit slot number).
-2. Press **Enter**.
-3. The STM32 erases the 256 kB parallel Flash ROM, flashes the selected program from internal Flash, pulses the FPGA reset line, and begins execution immediately.
+2. Press **Enter** (or `l` / `L`).
+3. The STM32 provides full visual feedback matching terminal pasting:
+   * Displays program title and size.
+   * Reports parallel Flash ROM erasure progress.
+   * Streams 0–100% writing progress bar.
+   * Performs readback verification (`Verifying ROM... OK!`).
+   * Pulses the FPGA reset line and auto-launches program execution cleanly.
 
 ### 2. Adding a New Program
 1. Select `[ + Add New Program ]` (or press `a` / `A`).
@@ -132,25 +138,43 @@ From the **Program Library** submenu:
    Paste Brainfuck code now (press Enter or pause 100ms when done)...
    ```
    Paste your Brainfuck code. If `Prune non-BF in Library` is enabled, all non-Brainfuck characters (comments, spaces, newlines) are stripped in real-time.
-4. **Pre-Run Verification Prompt:**
+4. **Pruning Statistics & Pre-Run Verification Prompt:**
+   Upon paste completion, the coprocessor displays exact pruning metrics:
    ```text
    Received 11264 valid bytes.
+   [Prune Stats: Received 15300 B | Kept 11264 B | Saved 26.3% non-BF comments]
    Run on FPGA to verify before saving? [Y/n]: 
    ```
    * **Skip Verification (`n` or `N`):** Immediately commits the program to internal Flash without running.
-   * **Verify on FPGA (`y`, `Y`, or Enter):** Immediately launches the code on the FPGA soft-processor. A 10-second countdown begins:
+   * **Verify on FPGA (`y`, `Y`, or Enter):** Immediately launches execution on the FPGA soft-processor. Program characters stream live to the terminal while a 10-second countdown runs:
      * **Abort / Cancel:** Press the hardware Reset Button or send `!RST` within 10 seconds. The program is discarded and parallel ROM is restored to the factory demo.
-     * **Confirm Early:** Press **Enter** to save immediately before 10 seconds.
+     * **Confirm Early:** Press **Enter** to save immediately before 10 seconds elapse.
      * **Auto-Save:** If no reset occurs within 10 seconds, the program auto-saves to internal Flash:
        ```text
        [10s Verification Elapsed: Auto-saving to Library...]
        [SUCCESS: Saved to Slot 01: 'Mandelbrot' (11264 bytes)]
        ```
 
-### 3. Deleting Programs & Compaction
+### 3. Interactive Capacity Management & Defrag Progress
+* **Scratchpad Architecture:** Incoming programs stream into the 256 kB external parallel Flash ROM as a fast scratchpad, allowing programs up to 256 kB to be pasted without exceeding STM32 internal RAM limits.
+* **Insufficient Pool Space Warning:** If a pasted program exceeds remaining space in the 76 kB library pool, the coprocessor displays a warning listing active programs and prompts:
+  ```text
+  [Warning: Program requires 11264 B, but only 4096 B free (need 7168 B more)]
+  Active programs that can be deleted to make room:
+    Slot 01: TestGame        [8192 B]
+  Type slot number to delete, or [0] to cancel: 
+  ```
+  Typing a slot number instantly deletes it and rechecks space. Once sufficient space is freed, the program proceeds directly to saving—**no re-pasting required!**
+* **Defragmentation / Compaction Progress:** When active programs must be packed forward to create contiguous space, the coprocessor reports each program shifted and displays rewriting progress:
+  ```text
+  [Contiguous space needed: Defragmenting Library Partition...]
+    Compacting Slot 01: 'Mandelbrot' (11264 B)...
+    Compacting Slot 02: 'GameOfLife' (4800 B)...
+  Rewriting Flash pool... Done.
+  [Compaction complete: Active programs packed forward]
+  ```
 * **Tombstone Deletion:** Highlighting any user program (slots 01–63) and pressing `d` or `D` immediately marks its status as deleted (`0x0000`). This takes **0 page erasures**, preserving Flash endurance.
 * **Slot 00 Protection:** Slot `00. Brainfuino Demo` is permanently burned-in and cannot be deleted or overwritten.
-* **On-Demand Compaction:** When the 76 kB payload pool runs out of contiguous space at the end, the firmware automatically defragments/compacts active programs forward, reclaiming freed space without user intervention.
 
 ---
 

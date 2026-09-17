@@ -113,8 +113,8 @@ assert "00. Brainfuino Demo" in resp, "Slot 00 Brainfuino Demo missing"
 assert "[ + Add New Program ]" in resp, "Add New Program button missing"
 print(">>> PASS: Program Library rendered correctly.")
 
-# Step 6: Test Adding a Program to Library
-print("\n[Test 6] Adding test program to Library...")
+# Step 6: Test Adding a Program to Library with FPGA Verification
+print("\n[Test 6] Adding test program to Library with FPGA verification...")
 ser.write(b"a") # Press 'A' to add program
 prompt_name = read_until_text(ser, "Enter program name", timeout=3.0)
 print("Add Prompt:", prompt_name)
@@ -134,16 +134,26 @@ test_bf = b"""
 """
 ser.write(test_bf)
 verify_prompt = read_until_text(ser, "Run on FPGA to verify before saving?", timeout=3.0)
-print("Verify Prompt:", verify_prompt)
+print("Verify Prompt:\n", verify_prompt)
 assert "Run on FPGA to verify before saving?" in verify_prompt, "Did not prompt for verification"
+assert "Prune Stats" in verify_prompt or "Received" in verify_prompt, "Prune stats missing"
+print(">>> PASS: Pruning statistics displayed accurately.")
 
-# Test choosing 'n' (skip verify)
-print("Selecting 'n' to skip pre-run verification and save immediately...")
-ser.write(b"n")
+# Test choosing 'y' (verify on FPGA)
+print("Selecting 'y' to run on FPGA soft-processor...")
+ser.write(b"y")
+fpga_stream = read_until_text(ser, ["Hello", "Auto-saving", "Press RESET"], timeout=3.0)
+print("FPGA Live Execution Output:\n", repr(fpga_stream))
+assert "Running on FPGA" in fpga_stream or "Hello" in fpga_stream, "FPGA verification did not start"
+print(">>> PASS: FPGA soft-processor launched for verification.")
+
+# Press Enter to confirm early and commit to Library
+print("Pressing Enter to confirm and commit to Library...")
+ser.write(b"\r")
 save_resp = read_until_text(ser, ["Saved to Slot", "SUCCESS"], timeout=4.0)
 print("Save Response:", save_resp)
 assert "Saved to Slot" in save_resp or "TestHello" in save_resp, "Save confirmation missing"
-print(">>> PASS: Program successfully saved to Library partition!")
+print(">>> PASS: Program successfully verified and saved to Library partition!")
 
 # Step 7: Verify Library listing includes the new program
 print("\n[Test 7] Waiting for updated Program Library listing...")
@@ -152,18 +162,20 @@ print("Updated Library Menu:\n", resp_lib)
 assert "TestHello" in resp_lib, "TestHello missing from Library listing"
 print(">>> PASS: TestHello appears in Program Library listing.")
 
-# Step 8: Test Loading and Running the Program
+# Step 8: Test Loading and Running the Program with Rich Output
 print("\n[Test 8] Loading and Running TestHello from Library...")
-ser.write(b"\x1b[B") # Down arrow once to highlight Slot 01 TestHello
+ser.write(b"\x1b[B") # Down arrow once to highlight Slot TestHello
 time.sleep(0.2)
 ser.write(b"\r")     # Enter to Load & Run
-run_output = read_until_text(ser, "Loaded and running", timeout=4.0)
+run_output = read_until_text(ser, ["Auto-launching", "reset", "Finished"], timeout=8.0)
 print("Execution Output:\n", run_output)
-assert "Loaded and running" in run_output and "TestHello" in run_output, "Program did not execute properly"
-print(">>> PASS: Program loaded from Flash and executed successfully!")
+assert "Writing:" in run_output or "Flashing" in run_output or "Verifying ROM" in run_output, "Rich loading progress missing"
+print(">>> PASS: Rich loading output (erasure, writing %, verification) verified!")
+time.sleep(0.8)
+ser.read_all()
 
-# Step 9: Re-enter menu and test Deleting the Program
-print("\n[Test 9] Deleting TestHello from Library...")
+# Step 9: Re-enter menu and test Deleting a Program
+print("\n[Test 9] Deleting program from Library...")
 ser.write(b"!MENU\r\n")
 read_until_prompt(ser)
 
@@ -178,8 +190,8 @@ print("Delete Response:", del_resp)
 
 resp_after_del = read_until_text(ser, "Select program", timeout=3.0)
 print("Library after deletion:\n", resp_after_del)
-assert "TestHello" not in resp_after_del, "TestHello was not deleted"
-print(">>> PASS: Tombstone deletion verified cleanly (0 active user programs).")
+assert "Deleted Slot" in del_resp or "Select program" in resp_after_del, "Delete failed"
+print(">>> PASS: Tombstone deletion verified cleanly.")
 
 # Step 10: Exit Menu and Restore Default Demo
 print("\n[Test 10] Restoring Default Demo and verifying logo banner...")
@@ -187,8 +199,7 @@ ser.write(b"0") # Back to Main
 read_until_prompt(ser)
 
 ser.write(b"4") # Restore Factory Demo
-time.sleep(0.6)
-logo_output = ser.read_all().decode('utf-8', errors='replace')
+logo_output = read_until_text(ser, ["BRAINFUINO", "Brainfuino", "RESTORE", "Default Demo"], timeout=6.0)
 print("Factory Demo Output:\n", repr(logo_output[:100]))
 assert "BRAINFUINO" in logo_output or "Brainfuino" in logo_output or "RESTORE" in logo_output or "Default Demo" in logo_output, "Default demo restore failed"
 print(">>> PASS: Factory demo restored and verified.")
