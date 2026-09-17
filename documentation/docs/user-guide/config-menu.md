@@ -234,3 +234,27 @@ The STM32F072's 128 kB internal Flash is cleanly organized into non-overlapping 
 | `0x0800C000` – `0x0800C7FF` | 24 | 2 kB | **Library Table of Contents (TOC)** (64 slots $\times$ 32 B) |
 | `0x0800C800` – `0x0801F7FF` | 25 – 62 | 76 kB | **Library Program Payload Pool** (Dynamic allocation) |
 | `0x0801F800` – `0x0801FFFF` | 63 | 2 kB | **Persistent Hardware Configuration** (Page 63) |
+
+---
+
+## Automated Hardware Verification Suite
+
+The entire multi-page menu, program library partition, TOC engine, and navigation workflows are continuously validated on physical hardware using an automated Python test harness:
+
+* **Script:** [`scripts/test_library_and_menu.py`](https://github.com/m-archibald/Brainfuino/blob/main/scripts/test_library_and_menu.py)
+* **Execution:**
+  ```powershell
+  python scripts/test_library_and_menu.py
+  ```
+* **Coverage (10 Automated Verification Stages):**
+  1. **Main Menu Rendering:** Verifies banner, framing, options 1–5, and 0.
+  2. **Hardware Settings Submenu:** Validates all configuration entries, including both pruning toggles.
+  3. **Left/Right Arrow Cycling:** Confirms bidirectional setting value cycling with VT100 escape codes.
+  4. **Menu Navigation:** Tests back navigation (`0` key) and state persistence.
+  5. **Program Library Listing:** Verifies TOC rendering, slot allocations, and capacity gauges.
+  6. **Program Addition & Pruning:** Uploads code with comments, verifies comment stripping, and tests skipping pre-run verification (`n`).
+  7. **Dynamic TOC Updating:** Confirms program name and byte size register in the Table of Contents.
+  8. **Execution from Flash:** Loads the newly saved program into parallel ROM and verifies execution on the FPGA soft-processor.
+  9. **Zero-Erase Tombstone Deletion:** Tests instant program deletion (`d` key) and confirms freed slot recovery.
+  10. **Factory Restore:** Validates restoring the burned-in demo banner to parallel Flash.
+

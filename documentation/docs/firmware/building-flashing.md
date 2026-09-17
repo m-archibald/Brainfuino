@@ -45,6 +45,24 @@ For the fastest development workflow, a cross-platform PowerShell automation scr
 
 ---
 
+## Automated Hardware Verification Test Suite
+
+Hardware functionality and menu workflows can be verified end-to-end against a live Brainfuino board connected over USB:
+
+* **Menu, Program Library, and TOC Test:**
+  ```powershell
+  python scripts/test_library_and_menu.py
+  ```
+  Runs an automated 10-stage test validating menu rendering, Left/Right arrow cycling, program addition and comment pruning, pre-run verification skipping (`n`), live FPGA execution, and zero-erase tombstone deletion.
+
+* **Clock Speed & Printing Strobe Test:**
+  ```powershell
+  python scripts/test_logo_all_speeds.py
+  ```
+  Cycles through all 25 FPGA clock frequencies (from 10 Hz PWM up to 12 MHz MCO) and verifies zero dropped characters during high-speed execution.
+
+---
+
 ## Flashing the Microcontroller
 
 There are three methods to flash the firmware onto the STM32F072:
