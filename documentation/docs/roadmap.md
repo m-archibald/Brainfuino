@@ -13,7 +13,7 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 | **Documentation Suite & CI/CD** | Docs | :material-check-circle: **Done** | MkDocs Material suite, automated GitHub Pages deployment |
 | **Dedicated Program Mode** | STM32 Firmware | :material-check-circle: **Done** | Dedicated mode switch via 3s button hold, fast flasher with progress bar and streaming fallback |
 | **Smart Clock-Pausing & Throttle** | STM32 Firmware | :material-check-circle: **Done** | 1-cycle MCO gating on falling edge with bus settle and outbox backpressure |
-| **13-Speed Frequency Ladder** | STM32 Firmware | :material-check-circle: **Done** | 62.5 kHz to 12 MHz ladder, compliant with 55 ns parallel Flash silicon timing |
+| **25-Speed Ladder & Manual Stepping** | STM32 Firmware | :material-check-circle: **Done** | 10 Hz to 12 MHz dual-engine (PWM + MCO), single & burst stepping accumulator |
 | **Non-Volatile Settings Storage** | STM32 Firmware | :material-check-circle: **Done** | Flash Page 63 emulated EEPROM preserves user configuration across power cycles |
 | **Default Program Restore** | STM32 Firmware | :material-check-circle: **Done** | 10-second button hold restores burned-in default Brainfuck demo to ROM |
 | **In-Circuit FPGA Flashing** | Hardware & FW | :material-lightbulb-outline: Future Idea | Potential concept: wire STM32 GPIOs to MachXO2 JTAG pins for USB bitstream updates |
