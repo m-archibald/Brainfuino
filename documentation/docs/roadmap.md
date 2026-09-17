@@ -15,15 +15,26 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 | **Smart Clock-Pausing & Throttle** | STM32 Firmware | :material-check-circle: **Done** | 1-cycle MCO gating on falling edge with bus settle and outbox backpressure |
 | **25-Speed Ladder & Manual Stepping** | STM32 Firmware | :material-check-circle: **Done** | 10 Hz to 12 MHz dual-engine (PWM + MCO), single & burst stepping accumulator |
 | **Non-Volatile Settings Storage** | STM32 Firmware | :material-check-circle: **Done** | Flash Page 63 emulated EEPROM preserves user configuration across power cycles |
-| **Default Program Restore** | STM32 Firmware | :material-check-circle: **Done** | 10-second button hold restores burned-in default Brainfuck demo to ROM |
-| **In-Circuit FPGA Flashing** | Hardware & FW | :material-lightbulb-outline: Future Idea | Potential concept: wire STM32 GPIOs to MachXO2 JTAG pins for USB bitstream updates |
-| **QSPI Multi-Program Storage** | Hardware (Rev 1.2) | :material-lightbulb-outline: Future Idea | Onboard SPI/QSPI Flash chip to store a library of Brainfuck programs |
-| **Interactive Terminal Menu UI** | STM32 Firmware | :material-check-circle: **Done** | Full raspi-config style dual-mode terminal interface for all coprocessor settings |
+| **Multi-Program Library & TOC** | STM32 Firmware | :material-check-circle: **Done** | Internal 76 kB flash partition, 64-slot TOC, dynamic compaction, non-BF pruning |
+| **Interactive Terminal Menu UI** | STM32 Firmware | :material-check-circle: **Done** | Multi-page raspi-config style interface with Left/Right option cycling ([Guide](user-guide/config-menu.md)) |
 | **USB DFU Bootloader Mode** | STM32 Firmware | :material-check-circle: **Done** | Soft-jump into ST factory ROM bootloader over USB (`!DFU!` or `.\build.ps1 -Flash`) |
+| **In-Circuit FPGA Flashing** | Hardware & FW | :material-lightbulb-outline: Future Idea | Potential concept: wire STM32 GPIOs to MachXO2 JTAG pins for USB bitstream updates |
+| **External QSPI Multi-Program Storage**| Hardware (Rev 1.2) | :material-lightbulb-outline: Future Idea | High-capacity SPI/QSPI NOR Flash (e.g. 4 MB) for massive program collections |
 
 ---
 
 ## Firmware & Software Roadmap
+
+### Multi-Program Flash Library & Dynamic TOC Engine — :material-check-circle: Completed
+* **The Goal:** Enable storing, organizing, and launching multiple Brainfuck programs directly from non-volatile memory without relying on an external PC.
+* **Implementation Details:**
+    * **Memory Architecture:** Dedicated 76 kB user partition (Pages 25–62) and 2 kB Table of Contents (Page 24) in the STM32F072's internal 128 kB Flash.
+    * **Dynamic Allocation:** Programs of arbitrary lengths (from tiny 50-byte snippets to 76 kB full-scale programs) pack consecutively.
+    * **Zero-Erase Tombstone Deletion:** Deleting a program writes `0x0000` to its 16-bit status field in the TOC without erasing Flash pages.
+    * **On-Demand Compaction:** Active programs are packed forward only when contiguous space at the end of the pool is exhausted.
+    * **Comment Pruning Engine:** Settings for pruning non-Brainfuck characters on paste and when uploading to the library maximize storage efficiency.
+    * **Pre-Run Verification:** Interactive prompt allows running a program on the FPGA soft-processor to verify correct execution before committing to Flash, with a 10-second countdown and option to skip (`n`) for instant saving.
+    * **Protected Slot 00:** Factory Brainfuino ASCII demo is permanently preserved in Slot 00.
 
 ### Dedicated Program Mode — :material-check-circle: Completed
 * **The Problem:** Single-key commands (`1`–`7` for clock speed, `!` for dump) previously intercepted terminal keystrokes directly. Interactive programs could not accept number keys without accidentally switching clock speeds.
@@ -41,21 +52,15 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 * **Manual Stepping Mode:** Added single-stepping and burst-stepping capabilities with an accumulator queue engine supporting Spacebar, Tab, or Enter trigger keys with $1$ to $100\text{k}$ tick multipliers.
 
 ### Non-Volatile Flash Configuration Persistence & Delayed Wear Leveling — :material-check-circle: Completed
-* **The Feature:** All configuration menu settings (active clock frequency, manual stepping mode, step multiplier, step trigger key, upload threshold, auto-reset, endless loop injection, and run mode speed hotkeys) automatically write to the STM32's top internal Flash page (Page 63: `0x0801F800`) on exit with CRC verification and wear-mitigation checking.
+* **The Feature:** All configuration menu settings automatically write to the STM32's top internal Flash page (Page 63: `0x0801F800`) on exit with CRC verification and wear-mitigation checking.
 * **Delayed Wear Leveling:** Runtime hotkey speed changes (`PgUp`/`PgDn`) use a 3-second debounce timer before committing to Flash, safeguarding flash cycle endurance during rapid adjustments.
 
-### Default Burned-in Program Restore — :material-check-circle: Completed
-* **The Feature:** The official Brainfuino ASCII logo demo is embedded directly in STM32 internal Flash.
-* **Operation:** Holding the hardware button for $\ge 10\text{ seconds}$ (confirmed by a rapid 50 ms LED strobe) or choosing Option `A` in the configuration menu automatically erases parallel Flash ROM, re-flashes the demo program, and executes it immediately.
-
 ### Interactive Terminal Menu & UI Improvements (raspi-config style) — :material-check-circle: Completed
-* **The Goal:** Enhance the companion serial terminal with an interactive, user-friendly text UI (reminiscent of Raspberry Pi's `raspi-config`) for configuring STM32 firmware features, accessible via a dedicated 6-second button hold (with smooth breathing PWM fade on the Red LED) or terminal command (`!MENU` / `!CONFIG`).
+* **The Goal:** Enhance the companion serial terminal with an interactive, user-friendly multi-page text UI for managing programs and configuring STM32 firmware features, accessible via a 6-second button hold (with smooth breathing PWM fade on the Red LED) or terminal command (`!MENU` / `!CONFIG`).
 * **Implementation Details:**
-    * **Architecture:** Asynchronous Producer-Consumer design separating lightweight USB ISR keystroke parsing from Thread Mode frame rendering.
-    * **Dual Navigation:** Full ANSI / VT100 cursor control (`Up`/`Down`/`Space`/`Enter`/`ESC`) plus basic terminal direct numeric shortcuts (`1`–`8`, `0`).
-    * **Debounce State Machine:** 35 ms level stability filter on physical button transitions eliminating tactile chatter and false restarts during long holds.
-    * **Hardware Feedback:** 70 ms LED blip on short-press reset; continuous 1 kHz PWM breathing pulse while inside the menu.
-    * **Full Documentation:** See the [Configuration Menu Guide](user-guide/config-menu.md).
+    * **Architecture:** Multi-page layout (Main Menu, Program Library, Hardware Settings) with non-blocking ISR-to-Thread-Mode event passing.
+    * **Full Navigation:** ANSI / VT100 cursor control (`Up`/`Down`), Left/Right value cycling, direct numeric shortcuts, and quick-action hotkeys (`a` to add, `d` to delete).
+    * **Full Documentation:** See the [Configuration Menu & Program Library Guide](user-guide/config-menu.md).
 
 ---
 
@@ -63,15 +68,10 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 
 ### In-Circuit FPGA Flashing via STM32 (Potential Future Idea)
 * **The Concept:** A potential, maybe-someday feature to explore: allowing the STM32 coprocessor to flash the Lattice FPGA in-circuit, eliminating the need for an external JTAG programmer or Raspberry Pi Pico debugger.
-* **Current Status:** Not actively planned for near-term milestones, but kept as a possible future hardware/firmware exploration.
 * **Implementation Concept:**
     * Route unused GPIO pins from the STM32F072 microcontroller to the Lattice MachXO2 JTAG header pins (`TCK`, `TMS`, `TDI`, `TDO`).
     * Port Lattice's open-source **`embedded_jtag`** or **`ispVM Embedded`** C routines into the STM32 firmware.
     * Users would be able to update the FPGA soft-processor bitstream directly over USB-C using a simple utility.
 
-### Onboard QSPI Flash for Multi-Program Storage
-* **The Goal:** Expand Brainfuino's onboard library capacity beyond the single active program in parallel Flash ROM.
-* **Implementation:**
-    * Add a low-cost SPI or QSPI NOR Flash chip (e.g. W25Q32, 4 MB) connected to the STM32.
-    * The STM32 can store dozens of classic Brainfuck programs, benchmarks, games, and utilities.
-    * Users can select and load any stored program into the 256 kB parallel Flash ROM via the terminal menu.
+### External QSPI NOR Flash for Multi-Megabyte Libraries
+* **The Concept:** While the STM32's internal 76 kB partition supports up to 63 user programs, an external SPI or QSPI NOR Flash chip (e.g. W25Q32, 4 MB) could be added to store vast collections of Brainfuck programs, operating systems, and massive benchmarks.

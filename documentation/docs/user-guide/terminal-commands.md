@@ -26,7 +26,7 @@ When you send an individual character (payload length under 3 bytes), the STM32 
 
 ### Manual Stepping Mode (Single-Stepping & Burst Stepping)
 
-When **Manual Stepping Mode** is enabled via the [Configuration Menu](config-menu.md#7-manual-stepping-mode--disabled--enabled-), the FPGA master clock remains stopped until triggered by the configured keyboard shortcut:
+When **Manual Stepping Mode** is enabled via the [Configuration Menu](config-menu.md#9-manual-stepping-mode), the FPGA master clock remains stopped until triggered by the configured keyboard shortcut:
 
 * **Configurable Trigger Key:** Spacebar, Tab, or Enter.
 * **Configurable Step Multiplier:** 1, 10, 100, 1,000, 10,000, or 100,000 clock ticks per keypress.

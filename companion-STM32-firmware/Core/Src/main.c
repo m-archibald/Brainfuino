@@ -43,6 +43,40 @@
 #define STATE_RUN 		0
 #define STATE_PROGRAM 	1
 #define STATE_CONFIG    2
+#define STATE_LIB_ADD   3
+
+#define MENU_PAGE_MAIN      0
+#define MENU_PAGE_SETTINGS  1
+#define MENU_PAGE_LIBRARY   2
+
+#define LIB_ADD_NAME            0
+#define LIB_ADD_PASTE_PROMPT    1
+#define LIB_ADD_PASTE           2
+#define LIB_ADD_VERIFY_PROMPT   3
+#define LIB_ADD_VERIFYING       4
+#define LIB_ADD_COMMIT          5
+
+#define LIBRARY_TOC_ADDR        0x0800C000UL
+#define LIBRARY_POOL_ADDR       0x0800C800UL
+#define LIBRARY_POOL_SIZE       (76UL * 1024UL) // 76 kB
+#define MAX_LIB_SLOTS           64
+#define LIB_NAME_MAX_LEN        16
+
+typedef struct {
+	uint8_t  status;        // 0xFF = Empty, 0x01 = Active, 0x00 = Deleted
+	char     name[LIB_NAME_MAX_LEN]; // 16 bytes: Null-terminated string (max 15 chars)
+	uint8_t  pruned;        // 1 if non-BF comments stripped
+	uint8_t  pad[2];        // 2 bytes padding
+	uint32_t flash_offset;  // Byte offset from LIBRARY_POOL_ADDR
+	uint32_t size;          // Payload size in bytes
+	uint32_t crc32;         // Additive checksum / CRC
+} ProgramDescriptor;
+
+typedef union {
+	ProgramDescriptor desc;
+	uint32_t words[sizeof(ProgramDescriptor) / 4];
+} ProgramSlot;
+
 #define OUTBOX_CAPACITY 1024
 
 #define PROG_BUF_SIZE           4096
@@ -121,6 +155,8 @@ uint8_t  cfg_speed_hotkey_mode    = SPEED_HOTKEY_PGUP_PGDN;
 uint8_t  cfg_manual_step_enabled  = 0;   // 0 = Normal continuous clock, 1 = Manual step mode (clock paused)
 uint8_t  cfg_manual_step_ticks    = STEP_TICKS_100; // Step burst size (1, 10, 100, 1k, 10k, 100k)
 uint8_t  cfg_manual_step_key      = STEP_KEY_SPACE; // Step trigger key (Space, Tab, Enter)
+uint8_t  cfg_prune_on_paste       = 0;   // 0 = Disabled, 1 = Strip non-BF commands on paste
+uint8_t  cfg_prune_in_library     = 1;   // 0 = Disabled, 1 = Strip non-BF commands when saving to library
 
 // Manual clock stepping accumulator queue
 volatile uint32_t manual_step_ticks_pending = 0;
@@ -129,10 +165,27 @@ volatile uint32_t manual_step_ticks_pending = 0;
 uint8_t  settings_dirty = 0;
 uint32_t settings_dirty_tick = 0;
 
+uint8_t  menu_page = MENU_PAGE_MAIN;
 int8_t   menu_cursor = 0;
 volatile uint8_t menu_needs_render = 0;
 volatile uint8_t menu_exit_requested = 0;
 volatile int8_t  menu_action_pending = -1;
+volatile int8_t  menu_action_dir = 1; // +1 = Right/Enter/Space, -1 = Left
+
+// Library Add Program state machine
+volatile uint8_t lib_add_substate = LIB_ADD_NAME;
+char     lib_name_buf[LIB_NAME_MAX_LEN];
+uint8_t  lib_name_len = 0;
+uint32_t lib_code_size = 0;
+uint32_t lib_add_last_rx_tick = 0;
+uint32_t lib_verify_start_tick = 0;
+uint8_t  lib_verify_requested = 0;
+volatile uint8_t lib_start_add_requested = 0;
+volatile int8_t  lib_delete_pending_slot = -1;
+volatile int8_t  lib_load_pending_slot = -1;
+volatile uint8_t lib_verify_choice_pending = 0;
+volatile uint8_t lib_verify_choice = 0;
+volatile uint8_t lib_verify_early_commit = 0;
 
 volatile uint8_t dfu_requested;
 volatile uint8_t reset_requested;
@@ -201,10 +254,24 @@ void speed_step_down(void);
 void menu_enter(void);
 void menu_exit(void);
 void menu_render(void);
-void menu_execute_action(uint8_t item);
+void menu_execute_action(uint8_t item, int8_t dir);
 void led_update_pulse(uint32_t period_ms);
 void settings_load(void);
 void settings_save(void);
+
+// Library prototypes
+void lib_init_toc(void);
+void lib_refresh_display_list(void);
+uint8_t lib_get_active_count(void);
+uint32_t lib_get_total_used_bytes(void);
+int8_t lib_find_free_slot(void);
+uint32_t lib_calculate_next_pool_offset(void);
+void lib_rewrite_toc_compact(void);
+uint8_t lib_save_program(const char *name, uint32_t size, uint8_t pruned);
+void lib_delete_program(uint8_t slot);
+void lib_load_and_run(uint8_t slot);
+void lib_start_add_program(void);
+
 
 /* USER CODE END PFP */
 
@@ -386,8 +453,366 @@ void led_update_pulse(uint32_t period_ms){
 	}
 }
 
+const char DEFAULT_BRAINFUINO_LOGO_BF[] = 
+	"++++++++++[>+++++++++>++++++++++++>++++++>+++++>++++++++>+++++++++++>++++<<<<<<<-]"
+	">+>+++>>>>>--------..<<<<<<++++....>>>>>>............<<<<<<.>>>>>>........<<<<<<.."
+	">>>>>>.......<<<<<<.>>>>>>.............<<<<<<<+++++++++++++.---.>>>>>>>.<<<<<+.>>>>>."
+	"<<<<<<..>>>>>>.+++++++++.---------.<<<<<<.>>>>>>.<<<<<<..>>>>>>.<<<<<<..>>>>>>.<<<<<<."
+	">>>>>>++++++++.<<<<<<.>>>>>>+.<<<<<<.>>>>>>---------.<<<<<<..>>>>>>..+++++++++++++++."
+	"---------------.<<<<<<.>.<.>>>>>>...<<<<<<.>>>>>>++++++++.<<<<<<.>>>>>>+.<<<<<<."
+	">>>>>>---------.<<<<<<..>>>>>>...<<<<<<...>>>>>>..<<<<<<<+++.---.>>>>>>>.<<<<<.>>>>>.."
+	"<<<<<<.>>>>>>.<<<<<<---.>.>>>>>.+++++++.<<<<<<+++..>>>>>>++++++++.---------------."
+	"<<<<<<.+.>>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.+++++++.<<<<<<-.>>>>>>-------.<<<<<<---.>.>>>>>."
+	"<<<<<.<+++.>.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.+++++++.<<<<<<."
+	">>>>>>-------.<<<<<<---.>>>>>>.+++++++++++++++.---------------.<<<<<<+++.>>>>>>.<<<<<<---."
+	">>>>>>.<<<<<<<+++.---.>>>>>>>.<<<<<.>>>>>.<<<<<.<+++.>>>>>>+++++++++.---------.<<<<<."
+	">>>>>.<<<<<.>>>>>.<<<<<.>>>>>.++++++++.<<<<<<.>.>>>>>--------.<<<<<.>>>>>.<<<<<.>>>>>."
+	"<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>..<<<<<<.>.>>>>>.<<<<<.<.>.>>>>>.<<<<<.>>>>>.<<<<<."
+	">>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.++++++++.<<<<<<.>>>>>>+.---------.<<<<<.<<+++."
+	"---.>>>>>>>.<<<<<.<....>>>>>>+++++++++++++++.<<<<<.<.>.>>>>>---------------..<<<<<<---."
+	"+++..>>>>>>++++++++++++.<<<<<<.>.<.>.<.>.>>>>>------------.<<<<<.<.>.<.>.>>>>>..<<<<<<---."
+	"+++..>>>>>>++++++++++++.<<<<<<.>.<.>.<.>.>>>>>------------.<<<<<.<.>.<---.+++...>>>>>>"
+	"+++++++++++++++.---------------.<<<<<<<+++.---.>>>>>>>.................................................."
+	"<<<<<<<+++.---."
+	"[-]+[]";
+
+static inline uint8_t is_bf_cmd(char c){
+	return (c == '+' || c == '-' || c == '<' || c == '>' ||
+	        c == '[' || c == ']' || c == '.' || c == ',');
+}
+
+// Table of Contents pointer in STM32 internal Flash (Page 24)
+static volatile const ProgramDescriptor *lib_toc = (volatile const ProgramDescriptor *)LIBRARY_TOC_ADDR;
+
+// Cached array of active slots for display in library menu
+static uint8_t lib_display_slots[MAX_LIB_SLOTS];
+static uint8_t lib_display_count = 0;
+
+uint8_t lib_get_active_count(void){
+	uint8_t count = 0;
+	for (uint8_t s = 1; s < MAX_LIB_SLOTS; s++){
+		if (lib_toc[s].status == 0x01) count++;
+	}
+	return count;
+}
+
+void lib_refresh_display_list(void){
+	lib_display_count = 0;
+	lib_display_slots[lib_display_count++] = 0; // Slot 0 is always Brainfuino Demo
+	for (uint8_t s = 1; s < MAX_LIB_SLOTS; s++){
+		if (lib_toc[s].status == 0x01){
+			lib_display_slots[lib_display_count++] = s;
+		}
+	}
+}
+
+uint32_t lib_get_total_used_bytes(void){
+	uint32_t total = 0;
+	for (uint8_t s = 1; s < MAX_LIB_SLOTS; s++){
+		if (lib_toc[s].status == 0x01){
+			total += lib_toc[s].size;
+		}
+	}
+	return total;
+}
+
+int8_t lib_find_free_slot(void){
+	for (uint8_t s = 1; s < MAX_LIB_SLOTS; s++){
+		if (lib_toc[s].status == 0xFF) return s;
+	}
+	return -1;
+}
+
+uint32_t lib_calculate_next_pool_offset(void){
+	uint32_t max_end = 0;
+	for (uint8_t s = 1; s < MAX_LIB_SLOTS; s++){
+		if (lib_toc[s].status == 0x01){
+			uint32_t end = lib_toc[s].flash_offset + lib_toc[s].size;
+			end = (end + 3) & ~3; // 4-byte align
+			if (end > max_end) max_end = end;
+		}
+	}
+	return max_end;
+}
+
+#define TOC_MAGIC 0xBFC00101UL
+
+void lib_format_toc(void){
+	HAL_FLASH_Unlock();
+	FLASH_EraseInitTypeDef erase;
+	uint32_t err = 0;
+	erase.TypeErase = FLASH_TYPEERASE_PAGES;
+	erase.PageAddress = LIBRARY_TOC_ADDR;
+	erase.NbPages = 1;
+	__HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_WRPERR | FLASH_FLAG_PGERR);
+	if (HAL_FLASHEx_Erase(&erase, &err) == HAL_OK){
+		ProgramSlot slot_data;
+		memset(&slot_data, 0xFF, sizeof(slot_data));
+		slot_data.desc.status = 0x01;
+		strncpy(slot_data.desc.name, "Brainfuino Demo", LIB_NAME_MAX_LEN - 1);
+		slot_data.desc.name[LIB_NAME_MAX_LEN - 1] = '\0';
+		slot_data.desc.pruned = 1;
+		slot_data.desc.pad[0] = 0;
+		slot_data.desc.pad[1] = 0;
+		slot_data.desc.flash_offset = 0;
+		slot_data.desc.size = sizeof(DEFAULT_BRAINFUINO_LOGO_BF) - 1;
+		slot_data.desc.crc32 = TOC_MAGIC;
+		for (uint32_t w = 0; w < sizeof(ProgramDescriptor)/4; w++){
+			HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, LIBRARY_TOC_ADDR + (w * 4), slot_data.words[w]);
+		}
+	}
+	HAL_FLASH_Lock();
+	lib_refresh_display_list();
+}
+
+void lib_rewrite_toc_compact(void){
+	ProgramDescriptor active[MAX_LIB_SLOTS];
+	uint8_t active_count = 0;
+	for (uint8_t s = 1; s < MAX_LIB_SLOTS; s++){
+		if (lib_toc[s].status == 0x01){
+			memcpy(&active[active_count++], (const void *)&lib_toc[s], sizeof(ProgramDescriptor));
+		}
+	}
+	HAL_FLASH_Unlock();
+	FLASH_EraseInitTypeDef erase;
+	uint32_t err = 0;
+	erase.TypeErase = FLASH_TYPEERASE_PAGES;
+	erase.PageAddress = LIBRARY_TOC_ADDR;
+	erase.NbPages = 1;
+	__HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_WRPERR | FLASH_FLAG_PGERR);
+	if (HAL_FLASHEx_Erase(&erase, &err) == HAL_OK){
+		ProgramSlot slot_data;
+		memset(&slot_data, 0xFF, sizeof(slot_data));
+		slot_data.desc.status = 0x01;
+		strncpy(slot_data.desc.name, "Brainfuino Demo", LIB_NAME_MAX_LEN - 1);
+		slot_data.desc.name[LIB_NAME_MAX_LEN - 1] = '\0';
+		slot_data.desc.pruned = 1;
+		slot_data.desc.pad[0] = 0;
+		slot_data.desc.pad[1] = 0;
+		slot_data.desc.flash_offset = 0;
+		slot_data.desc.size = sizeof(DEFAULT_BRAINFUINO_LOGO_BF) - 1;
+		slot_data.desc.crc32 = TOC_MAGIC;
+		for (uint32_t w = 0; w < sizeof(ProgramDescriptor)/4; w++){
+			HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, LIBRARY_TOC_ADDR + (w * 4), slot_data.words[w]);
+		}
+
+		for (uint8_t i = 0; i < active_count; i++){
+			uint32_t slot_addr = LIBRARY_TOC_ADDR + ((i + 1) * sizeof(ProgramDescriptor));
+			ProgramSlot act_slot;
+			memcpy(&act_slot.desc, &active[i], sizeof(ProgramDescriptor));
+			for (uint32_t w = 0; w < sizeof(ProgramDescriptor)/4; w++){
+				HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, slot_addr + (w * 4), act_slot.words[w]);
+			}
+		}
+	}
+	HAL_FLASH_Lock();
+	lib_refresh_display_list();
+}
+
+void lib_init_toc(void){
+	if (lib_toc[0].crc32 != TOC_MAGIC){
+		lib_format_toc();
+	} else {
+		lib_refresh_display_list();
+	}
+}
+
+uint8_t lib_save_program(const char *name, uint32_t size, uint8_t pruned){
+	if (size == 0) return 0;
+	int8_t slot = lib_find_free_slot();
+	if (slot < 0){
+		lib_rewrite_toc_compact();
+		slot = lib_find_free_slot();
+		if (slot < 0) return 0;
+	}
+
+	uint32_t offset = lib_calculate_next_pool_offset();
+	if (offset + size > LIBRARY_POOL_SIZE){
+		uint32_t total_active = lib_get_total_used_bytes();
+		if (total_active + size > LIBRARY_POOL_SIZE) return 0; // Exceeds physical capacity
+
+		// Defrag / Compact active programs using upper 128 kB of external parallel ROM as scratchpad
+		uint32_t scratch_addr = 0x20000;
+		uint32_t cur_scratch = scratch_addr;
+		uint32_t new_offsets[MAX_LIB_SLOTS];
+		uint32_t cur_new_offset = 0;
+
+		for (uint8_t s = 1; s < MAX_LIB_SLOTS; s++){
+			if (lib_toc[s].status == 0x01){
+				new_offsets[s] = cur_new_offset;
+				const uint8_t *pdata = (const uint8_t *)(LIBRARY_POOL_ADDR + lib_toc[s].flash_offset);
+				initROMProgramming();
+				for (uint32_t b = 0; b < lib_toc[s].size; b++){
+					writeROMFast(cur_scratch + b, pdata[b]);
+				}
+				cur_scratch += lib_toc[s].size;
+				cur_new_offset += (lib_toc[s].size + 3) & ~3;
+			}
+		}
+
+		HAL_FLASH_Unlock();
+		FLASH_EraseInitTypeDef erase;
+		uint32_t err = 0;
+		erase.TypeErase = FLASH_TYPEERASE_PAGES;
+		erase.PageAddress = LIBRARY_POOL_ADDR;
+		erase.NbPages = LIBRARY_POOL_SIZE / 2048;
+		HAL_FLASHEx_Erase(&erase, &err);
+
+		cur_scratch = scratch_addr;
+		for (uint8_t s = 1; s < MAX_LIB_SLOTS; s++){
+			if (lib_toc[s].status == 0x01){
+				initROMNormal();
+				HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
+				uint32_t dst = LIBRARY_POOL_ADDR + new_offsets[s];
+				for (uint32_t b = 0; b < lib_toc[s].size; b += 4){
+					uint32_t w = 0;
+					for (int k = 0; k < 4; k++){
+						uint8_t byte_val = (b + k < lib_toc[s].size) ? readROM(cur_scratch + b + k) : 0xFF;
+						w |= ((uint32_t)byte_val) << (k * 8);
+					}
+					HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, dst + b, w);
+				}
+				cur_scratch += lib_toc[s].size;
+			}
+		}
+		HAL_FLASH_Lock();
+
+		lib_rewrite_toc_compact();
+		offset = cur_new_offset;
+	}
+
+	// Ensure destination pages in STM32 Flash are erased
+	uint32_t start_page = (LIBRARY_POOL_ADDR + offset) & ~2047UL;
+	uint32_t end_page = (LIBRARY_POOL_ADDR + offset + size + 2047UL) & ~2047UL;
+	uint32_t nb_pages = (end_page - start_page) / 2048;
+
+	HAL_FLASH_Unlock();
+	for (uint32_t p = 0; p < nb_pages; p++){
+		uint32_t paddr = start_page + (p * 2048);
+		uint32_t *pw = (uint32_t *)paddr;
+		uint8_t needs_erase = 0;
+		for (int i = 0; i < 512; i++){
+			if (pw[i] != 0xFFFFFFFF){ needs_erase = 1; break; }
+		}
+		if (needs_erase){
+			FLASH_EraseInitTypeDef ep;
+			uint32_t perr = 0;
+			ep.TypeErase = FLASH_TYPEERASE_PAGES;
+			ep.PageAddress = paddr;
+			ep.NbPages = 1;
+			HAL_FLASHEx_Erase(&ep, &perr);
+		}
+	}
+
+	// Write program payload words (read from external parallel ROM address 0)
+	initROMNormal();
+	HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
+	uint32_t dst_addr = LIBRARY_POOL_ADDR + offset;
+	for (uint32_t i = 0; i < size; i += 4){
+		uint32_t w = 0;
+		for (int k = 0; k < 4; k++){
+			uint8_t byte_val = (i + k < size) ? readROM(i + k) : 0xFF;
+			w |= ((uint32_t)byte_val) << (k * 8);
+		}
+		HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, dst_addr + i, w);
+	}
+
+	// Write TOC descriptor
+	ProgramSlot slot_data;
+	memset(&slot_data, 0xFF, sizeof(slot_data));
+	slot_data.desc.status = 0x01;
+	strncpy(slot_data.desc.name, name, LIB_NAME_MAX_LEN - 1);
+	slot_data.desc.name[LIB_NAME_MAX_LEN - 1] = '\0';
+	slot_data.desc.pruned = pruned;
+	slot_data.desc.pad[0] = 0;
+	slot_data.desc.pad[1] = 0;
+	slot_data.desc.flash_offset = offset;
+	slot_data.desc.size = size;
+	slot_data.desc.crc32 = 0;
+
+	uint32_t desc_addr = LIBRARY_TOC_ADDR + (slot * sizeof(ProgramDescriptor));
+	__HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_WRPERR | FLASH_FLAG_PGERR);
+	for (uint32_t w = 0; w < sizeof(ProgramDescriptor)/4; w++){
+		HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, desc_addr + (w * 4), slot_data.words[w]);
+	}
+
+	HAL_FLASH_Lock();
+	lib_refresh_display_list();
+	return slot;
+}
+
+void lib_delete_program(uint8_t slot){
+	if (slot == 0 || slot >= MAX_LIB_SLOTS) return;
+	if (lib_toc[slot].status == 0x01){
+		HAL_FLASH_Unlock();
+		__HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_WRPERR | FLASH_FLAG_PGERR);
+		HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, LIBRARY_TOC_ADDR + (slot * sizeof(ProgramDescriptor)), 0x0000);
+		HAL_FLASH_Lock();
+		lib_refresh_display_list();
+	}
+}
+
+void lib_load_and_run(uint8_t slot){
+	if (slot == 0){
+		flashDefaultLogoProgram();
+		menu_exit();
+		return;
+	}
+	if (slot >= MAX_LIB_SLOTS || lib_toc[slot].status != 0x01) return;
+
+	uint32_t size = lib_toc[slot].size;
+	const uint8_t *src = (const uint8_t *)(LIBRARY_POOL_ADDR + lib_toc[slot].flash_offset);
+
+	HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+	initROMProgramming();
+	eraseROMFast();
+
+	for (uint32_t i = 0; i < size; i++){
+		writeROMFast(i, src[i]);
+	}
+
+	if (cfg_append_endless_loop){
+		writeROMFast(size, '[');
+		writeROMFast(size + 1, '-');
+		writeROMFast(size + 2, ']');
+		writeROMFast(size + 3, '+');
+		writeROMFast(size + 4, '[');
+		writeROMFast(size + 5, ']');
+	}
+
+	initROMNormal();
+	HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+	HAL_Delay(10);
+	HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+
+	CDC_Printf("\r\n[Loaded and running: %s (%lu bytes)]\r\n", lib_toc[slot].name, (unsigned long)size);
+	menu_exit();
+}
+
+void lib_start_add_program(void){
+	lib_code_size = 0;
+	lib_name_len = 0;
+	memset(lib_name_buf, 0, sizeof(lib_name_buf));
+	lib_add_substate = LIB_ADD_NAME;
+	state = STATE_LIB_ADD;
+	CDC_Print("\x1b[2J\x1b[H\r\n");
+	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("|            ADD PROGRAM TO LIBRARY               |\r\n");
+	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("Enter program name (max 15 chars, or ESC to cancel):\r\n> ");
+}
+
 static uint8_t get_menu_item_count(void){
-	return cfg_manual_step_enabled ? MENU_ITEM_COUNT_EXPANDED : MENU_ITEM_COUNT_COLLAPSED;
+	if (menu_page == MENU_PAGE_MAIN){
+		return 6;
+	} else if (menu_page == MENU_PAGE_SETTINGS){
+		return cfg_manual_step_enabled ? 12 : 10;
+	} else if (menu_page == MENU_PAGE_LIBRARY){
+		lib_refresh_display_list();
+		return lib_display_count + 2;
+	}
+	return 6;
 }
 
 static const char *get_step_ticks_name(uint8_t t){
@@ -411,130 +836,122 @@ static const char *get_step_key_name(uint8_t k){
 	}
 }
 
-void menu_render(void){
-	// Clear screen and home cursor (VT100 / ANSI)
-	CDC_Print("\x1b[2J\x1b[H\r\n");
+void menu_render_main(void){
 	CDC_Print("+-------------------------------------------------+\r\n");
 	CDC_Print("|          BRAINFUINO CONFIGURATION MENU          |\r\n");
 	CDC_Print("+-------------------------------------------------+\r\n");
-	if (cfg_manual_step_enabled){
-		CDC_Print("|  Use [Up/Down] & [Enter], or type [1-9, A, 0]   |\r\n");
-	} else {
-		CDC_Print("|  Use [Up/Down] & [Enter], or type [1-8, 0]      |\r\n");
-	}
+	CDC_Print("|  Use [Up/Down] & [Enter], or type [1-5, 0]      |\r\n");
 	CDC_Print("+-------------------------------------------------+\r\n");
 
-	uint8_t count = get_menu_item_count();
+	const char *labels[6] = {
+		"1. Program Library       -->",
+		"2. Hardware Settings     -->",
+		"3. Reboot to USB DFU        ",
+		"4. Restore Factory Demo     ",
+		"5. Save & Exit              ",
+		"0. Exit without Saving      "
+	};
+	const char *vals[6] = {
+		"[  OPEN  ]",
+		"[  OPEN  ]",
+		"[ REBOOT ]",
+		"[ RESTORE]",
+		"[  EXIT  ]",
+		"[ CANCEL ]"
+	};
+
+	if (menu_cursor >= 6) menu_cursor = 5;
+
+	for (int i = 0; i < 6; i++){
+		if (i == menu_cursor){
+			CDC_Printf("| \x1b[7m> %-28s %-10s <\x1b[0m |\r\n", labels[i], vals[i]);
+		} else {
+			CDC_Printf("|   %-28s %-10s   |\r\n", labels[i], vals[i]);
+		}
+	}
+
+	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("|  Hardware: STM32F072 | Parallel ROM: 256 kB     |\r\n");
+	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("Select option or use arrows + Enter: ");
+}
+
+void menu_render_settings(void){
+	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("|          BRAINFUINO HARDWARE SETTINGS           |\r\n");
+	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("|  Use [Up/Down], [Left/Right], or [Enter]        |\r\n");
+	CDC_Print("+-------------------------------------------------+\r\n");
+
+	uint8_t count = cfg_manual_step_enabled ? 12 : 10;
 	if (menu_cursor >= count) menu_cursor = count - 1;
 
 	for (int i = 0; i < count; i++){
 		char val_str[16];
 		const char *label = "";
-
-		if (!cfg_manual_step_enabled){
-			// Collapsed menu (9 items)
-			switch(i){
-				case 0:
-					label = "1. Auto-Program on Paste  ";
-					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_prog_run_mode ? "ENABLED" : "DISABLED");
-					break;
-				case 1:
-					label = "2. Paste Upload Threshold ";
-					snprintf(val_str, sizeof(val_str), "[   %2lu B   ]", (unsigned long)cfg_auto_prog_min_bytes);
-					break;
-				case 2:
-					label = "3. Auto-Reset after Flash ";
-					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_reset_after_pgm ? "ENABLED" : "DISABLED");
-					break;
-				case 3:
-					label = "4. Append Endless Loop    ";
-					snprintf(val_str, sizeof(val_str), "[  %-6s  ]", cfg_append_endless_loop ? "[-]+[]" : "NONE");
-					break;
-				case 4:
-					label = "5. FPGA Clock Frequency   ";
-					snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_freq_name(freq));
-					break;
-				case 5:
-					label = "6. Run Mode Speed Hotkeys ";
-					{
-						const char *hname = "NONE";
-						if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PGUP_PGDN) hname = "PgUp/Dn";
-						else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_UP_DOWN) hname = "Up/Down";
-						else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PLUS_MINUS) hname = "+ / -";
-						snprintf(val_str, sizeof(val_str), "[ %-8s ]", hname);
-					}
-					break;
-				case 6:
-					label = "7. Manual Stepping Mode   ";
-					snprintf(val_str, sizeof(val_str), "[ %-8s ]", "DISABLED");
-					break;
-				case 7:
-					label = "8. Restore Default Demo   ";
-					snprintf(val_str, sizeof(val_str), "[ RESTORE  ]");
-					break;
-				case 8:
-					label = "0. Save & Exit            ";
-					snprintf(val_str, sizeof(val_str), "[   EXIT   ]");
-					break;
-			}
-		} else {
-			// Expanded menu (11 items)
-			switch(i){
-				case 0:
-					label = "1. Auto-Program on Paste  ";
-					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_prog_run_mode ? "ENABLED" : "DISABLED");
-					break;
-				case 1:
-					label = "2. Paste Upload Threshold ";
-					snprintf(val_str, sizeof(val_str), "[   %2lu B   ]", (unsigned long)cfg_auto_prog_min_bytes);
-					break;
-				case 2:
-					label = "3. Auto-Reset after Flash ";
-					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_reset_after_pgm ? "ENABLED" : "DISABLED");
-					break;
-				case 3:
-					label = "4. Append Endless Loop    ";
-					snprintf(val_str, sizeof(val_str), "[  %-6s  ]", cfg_append_endless_loop ? "[-]+[]" : "NONE");
-					break;
-				case 4:
-					label = "5. FPGA Clock Frequency   ";
-					snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_freq_name(freq));
-					break;
-				case 5:
-					label = "6. Run Mode Speed Hotkeys ";
-					{
-						const char *hname = "NONE";
-						if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PGUP_PGDN) hname = "PgUp/Dn";
-						else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_UP_DOWN) hname = "Up/Down";
-						else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PLUS_MINUS) hname = "+ / -";
-						snprintf(val_str, sizeof(val_str), "[ %-8s ]", hname);
-					}
-					break;
-				case 6:
-					label = "7. Manual Stepping Mode   ";
-					snprintf(val_str, sizeof(val_str), "[ %-8s ]", "ENABLED");
-					break;
-				case 7:
-					label = "8. Step Advance Ticks     ";
+		switch(i){
+			case 0:
+				label = "1. Auto-Program on Paste  ";
+				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_prog_run_mode ? "ENABLED" : "DISABLED");
+				break;
+			case 1:
+				label = "2. Paste Upload Threshold ";
+				snprintf(val_str, sizeof(val_str), "[   %2lu B   ]", (unsigned long)cfg_auto_prog_min_bytes);
+				break;
+			case 2:
+				label = "3. Auto-Reset after Flash ";
+				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_reset_after_pgm ? "ENABLED" : "DISABLED");
+				break;
+			case 3:
+				label = "4. Append Endless Loop    ";
+				snprintf(val_str, sizeof(val_str), "[  %-6s  ]", cfg_append_endless_loop ? "[-]+[]" : "NONE");
+				break;
+			case 4:
+				label = "5. FPGA Clock Frequency   ";
+				snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_freq_name(freq));
+				break;
+			case 5:
+				label = "6. Prune non-BF on Paste  ";
+				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_prune_on_paste ? "ENABLED" : "DISABLED");
+				break;
+			case 6:
+				label = "7. Prune non-BF in Library";
+				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_prune_in_library ? "ENABLED" : "DISABLED");
+				break;
+			case 7:
+				label = "8. Run Mode Speed Hotkeys ";
+				{
+					const char *hname = "NONE";
+					if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PGUP_PGDN) hname = "PgUp/Dn";
+					else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_UP_DOWN) hname = "Up/Down";
+					else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PLUS_MINUS) hname = "+ / -";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", hname);
+				}
+				break;
+			case 8:
+				label = "9. Manual Stepping Mode   ";
+				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_manual_step_enabled ? "ENABLED" : "DISABLED");
+				break;
+			case 9:
+				if (cfg_manual_step_enabled){
+					label = "A. Step Advance Ticks     ";
 					snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_step_ticks_name(cfg_manual_step_ticks));
-					break;
-				case 8:
-					label = "9. Step Trigger Key       ";
-					snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_step_key_name(cfg_manual_step_key));
-					break;
-				case 9:
-					label = "A. Restore Default Demo   ";
-					snprintf(val_str, sizeof(val_str), "[ RESTORE  ]");
-					break;
-				case 10:
-					label = "0. Save & Exit            ";
-					snprintf(val_str, sizeof(val_str), "[   EXIT   ]");
-					break;
-			}
+				} else {
+					label = "0. Back to Main Menu      ";
+					snprintf(val_str, sizeof(val_str), "[   BACK   ]");
+				}
+				break;
+			case 10:
+				label = "B. Step Trigger Key       ";
+				snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_step_key_name(cfg_manual_step_key));
+				break;
+			case 11:
+				label = "0. Back to Main Menu      ";
+				snprintf(val_str, sizeof(val_str), "[   BACK   ]");
+				break;
 		}
 
 		if (i == menu_cursor){
-			// Highlighted row: Inverted video (\x1b[7m) + cursor indicators '> ' and ' <'
 			CDC_Printf("| \x1b[7m> %s : %-12s <\x1b[0m |\r\n", label, val_str);
 		} else {
 			CDC_Printf("|   %s : %-12s   |\r\n", label, val_str);
@@ -547,94 +964,203 @@ void menu_render(void){
 	CDC_Print("Select option or use arrows + Enter: ");
 }
 
-void menu_execute_action(uint8_t item){
-	if (!cfg_manual_step_enabled){
-		// Collapsed menu actions (0-8)
+void menu_render_library(void){
+	lib_refresh_display_list();
+	uint8_t count = lib_display_count + 2;
+	if (menu_cursor >= count) menu_cursor = count - 1;
+
+	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("|            BRAINFUINO PROGRAM LIBRARY           |\r\n");
+	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("|  [Enter/L] Run  [A] Add  [D] Delete  [0/ESC] Back |\r\n");
+	CDC_Print("+-------------------------------------------------+\r\n");
+
+	for (int i = 0; i < count; i++){
+		char line_buf[60];
+		if (i < lib_display_count){
+			uint8_t slot = lib_display_slots[i];
+			const char *pname = (slot == 0) ? "Brainfuino Demo" : (const char *)lib_toc[slot].name;
+			uint32_t psize = (slot == 0) ? (sizeof(DEFAULT_BRAINFUINO_LOGO_BF) - 1) : lib_toc[slot].size;
+			char size_str[16];
+			if (psize < 1024){
+				snprintf(size_str, sizeof(size_str), "%3lu B", (unsigned long)psize);
+			} else {
+				snprintf(size_str, sizeof(size_str), "%2lu.%1lukB", (unsigned long)(psize / 1024), (unsigned long)((psize % 1024) * 10 / 1024));
+			}
+
+			if (i == menu_cursor){
+				snprintf(line_buf, sizeof(line_buf), "| \x1b[7m> %02d. %-18s [%7s] <\x1b[0m |", slot, pname, size_str);
+			} else {
+				snprintf(line_buf, sizeof(line_buf), "|   %02d. %-18s [%7s]   |", slot, pname, size_str);
+			}
+		}
+		else if (i == lib_display_count){
+			if (i == menu_cursor){
+				snprintf(line_buf, sizeof(line_buf), "| \x1b[7m> [ + Add New Program ]                  <\x1b[0m |");
+			} else {
+				snprintf(line_buf, sizeof(line_buf), "|   [ + Add New Program ]                    |");
+			}
+		}
+		else {
+			if (i == menu_cursor){
+				snprintf(line_buf, sizeof(line_buf), "| \x1b[7m> 0. Back to Main Menu         [   BACK   ] <\x1b[0m |");
+			} else {
+				snprintf(line_buf, sizeof(line_buf), "|   0. Back to Main Menu         [   BACK   ]   |");
+			}
+		}
+		CDC_Printf("%s\r\n", line_buf);
+	}
+
+	CDC_Print("+-------------------------------------------------+\r\n");
+	uint32_t used_bytes = lib_get_total_used_bytes();
+	uint32_t used_kb = used_bytes / 1024;
+	uint32_t used_frac = (used_bytes % 1024) * 10 / 1024;
+	CDC_Printf("|  Library: %2d / 63 Programs | Used: %2lu.%1lu / 76 kB   |\r\n",
+	           lib_display_count - 1, (unsigned long)used_kb, (unsigned long)used_frac);
+	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("Select program [Enter/L=Run, A=Add, D=Del, 0=Back]: ");
+}
+
+void menu_render(void){
+	CDC_Print("\x1b[2J\x1b[H\r\n");
+	if (menu_page == MENU_PAGE_MAIN){
+		menu_render_main();
+	} else if (menu_page == MENU_PAGE_SETTINGS){
+		menu_render_settings();
+	} else if (menu_page == MENU_PAGE_LIBRARY){
+		menu_render_library();
+	}
+}
+
+void menu_execute_action(uint8_t item, int8_t dir){
+	if (menu_page == MENU_PAGE_MAIN){
 		switch(item){
 			case 0:
-				cfg_auto_prog_run_mode = !cfg_auto_prog_run_mode;
+				menu_page = MENU_PAGE_LIBRARY;
+				menu_cursor = 0;
+				menu_needs_render = 1;
 				break;
 			case 1:
-				if (cfg_auto_prog_min_bytes == 4) cfg_auto_prog_min_bytes = 8;
-				else if (cfg_auto_prog_min_bytes == 8) cfg_auto_prog_min_bytes = 16;
-				else if (cfg_auto_prog_min_bytes == 16) cfg_auto_prog_min_bytes = 32;
-				else if (cfg_auto_prog_min_bytes == 32) cfg_auto_prog_min_bytes = 64;
-				else cfg_auto_prog_min_bytes = 4;
+				menu_page = MENU_PAGE_SETTINGS;
+				menu_cursor = 0;
+				menu_needs_render = 1;
 				break;
 			case 2:
-				cfg_auto_reset_after_pgm = !cfg_auto_reset_after_pgm;
+				Execute_DFU_Jump();
 				break;
 			case 3:
-				cfg_append_endless_loop = !cfg_append_endless_loop;
-				break;
-			case 4:
-				set_freq((freq + 1) % FREQ_COUNT);
-				break;
-			case 5:
-				cfg_speed_hotkey_mode = (cfg_speed_hotkey_mode + 1) % 4;
-				break;
-			case 6:
-				cfg_manual_step_enabled = 1;
-				break;
-			case 7:
 				CDC_Print("\r\nRestoring Default Demo to Flash...\r\n");
 				flashDefaultLogoProgram();
 				break;
-			case 8:
+			case 4:
+				settings_save();
 				menu_exit();
 				break;
-			default:
-				break;
-		}
-	} else {
-		// Expanded menu actions (0-10)
-		switch(item){
-			case 0:
-				cfg_auto_prog_run_mode = !cfg_auto_prog_run_mode;
-				break;
-			case 1:
-				if (cfg_auto_prog_min_bytes == 4) cfg_auto_prog_min_bytes = 8;
-				else if (cfg_auto_prog_min_bytes == 8) cfg_auto_prog_min_bytes = 16;
-				else if (cfg_auto_prog_min_bytes == 16) cfg_auto_prog_min_bytes = 32;
-				else if (cfg_auto_prog_min_bytes == 32) cfg_auto_prog_min_bytes = 64;
-				else cfg_auto_prog_min_bytes = 4;
-				break;
-			case 2:
-				cfg_auto_reset_after_pgm = !cfg_auto_reset_after_pgm;
-				break;
-			case 3:
-				cfg_append_endless_loop = !cfg_append_endless_loop;
-				break;
-			case 4:
-				set_freq((freq + 1) % FREQ_COUNT);
-				break;
 			case 5:
-				cfg_speed_hotkey_mode = (cfg_speed_hotkey_mode + 1) % 4;
-				break;
-			case 6:
-				cfg_manual_step_enabled = 0;
-				break;
-			case 7:
-				cfg_manual_step_ticks = (cfg_manual_step_ticks + 1) % 6;
-				break;
-			case 8:
-				cfg_manual_step_key = (cfg_manual_step_key + 1) % 3;
-				break;
-			case 9:
-				CDC_Print("\r\nRestoring Default Demo to Flash...\r\n");
-				flashDefaultLogoProgram();
-				break;
-			case 10:
+				settings_load();
 				menu_exit();
 				break;
 			default:
 				break;
 		}
 	}
+	else if (menu_page == MENU_PAGE_SETTINGS){
+		switch(item){
+			case 0:
+				cfg_auto_prog_run_mode = !cfg_auto_prog_run_mode;
+				break;
+			case 1:
+				if (dir > 0){
+					if (cfg_auto_prog_min_bytes == 4) cfg_auto_prog_min_bytes = 8;
+					else if (cfg_auto_prog_min_bytes == 8) cfg_auto_prog_min_bytes = 16;
+					else if (cfg_auto_prog_min_bytes == 16) cfg_auto_prog_min_bytes = 32;
+					else if (cfg_auto_prog_min_bytes == 32) cfg_auto_prog_min_bytes = 64;
+					else cfg_auto_prog_min_bytes = 4;
+				} else {
+					if (cfg_auto_prog_min_bytes == 64) cfg_auto_prog_min_bytes = 32;
+					else if (cfg_auto_prog_min_bytes == 32) cfg_auto_prog_min_bytes = 16;
+					else if (cfg_auto_prog_min_bytes == 16) cfg_auto_prog_min_bytes = 8;
+					else if (cfg_auto_prog_min_bytes == 8) cfg_auto_prog_min_bytes = 4;
+					else cfg_auto_prog_min_bytes = 64;
+				}
+				break;
+			case 2:
+				cfg_auto_reset_after_pgm = !cfg_auto_reset_after_pgm;
+				break;
+			case 3:
+				cfg_append_endless_loop = !cfg_append_endless_loop;
+				break;
+			case 4:
+				if (dir > 0){
+					set_freq((freq + 1) % FREQ_COUNT);
+				} else {
+					set_freq((freq + FREQ_COUNT - 1) % FREQ_COUNT);
+				}
+				break;
+			case 5:
+				cfg_prune_on_paste = !cfg_prune_on_paste;
+				break;
+			case 6:
+				cfg_prune_in_library = !cfg_prune_in_library;
+				break;
+			case 7:
+				if (dir > 0){
+					cfg_speed_hotkey_mode = (cfg_speed_hotkey_mode + 1) % 4;
+				} else {
+					cfg_speed_hotkey_mode = (cfg_speed_hotkey_mode + 3) % 4;
+				}
+				break;
+			case 8:
+				cfg_manual_step_enabled = !cfg_manual_step_enabled;
+				break;
+			case 9:
+				if (cfg_manual_step_enabled){
+					if (dir > 0){
+						cfg_manual_step_ticks = (cfg_manual_step_ticks + 1) % 6;
+					} else {
+						cfg_manual_step_ticks = (cfg_manual_step_ticks + 5) % 6;
+					}
+				} else {
+					menu_page = MENU_PAGE_MAIN;
+					menu_cursor = 1;
+					menu_needs_render = 1;
+				}
+				break;
+			case 10:
+				if (dir > 0){
+					cfg_manual_step_key = (cfg_manual_step_key + 1) % 3;
+				} else {
+					cfg_manual_step_key = (cfg_manual_step_key + 2) % 3;
+				}
+				break;
+			case 11:
+				menu_page = MENU_PAGE_MAIN;
+				menu_cursor = 1;
+				menu_needs_render = 1;
+				break;
+			default:
+				break;
+		}
+	}
+	else if (menu_page == MENU_PAGE_LIBRARY){
+		lib_refresh_display_list();
+		if (item < lib_display_count){
+			uint8_t slot = lib_display_slots[item];
+			lib_load_and_run(slot);
+		}
+		else if (item == lib_display_count){
+			lib_start_add_program();
+		}
+		else {
+			menu_page = MENU_PAGE_MAIN;
+			menu_cursor = 0;
+			menu_needs_render = 1;
+		}
+	}
 }
 
 #define SETTINGS_FLASH_ADDR   0x0801F800UL
-#define SETTINGS_MAGIC        0xBF072C02UL
+#define SETTINGS_MAGIC        0xBF072C03UL
 
 typedef struct {
 	uint32_t magic;
@@ -646,6 +1172,9 @@ typedef struct {
 	uint8_t  manual_step_enabled;
 	uint8_t  manual_step_ticks;
 	uint8_t  manual_step_key;
+	uint8_t  prune_on_paste;
+	uint8_t  prune_in_library;
+	uint16_t reserved;
 	uint32_t auto_prog_min_bytes;
 	uint32_t checksum;
 } PersistentSettings;
@@ -655,6 +1184,7 @@ static uint32_t calc_settings_checksum(const PersistentSettings *s){
 	       (uint32_t)s->auto_reset_after_pgm + (uint32_t)s->append_endless_loop +
 	       (uint32_t)s->speed_hotkey_mode + (uint32_t)s->manual_step_enabled +
 	       (uint32_t)s->manual_step_ticks + (uint32_t)s->manual_step_key +
+	       (uint32_t)s->prune_on_paste + (uint32_t)s->prune_in_library +
 	       s->auto_prog_min_bytes;
 }
 
@@ -671,6 +1201,8 @@ void settings_load(void){
 		cfg_manual_step_enabled = flash_cfg->manual_step_enabled ? 1 : 0;
 		cfg_manual_step_ticks = (flash_cfg->manual_step_ticks <= 5) ? flash_cfg->manual_step_ticks : STEP_TICKS_100;
 		cfg_manual_step_key = (flash_cfg->manual_step_key <= 2) ? flash_cfg->manual_step_key : STEP_KEY_SPACE;
+		cfg_prune_on_paste = flash_cfg->prune_on_paste ? 1 : 0;
+		cfg_prune_in_library = flash_cfg->prune_in_library ? 1 : 0;
 
 		if (flash_cfg->auto_prog_min_bytes >= 4 && flash_cfg->auto_prog_min_bytes <= 64){
 			cfg_auto_prog_min_bytes = flash_cfg->auto_prog_min_bytes;
@@ -686,6 +1218,8 @@ void settings_load(void){
 		cfg_manual_step_enabled = 0;
 		cfg_manual_step_ticks = STEP_TICKS_100;
 		cfg_manual_step_key = STEP_KEY_SPACE;
+		cfg_prune_on_paste = 0;
+		cfg_prune_in_library = 1;
 		cfg_auto_prog_min_bytes = 16;
 	}
 }
@@ -702,6 +1236,8 @@ void settings_save(void){
 	new_cfg.manual_step_enabled = cfg_manual_step_enabled;
 	new_cfg.manual_step_ticks = cfg_manual_step_ticks;
 	new_cfg.manual_step_key = cfg_manual_step_key;
+	new_cfg.prune_on_paste = cfg_prune_on_paste;
+	new_cfg.prune_in_library = cfg_prune_in_library;
 	new_cfg.auto_prog_min_bytes = cfg_auto_prog_min_bytes;
 	new_cfg.checksum = calc_settings_checksum(&new_cfg);
 
@@ -731,6 +1267,7 @@ void settings_save(void){
 
 void menu_enter(void){
 	state = STATE_CONFIG;
+	menu_page = MENU_PAGE_MAIN;
 	menu_cursor = 0;
 	menu_action_pending = -1;
 	menu_exit_requested = 0;
@@ -783,18 +1320,31 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		return 1;
 	}
 
-	if (state == STATE_RUN){
-		if (is_prefix_ci(buff, len, "!MENU") || is_prefix_ci(buff, len, "!CONFIG")){
-			menu_enter();
-			return 1;
-		}
+	if (is_prefix_ci(buff, len, "!RESET") || is_prefix_ci(buff, len, "!RST")){
+		reset_requested = 1;
+		return 1;
+	}
 
-		if (is_prefix_ci(buff, len, "!RESET") || is_prefix_ci(buff, len, "!RST")){
-			reset_requested = 1;
-			return 1;
-		}
+	if (is_prefix_ci(buff, len, "!MENU") || is_prefix_ci(buff, len, "!CONFIG")){
+		menu_enter();
+		return 1;
+	}
+
+	if (state == STATE_RUN){
 
 		if (cfg_auto_prog_run_mode && (len >= cfg_auto_prog_min_bytes)){
+			uint8_t filtered[64];
+			uint32_t flen = 0;
+			if (cfg_prune_on_paste){
+				for (uint32_t i = 0; i < len && flen < sizeof(filtered); i++){
+					if (is_bf_cmd((char)buff[i])) filtered[flen++] = buff[i];
+				}
+				if (flen == 0) return 1;
+			} else {
+				flen = (len < sizeof(filtered)) ? len : sizeof(filtered);
+				memcpy(filtered, buff, flen);
+			}
+
 			// Auto-detected code paste in Run Mode! Transition to Program Mode
 			state = STATE_PROGRAM;
 			HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
@@ -810,9 +1360,9 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			stream_init_done = 0;
 			prog_last_rx_tick = HAL_GetTick();
 
-			memcpy(prog_buffer, buff, len);
-			prog_rx_count = len;
-			prog_total_received = len;
+			memcpy(prog_buffer, filtered, flen);
+			prog_rx_count = flen;
+			prog_total_received = flen;
 
 			CDC_Print("\r\n=== AUTO-PROGRAM MODE ===\r\nUploading Brainfuck code...\r\n");
 			return 1;
@@ -885,6 +1435,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		// Standalone Spacebar: execute/toggle selected item
 		if (len == 1 && buff[0] == ' '){
 			menu_action_pending = menu_cursor;
+			menu_action_dir = 1;
 			return 1;
 		}
 
@@ -907,82 +1458,246 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 					menu_needs_render = 1;
 					return 1;
 				}
+				else if (buff[idx+2] == 'C'){ // Right Arrow -> cycle forward
+					menu_action_pending = menu_cursor;
+					menu_action_dir = 1;
+					return 1;
+				}
+				else if (buff[idx+2] == 'D'){ // Left Arrow -> cycle backward
+					menu_action_pending = menu_cursor;
+					menu_action_dir = -1;
+					return 1;
+				}
 			}
-			// Standalone ESC: exit menu
-			menu_exit_requested = 1;
-			return 1;
+			// Standalone ESC: back to parent menu or exit
+			if (menu_page == MENU_PAGE_SETTINGS || menu_page == MENU_PAGE_LIBRARY){
+				menu_page = MENU_PAGE_MAIN;
+				menu_cursor = 0;
+				menu_needs_render = 1;
+				return 1;
+			} else {
+				menu_exit_requested = 1;
+				return 1;
+			}
 		}
 
 		// 2. Direct numbered / letter shortcuts
-		if (!cfg_manual_step_enabled){
-			// Collapsed menu (1-8, 0)
-			if (buff[idx] >= '1' && buff[idx] <= '8'){
+		if (menu_page == MENU_PAGE_MAIN){
+			if (buff[idx] >= '1' && buff[idx] <= '5'){
 				last_num_key_tick = HAL_GetTick();
 				menu_cursor = buff[idx] - '1';
 				menu_action_pending = menu_cursor;
+				menu_action_dir = 1;
 				return 1;
 			}
-		} else {
-			// Expanded menu (1-9, A, 0)
+			if (buff[idx] == '0' || buff[idx] == 'q' || buff[idx] == 'Q'){
+				menu_cursor = 5; // Exit without saving
+				menu_action_pending = 5;
+				menu_action_dir = 1;
+				return 1;
+			}
+		}
+		else if (menu_page == MENU_PAGE_SETTINGS){
 			if (buff[idx] >= '1' && buff[idx] <= '9'){
 				last_num_key_tick = HAL_GetTick();
 				menu_cursor = buff[idx] - '1';
 				menu_action_pending = menu_cursor;
+				menu_action_dir = 1;
 				return 1;
 			}
-			if (buff[idx] == 'a' || buff[idx] == 'A'){
-				last_num_key_tick = HAL_GetTick();
-				menu_cursor = 9; // Restore Default Demo
-				menu_action_pending = menu_cursor;
+			if (cfg_manual_step_enabled && (buff[idx] == 'a' || buff[idx] == 'A')){
+				menu_cursor = 9;
+				menu_action_pending = 9;
+				menu_action_dir = 1;
+				return 1;
+			}
+			if (cfg_manual_step_enabled && (buff[idx] == 'b' || buff[idx] == 'B')){
+				menu_cursor = 10;
+				menu_action_pending = 10;
+				menu_action_dir = 1;
+				return 1;
+			}
+			if (buff[idx] == '0' || buff[idx] == 'q' || buff[idx] == 'Q'){
+				menu_page = MENU_PAGE_MAIN;
+				menu_cursor = 1;
+				menu_needs_render = 1;
 				return 1;
 			}
 		}
-
-		if (buff[idx] == '0' || buff[idx] == 'q' || buff[idx] == 'Q'){
-			menu_exit_requested = 1;
-			return 1;
+		else if (menu_page == MENU_PAGE_LIBRARY){
+			if (buff[idx] == 'a' || buff[idx] == 'A'){
+				lib_start_add_requested = 1;
+				return 1;
+			}
+			if (buff[idx] == 'd' || buff[idx] == 'D'){
+				if (menu_cursor < lib_display_count){
+					uint8_t slot = lib_display_slots[menu_cursor];
+					if (slot > 0){
+						lib_delete_pending_slot = slot;
+					}
+				}
+				return 1;
+			}
+			if (buff[idx] == 'l' || buff[idx] == 'L'){
+				if (menu_cursor < lib_display_count){
+					uint8_t slot = lib_display_slots[menu_cursor];
+					lib_load_pending_slot = slot;
+				}
+				return 1;
+			}
+			if (buff[idx] == '0' || buff[idx] == 'q' || buff[idx] == 'Q'){
+				menu_page = MENU_PAGE_MAIN;
+				menu_cursor = 0;
+				menu_needs_render = 1;
+				return 1;
+			}
 		}
 
 		// 3. Enter / Return or Space: execute selected cursor item
 		if (buff[idx] == '\r' || buff[idx] == '\n'){
 			if (HAL_GetTick() - last_num_key_tick > 100){
 				menu_action_pending = menu_cursor;
+				menu_action_dir = 1;
 			}
 			return 1;
 		}
 		if (buff[idx] == ' '){
 			menu_action_pending = menu_cursor;
+			menu_action_dir = 1;
 			return 1;
 		}
 
 		return 1;
 	}
 
+	if (state == STATE_LIB_ADD){
+		if (lib_add_substate == LIB_ADD_NAME){
+			char echo_buf[64];
+			uint32_t echo_len = 0;
+			for (uint32_t i = 0; i < len; i++){
+				char c = (char)buff[i];
+				if (c == 0x1B){ // ESC: cancel
+					state = STATE_CONFIG;
+					menu_page = MENU_PAGE_LIBRARY;
+					menu_needs_render = 1;
+					return 1;
+				}
+				if (c == '\r' || c == '\n'){
+					if (lib_name_len == 0){
+						strncpy(lib_name_buf, "User_Prog", sizeof(lib_name_buf));
+						lib_name_len = strlen(lib_name_buf);
+					}
+					lib_name_buf[lib_name_len] = '\0';
+					lib_add_substate = LIB_ADD_PASTE_PROMPT;
+					return 1;
+				}
+				else if (c == 0x08 || c == 0x7F){ // Backspace
+					if (lib_name_len > 0){
+						lib_name_len--;
+						lib_name_buf[lib_name_len] = '\0';
+						if (echo_len + 3 < sizeof(echo_buf)){
+							echo_buf[echo_len++] = '\b';
+							echo_buf[echo_len++] = ' ';
+							echo_buf[echo_len++] = '\b';
+						}
+					}
+				}
+				else if (c >= 0x20 && c <= 0x7E && lib_name_len < 15){
+					lib_name_buf[lib_name_len++] = c;
+					lib_name_buf[lib_name_len] = '\0';
+					if (echo_len < sizeof(echo_buf)){
+						echo_buf[echo_len++] = c;
+					}
+				}
+			}
+			if (echo_len > 0 && !TxBusy()){
+				CDC_Transmit_FS((uint8_t *)echo_buf, echo_len);
+			}
+			return 1;
+		}
+		else if (lib_add_substate == LIB_ADD_PASTE){
+			lib_add_last_rx_tick = HAL_GetTick();
+			for (uint32_t i = 0; i < len; i++){
+				char c = (char)buff[i];
+				if (cfg_prune_in_library && !is_bf_cmd(c)) continue;
+				if (lib_code_size < FLASH_CAPACITY){
+					writeROMFast(lib_code_size++, (uint8_t)c);
+				}
+			}
+			return 1;
+		}
+		else if (lib_add_substate == LIB_ADD_VERIFY_PROMPT){
+			if (len > 0){
+				char k = (char)buff[0];
+				if (k == 'n' || k == 'N'){
+					lib_verify_choice = 0;
+					lib_verify_choice_pending = 1;
+					return 1;
+				}
+				else if (k == 'y' || k == 'Y' || k == '\r' || k == '\n' || k == ' '){
+					lib_verify_choice = 1;
+					lib_verify_choice_pending = 1;
+					return 1;
+				}
+			}
+			return 1;
+		}
+		else if (lib_add_substate == LIB_ADD_VERIFYING){
+			if (len > 0){
+				if (buff[0] == '\r' || buff[0] == '\n' || buff[0] == ' '){
+					lib_verify_early_commit = 1;
+					return 1;
+				}
+				if (buff[0] == 0x1B || buff[0] == 'c' || buff[0] == 'C'){
+					reset_requested = 1;
+					return 1;
+				}
+			}
+			return 1;
+		}
+	}
+
 	if (state == STATE_PROGRAM){
 		prog_last_rx_tick = HAL_GetTick();
 		prog_active = 1;
 
+		uint8_t filtered_buff[64];
+		const uint8_t *in_data = buff;
+		uint32_t in_len = len;
+
+		if (cfg_prune_on_paste){
+			uint32_t f_len = 0;
+			for (uint32_t i = 0; i < len && f_len < sizeof(filtered_buff); i++){
+				if (is_bf_cmd((char)buff[i])){
+					filtered_buff[f_len++] = buff[i];
+				}
+			}
+			if (f_len == 0) return 1;
+			in_data = filtered_buff;
+			in_len = f_len;
+		}
+
 		if (!prog_is_streaming){
-			if (prog_rx_count + len <= PROG_BUF_SIZE){
-				memcpy(prog_buffer + prog_rx_count, buff, len);
-				prog_rx_count += len;
-				prog_total_received += len;
+			if (prog_rx_count + in_len <= PROG_BUF_SIZE){
+				memcpy(prog_buffer + prog_rx_count, in_data, in_len);
+				prog_rx_count += in_len;
+				prog_total_received += in_len;
 				return 1; // Buffer has room: re-arm USB endpoint immediately
 			}
 			else {
 				// Buffer has filled 4 kB: fill remainder of prog_buffer and transition to streaming
 				uint32_t space = PROG_BUF_SIZE - prog_rx_count;
 				if (space > 0){
-					memcpy(prog_buffer + prog_rx_count, buff, space);
+					memcpy(prog_buffer + prog_rx_count, in_data, space);
 					prog_rx_count += space;
 					prog_total_received += space;
 				}
 				prog_is_streaming = 1;
-				uint32_t rem = len - space;
+				uint32_t rem = in_len - space;
 				for (uint32_t i = 0; i < rem; i++){
 					uint16_t next = (staging_head + 1) % STAGING_BUF_SIZE;
 					if (next != staging_tail){
-						stream_staging[staging_head] = buff[space + i];
+						stream_staging[staging_head] = in_data[space + i];
 						staging_head = next;
 						prog_total_received++;
 					}
@@ -995,11 +1710,11 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		}
 		else {
 			// In streaming mode: queue incoming packets into staging FIFO
-			for (uint32_t i = 0; i < len; i++){
+			for (uint32_t i = 0; i < in_len; i++){
 				if (prog_total_received < FLASH_CAPACITY){
 					uint16_t next = (staging_head + 1) % STAGING_BUF_SIZE;
 					if (next != staging_tail){
-						stream_staging[staging_head] = buff[i];
+						stream_staging[staging_head] = in_data[i];
 						staging_head = next;
 						prog_total_received++;
 					}
@@ -1100,8 +1815,9 @@ int main(void)
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
   state = STATE_RUN;
 
-  // Load persistent settings from internal Flash
+  // Load persistent settings and library TOC from internal Flash
   settings_load();
+  lib_init_toc();
   set_freq(freq);
 
   uint8_t init_btn = HAL_GPIO_ReadPin(BRD_RST_GPIO_Port, BRD_RST_Pin);
@@ -1286,10 +2002,28 @@ int main(void)
 			  menu_exit_requested = 0;
 			  menu_exit();
 		  }
+		  else if (lib_start_add_requested){
+			  lib_start_add_requested = 0;
+			  lib_start_add_program();
+		  }
+		  else if (lib_delete_pending_slot >= 0){
+			  uint8_t slot = (uint8_t)lib_delete_pending_slot;
+			  lib_delete_pending_slot = -1;
+			  lib_delete_program(slot);
+			  CDC_Printf("\r\n[Deleted Slot %02d]\r\n", slot);
+			  HAL_Delay(300);
+			  menu_render();
+		  }
+		  else if (lib_load_pending_slot >= 0){
+			  uint8_t slot = (uint8_t)lib_load_pending_slot;
+			  lib_load_pending_slot = -1;
+			  lib_load_and_run(slot);
+		  }
 		  else if (menu_action_pending >= 0){
 			  uint8_t act = (uint8_t)menu_action_pending;
+			  int8_t dir = menu_action_dir;
 			  menu_action_pending = -1;
-			  menu_execute_action(act);
+			  menu_execute_action(act, dir);
 			  if (state == STATE_CONFIG){
 				  menu_render();
 			  }
@@ -1298,10 +2032,97 @@ int main(void)
 			  menu_needs_render = 0;
 			  menu_render();
 		  }
-
 		  else if (btn_debounced == GPIO_PIN_SET){
 			  // Continuous smooth LED breathing/pulsing while in Config Menu (only when actively in menu)
 			  led_update_pulse(1200);
+		  }
+	  }
+
+	  // 2.5 Library Add Program handling (Thread Mode)
+	  if (state == STATE_LIB_ADD){
+		  if (lib_add_substate == LIB_ADD_PASTE_PROMPT){
+			  CDC_Printf("\r\nName: %s\r\n", lib_name_buf);
+			  CDC_Print("Preparing scratchpad... ");
+			  initROMProgramming();
+			  eraseROMFast();
+			  CDC_Print("Ready.\r\n");
+			  CDC_Print("Paste Brainfuck code now (press Enter or pause 100ms when done)...\r\n");
+			  lib_code_size = 0;
+			  lib_add_last_rx_tick = HAL_GetTick();
+			  lib_add_substate = LIB_ADD_PASTE;
+		  }
+		  else if (lib_add_substate == LIB_ADD_PASTE && lib_code_size > 0){
+			  if (HAL_GetTick() - lib_add_last_rx_tick >= PROG_IDLE_TIMEOUT_MS){
+				  CDC_Printf("\r\nReceived %lu valid bytes.\r\n", (unsigned long)lib_code_size);
+				  CDC_Print("Run on FPGA to verify before saving? [Y/n]: ");
+				  lib_add_substate = LIB_ADD_VERIFY_PROMPT;
+			  }
+		  }
+		  else if (lib_add_substate == LIB_ADD_VERIFY_PROMPT){
+			  if (lib_verify_choice_pending){
+				  lib_verify_choice_pending = 0;
+				  if (lib_verify_choice == 0){
+					  CDC_Print("No\r\nSaving directly to Library...\r\n");
+					  lib_verify_requested = 0;
+					  lib_add_substate = LIB_ADD_COMMIT;
+				  }
+				  else {
+					  CDC_Print("Yes\r\n\r\nRunning on FPGA soft-processor...\r\n");
+					  CDC_Print("Press RESET button (or type !RST) within 10s to abort.\r\n");
+					  CDC_Print("Auto-saving in 10s (or press Enter to save now)...\r\n");
+					  lib_verify_requested = 1;
+					  if (cfg_append_endless_loop){
+						  writeROMFast(lib_code_size, '[');
+						  writeROMFast(lib_code_size + 1, '-');
+						  writeROMFast(lib_code_size + 2, ']');
+						  writeROMFast(lib_code_size + 3, '+');
+						  writeROMFast(lib_code_size + 4, '[');
+						  writeROMFast(lib_code_size + 5, ']');
+					  }
+					  initROMNormal();
+					  HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
+					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+					  HAL_Delay(10);
+					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+					  lib_verify_start_tick = HAL_GetTick();
+					  lib_add_substate = LIB_ADD_VERIFYING;
+				  }
+			  }
+		  }
+		  else if (lib_add_substate == LIB_ADD_VERIFYING){
+			  if (reset_requested || (btn_debounced == GPIO_PIN_RESET)){
+				  reset_requested = 0;
+				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+				  flashDefaultLogoProgram();
+				  CDC_Print("\r\n[Upload Cancelled: Program was NOT saved to Library]\r\n\r\n");
+				  HAL_Delay(1200);
+				  state = STATE_CONFIG;
+				  menu_page = MENU_PAGE_LIBRARY;
+				  menu_needs_render = 1;
+			  }
+			  else if (lib_verify_early_commit){
+				  lib_verify_early_commit = 0;
+				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+				  CDC_Print("\r\n[Verification complete: Saving to Library...]\r\n");
+				  lib_add_substate = LIB_ADD_COMMIT;
+			  }
+			  else if (HAL_GetTick() - lib_verify_start_tick >= 10000){
+				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+				  CDC_Print("\r\n[10s Verification Elapsed: Auto-saving to Library...]\r\n");
+				  lib_add_substate = LIB_ADD_COMMIT;
+			  }
+		  }
+		  else if (lib_add_substate == LIB_ADD_COMMIT){
+			  uint8_t slot = lib_save_program(lib_name_buf, lib_code_size, cfg_prune_in_library);
+			  if (slot > 0){
+				  CDC_Printf("\r\n[SUCCESS: Saved to Slot %02d: '%s' (%lu bytes)]\r\n\r\n", slot, lib_name_buf, (unsigned long)lib_code_size);
+			  } else {
+				  CDC_Print("\r\n[ERROR: Failed to save program to Library partition]\r\n\r\n");
+			  }
+			  HAL_Delay(1500);
+			  state = STATE_CONFIG;
+			  menu_page = MENU_PAGE_LIBRARY;
+			  menu_needs_render = 1;
 		  }
 	  }
 
@@ -2262,28 +3083,6 @@ void initROMProgramming(void){
 	setDataBusModeOutput();
 }
 
-const char DEFAULT_BRAINFUINO_LOGO_BF[] = 
-	"++++++++++[>+++++++++>++++++++++++>++++++>+++++>++++++++>+++++++++++>++++<<<<<<<-]"
-	">+>+++>>>>>--------..<<<<<<++++....>>>>>>............<<<<<<.>>>>>>........<<<<<<.."
-	">>>>>>.......<<<<<<.>>>>>>.............<<<<<<<+++++++++++++.---.>>>>>>>.<<<<<+.>>>>>."
-	"<<<<<<..>>>>>>.+++++++++.---------.<<<<<<.>>>>>>.<<<<<<..>>>>>>.<<<<<<..>>>>>>.<<<<<<."
-	">>>>>>++++++++.<<<<<<.>>>>>>+.<<<<<<.>>>>>>---------.<<<<<<..>>>>>>..+++++++++++++++."
-	"---------------.<<<<<<.>.<.>>>>>>...<<<<<<.>>>>>>++++++++.<<<<<<.>>>>>>+.<<<<<<."
-	">>>>>>---------.<<<<<<..>>>>>>...<<<<<<...>>>>>>..<<<<<<<+++.---.>>>>>>>.<<<<<.>>>>>.."
-	"<<<<<<.>>>>>>.<<<<<<---.>.>>>>>.+++++++.<<<<<<+++..>>>>>>++++++++.---------------."
-	"<<<<<<.+.>>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.+++++++.<<<<<<-.>>>>>>-------.<<<<<<---.>.>>>>>."
-	"<<<<<.<+++.>.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.+++++++.<<<<<<."
-	">>>>>>-------.<<<<<<---.>>>>>>.+++++++++++++++.---------------.<<<<<<+++.>>>>>>.<<<<<<---."
-	">>>>>>.<<<<<<<+++.---.>>>>>>>.<<<<<.>>>>>.<<<<<.<+++.>>>>>>+++++++++.---------.<<<<<."
-	">>>>>.<<<<<.>>>>>.<<<<<.>>>>>.++++++++.<<<<<<.>.>>>>>--------.<<<<<.>>>>>.<<<<<.>>>>>."
-	"<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>..<<<<<<.>.>>>>>.<<<<<.<.>.>>>>>.<<<<<.>>>>>.<<<<<."
-	">>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.++++++++.<<<<<<.>>>>>>+.---------.<<<<<.<<+++."
-	"---.>>>>>>>.<<<<<.<....>>>>>>+++++++++++++++.<<<<<.<.>.>>>>>---------------..<<<<<<---."
-	"+++..>>>>>>++++++++++++.<<<<<<.>.<.>.<.>.>>>>>------------.<<<<<.<.>.<.>.>>>>>..<<<<<<---."
-	"+++..>>>>>>++++++++++++.<<<<<<.>.<.>.<.>.>>>>>------------.<<<<<.<.>.<---.+++...>>>>>>"
-	"+++++++++++++++.---------------.<<<<<<<+++.---.>>>>>>>.................................................."
-	"<<<<<<<+++.---."
-	"[-]+[]";
 
 uint8_t flashBufferToROM(const uint8_t *code, uint32_t len, const char *title, uint8_t append_loop, uint8_t auto_launch){
 	if (title){
