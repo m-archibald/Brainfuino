@@ -139,7 +139,8 @@ if ($Flash) {
             $sp.BaseStream.Flush()
             $sp.Close()
         } catch {
-            Write-Host "Note: Could not open/write to $ComPort (device may already be in DFU mode): $_"
+            Write-Host "SerialPort.Open failed, attempting raw Win32 DFU trigger via $ComPort..."
+            python -c "import ctypes; from ctypes import wintypes; k=ctypes.WinDLL('kernel32', use_last_error=True); h=k.CreateFileW('\\\\.\\$ComPort', 0xC0000000, 0, None, 3, 0, None); w=wintypes.DWORD(); (k.WriteFile(h, b'!DFU!\r\n', 7, ctypes.byref(w), None), k.CloseHandle(h)) if h!=-1 else None"
         } finally {
             if ($sp) { $sp.Dispose() }
         }

@@ -27,19 +27,31 @@ EXPECTED_BANNER_LINES = [
 
 # (Display Name, Period in ns, Capture Timeout in seconds)
 SPEEDS = [
-    ("62.5 kHz", 16000.0, 7.0),
-    ("125 kHz",   8000.0, 4.5),
-    ("250 kHz",   4000.0, 3.0),
-    ("500 kHz",   2000.0, 2.5),
-    ("750 kHz",   1333.3, 2.5),
-    ("1 MHz",     1000.0, 2.5),
-    ("1.5 MHz",    666.7, 2.5),
-    ("2 MHz",      500.0, 2.5),
-    ("3 MHz",      333.3, 2.5),
-    ("4 MHz",      250.0, 2.5),
-    ("6 MHz",      166.7, 2.5),
-    ("8 MHz",      125.0, 2.5),
-    ("12 MHz",      83.3, 2.5),
+    ("10 Hz",    100000000.0, 60.0),
+    ("25 Hz",     40000000.0, 30.0),
+    ("50 Hz",     20000000.0, 18.0),
+    ("100 Hz",    10000000.0, 12.0),
+    ("250 Hz",     4000000.0,  9.0),
+    ("500 Hz",     2000000.0,  8.0),
+    ("1 kHz",      1000000.0,  8.0),
+    ("2 kHz",       500000.0,  8.0),
+    ("5 kHz",       200000.0,  8.0),
+    ("10 kHz",      100000.0,  8.0),
+    ("25 kHz",       40000.0,  8.0),
+    ("50 kHz",       20000.0,  8.0),
+    ("62.5 kHz",     16000.0,  7.0),
+    ("125 kHz",       8000.0,  4.5),
+    ("250 kHz",       4000.0,  3.0),
+    ("500 kHz",       2000.0,  2.5),
+    ("750 kHz",       1333.3,  2.5),
+    ("1 MHz",         1000.0,  2.5),
+    ("1.5 MHz",        666.7,  2.5),
+    ("2 MHz",          500.0,  2.5),
+    ("3 MHz",          333.3,  2.5),
+    ("4 MHz",          250.0,  2.5),
+    ("6 MHz",          166.7,  2.5),
+    ("8 MHz",          125.0,  2.5),
+    ("12 MHz",          83.3,  2.5),
 ]
 
 
@@ -68,8 +80,8 @@ def set_speed_and_capture(ser, speed_name, timeout_s=3.0):
     time.sleep(0.15)
     flush_input(ser)
 
-    # 2. Cycle speed until it matches target speed_name (up to 16 cycles)
-    for _ in range(16):
+    # 2. Cycle speed until it matches target speed_name (up to 28 cycles)
+    for _ in range(28):
         ser.write(b"5")
         time.sleep(0.08)
         menu_text = ser.read(ser.in_waiting).decode("ascii", errors="replace")
@@ -98,28 +110,29 @@ def set_speed_and_capture(ser, speed_name, timeout_s=3.0):
     text = captured.decode("ascii", errors="replace")
 
     # Check banner fidelity
+    total_lines = len(EXPECTED_BANNER_LINES)
     matched_lines = sum(1 for line in EXPECTED_BANNER_LINES if line in text)
-    passed = (matched_lines == len(EXPECTED_BANNER_LINES))
-    fidelity_pct = (matched_lines / len(EXPECTED_BANNER_LINES)) * 100.0
+    fidelity = (matched_lines / total_lines) * 100.0
+    passed = (fidelity == 100.0)
 
-    return passed, fidelity_pct, len(captured), elapsed_ms, text
+    return passed, fidelity, len(captured), elapsed_ms, text
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Brainfuino 13-Speed Logo Verification Test")
+    parser = argparse.ArgumentParser(description="Brainfuino Logo Verification Test")
     parser.add_argument("--port", "-p", default=None, help="Serial COM port (default: auto-detect)")
     parser.add_argument("--baud", "-b", type=int, default=115200, help="Baud rate (default: 115200)")
+    parser.add_argument("--speed", "-s", default=None, help="Specific speed to test (e.g. '50 kHz')")
     args = parser.parse_args()
 
     port = args.port or auto_detect_port()
 
     print("=" * 74)
-    print("           BRAINFUINO 13-SPEED LOGO FIDELITY TEST")
+    print("           BRAINFUINO LOGO FIDELITY TEST")
     print("=" * 74)
     print(f"Target Port : {port}")
     print(f"Baud Rate   : {args.baud}")
     print(f"Flash ROM   : SST39LF020-55-4C-WHE (Taa = 55 ns, Fmax = 18.18 MHz)")
-    print(f"Frequencies : 13 speeds from 62.5 kHz to 12 MHz (all <= 12 MHz safe)")
     print("=" * 74 + "\n")
 
     try:
@@ -133,17 +146,31 @@ def main():
     flush_input(ser)
     ser.write(b"!menu\r\n")
     time.sleep(0.2)
-    flush_input(ser)
-    ser.write(b"7\r\n")  # Option 7: Restore Default Demo
+    menu_txt = ser.read(ser.in_waiting).decode("latin-1", errors="replace")
+    
+    # If manual stepping is enabled, option is 'A', otherwise '8'
+    if "Manual Stepping Mode    : [ ENABLED" in menu_txt:
+        ser.write(b"A\r\n")
+    else:
+        ser.write(b"8\r\n")
     time.sleep(1.5)
     flush_input(ser)
     print("Default demo confirmed.\n")
+
+    # Filter speeds if specified
+    speeds_to_test = SPEEDS
+    if args.speed:
+        speeds_to_test = [s for s in SPEEDS if s[0].lower() == args.speed.lower()]
+        if not speeds_to_test:
+            print(f"Error: Unknown speed '{args.speed}'")
+            ser.close()
+            sys.exit(1)
 
     print(f"{'Idx':<4} {'Frequency':<11} {'Cycle Period':<14} {'ROM Margin':<12} {'Status':<8} {'Fidelity':<10} {'Bytes':<7} {'Time':<9}")
     print("-" * 74)
 
     results = []
-    for idx, (name, cycle_ns, timeout_s) in enumerate(SPEEDS, 1):
+    for idx, (name, cycle_ns, timeout_s) in enumerate(speeds_to_test, 1):
         margin_ns = cycle_ns - 55.0
         margin_str = f"+{margin_ns:0.0f} ns" if margin_ns < 1000 else f"+{margin_ns/1000:0.1f} us"
         passed, fidelity, byte_cnt, elapsed, text = set_speed_and_capture(ser, name, timeout_s=timeout_s)
@@ -157,7 +184,7 @@ def main():
     ser.write(b"!menu\r\n")
     time.sleep(0.15)
     flush_input(ser)
-    for _ in range(16):
+    for _ in range(28):
         ser.write(b"5")
         time.sleep(0.08)
         menu_text = ser.read(ser.in_waiting).decode("ascii", errors="replace")
@@ -171,8 +198,8 @@ def main():
     all_passed = all(r[1] for r in results)
 
     if all_passed:
-        print("\n>>> SUCCESS: ALL 13 FREQUENCIES PASSED WITH 100% CHARACTER FIDELITY! <<<")
-        print("    Zero dropped bytes across all speeds from 62.5 kHz to 12 MHz.")
+        print(f"\n>>> SUCCESS: ALL TESTED FREQUENCIES PASSED WITH 100% CHARACTER FIDELITY! <<<")
+        print("    Zero dropped bytes.")
     else:
         print("\n>>> WARNING: Character loss detected on some speeds! <<<")
     print("=" * 74)

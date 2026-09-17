@@ -18,8 +18,19 @@ When you send an individual character (payload length under 3 bytes), the STM32 
 
 | Command | Action | Description |
 | :---: | :--- | :--- |
+| `!RESET` / `!RST` | Reset FPGA | Pulses the FPGA soft-processor reset line (`BF_RST`) and announces `[bf_µP reset] <speed>`. |
 | `!DFU!` | Software DFU Reboot | Reboots STM32 into built-in USB DFU Bootloader mode for firmware updates without moving the `BOOT` jumper. |
-| `!MENU!` / `!CONFIG!` | Config Menu | Opens interactive configuration and clock tuning menu (Phase 3). |
+| `!MENU!` / `!CONFIG!` | Config Menu | Opens interactive configuration and clock tuning menu. |
+
+---
+
+### Manual Stepping Mode (Single-Stepping & Burst Stepping)
+
+When **Manual Stepping Mode** is enabled via the [Configuration Menu](config-menu.md#7-manual-stepping-mode--disabled--enabled-), the FPGA master clock remains stopped until triggered by the configured keyboard shortcut:
+
+* **Configurable Trigger Key:** Spacebar, Tab, or Enter.
+* **Configurable Step Multiplier:** 1, 10, 100, 1,000, 10,000, or 100,000 clock ticks per keypress.
+* **Burst Accumulation:** If you hold or spam the key rapidly, keystroke bursts accumulate in an internal queue and drain cleanly without dropping ticks, allowing frame-by-frame observation of Brainfuck execution.
 
 ---
 
@@ -84,7 +95,7 @@ The Brainfuino button utilizes a 35 ms hardware debounce filter to eliminate tac
 
 | Action | Duration | Red LED Feedback | Result |
 | :--- | :---: | :---: | :--- |
-| **Short Press** (Run Mode) | < 3 seconds | **70 ms Blip** | Resets the running FPGA soft-processor (`BF_RST` pulse) and prints `[Reset]`. |
+| **Short Press** (Run Mode) | < 3 seconds | **70 ms Blip** | Resets the running FPGA soft-processor (`BF_RST` pulse) and prints `[bf_µP reset] <speed>` (e.g. `[bf_µP reset] 500 kHz`). |
 | **Short Press** (Config Mode) | < 3 seconds | Turns OFF | Exits configuration menu, saves settings, and resumes execution. |
 | **Short Press** (Program Mode) | < 3 seconds | Turns OFF | Exits Program Mode and executes the program currently in ROM. |
 | **Program Mode Hold** | 3 – 6 seconds | **Solid ON** | Enters **Dedicated Program Mode** (ready for Brainfuck code paste). |

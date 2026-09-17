@@ -33,16 +33,20 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 * **The Problem:** At high clock speeds, output instructions (`.`) hold data on the bus for only 20 clock cycles ($1.66\ \mu\text{s}$ at 12 MHz). Closely-spaced prints (e.g. `\r\n` line endings in Mandelbrot) outpaced Cortex-M0 interrupt latency, causing dropped characters.
 * **The Solution:** Implemented hardware clock-pausing directly in `EXTI2_3_IRQHandler` on `BF_OUTSTRB` falling edge. The STM32 gates MCO in 1 instruction (`RCC->CFGR &= ~RCC_CFGR_MCO`), latches data with zero bus skew, and resumes or throttles based on USB queue capacity.
 
-### 13-Speed Frequency Ladder (62.5 kHz – 12 MHz) — :material-check-circle: Completed
+### 25-Speed Frequency Ladder (10 Hz – 12 MHz) & Manual Stepping Mode — :material-check-circle: Completed
 * **The Finding:** Discovered that the `SST39LF020-55` parallel Flash ROM has a maximum address access time of $55\text{ ns}$ ($18.18\text{ MHz}$ physical limit). Speeds of 24 MHz ($41.6\text{ ns}$) and 48 MHz ($20.8\text{ ns}$) violated silicon access times during single-cycle fetch.
-* **The Solution:** Replaced out-of-spec speeds with a granular 13-speed table ranging from **62.5 kHz** up to **12 MHz** ($+28.3\text{ ns}$ margin above ROM access time). Verified across all 13 speeds with 100.0% character fidelity.
+* **The Solution:** Implemented a dual-engine architecture providing 25 speeds spanning 6 orders of magnitude:
+    * **10 Hz – 50 kHz:** Hardware TIM1 PWM generating square wave clocks with full cycle precision.
+    * **62.5 kHz – 12 MHz:** MCO hardware clock dividers with positive timing margin ($+28.3\text{ ns}$ at 12 MHz).
+* **Manual Stepping Mode:** Added single-stepping and burst-stepping capabilities with an accumulator queue engine supporting Spacebar, Tab, or Enter trigger keys with $1$ to $100\text{k}$ tick multipliers.
 
-### Non-Volatile Flash Configuration Persistence — :material-check-circle: Completed
-* **The Feature:** All configuration menu settings (active clock frequency, upload threshold, auto-reset, endless loop injection, and run mode speed hotkeys) automatically write to the STM32's top internal Flash page (Page 63: `0x0801F800`) on exit with CRC verification and wear-mitigation checking. Settings persist across power cycles and hard reboots.
+### Non-Volatile Flash Configuration Persistence & Delayed Wear Leveling — :material-check-circle: Completed
+* **The Feature:** All configuration menu settings (active clock frequency, manual stepping mode, step multiplier, step trigger key, upload threshold, auto-reset, endless loop injection, and run mode speed hotkeys) automatically write to the STM32's top internal Flash page (Page 63: `0x0801F800`) on exit with CRC verification and wear-mitigation checking.
+* **Delayed Wear Leveling:** Runtime hotkey speed changes (`PgUp`/`PgDn`) use a 3-second debounce timer before committing to Flash, safeguarding flash cycle endurance during rapid adjustments.
 
-### Default Burned-in Program (10-Second Reset Hold)
-* **The Goal:** Store a default, self-contained Brainfuck demo program directly within the STM32 microcontroller's internal Flash memory.
-* **Operation:** If the user holds down the Reset button for **10 seconds**, the STM32 will automatically erase parallel Flash ROM and write this default program into address `0`. This provides an immediate out-of-the-box demo and quick sanity check without requiring a computer connection.
+### Default Burned-in Program Restore — :material-check-circle: Completed
+* **The Feature:** The official Brainfuino ASCII logo demo is embedded directly in STM32 internal Flash.
+* **Operation:** Holding the hardware button for $\ge 10\text{ seconds}$ (confirmed by a rapid 50 ms LED strobe) or choosing Option `A` in the configuration menu automatically erases parallel Flash ROM, re-flashes the demo program, and executes it immediately.
 
 ### Interactive Terminal Menu & UI Improvements (raspi-config style) — :material-check-circle: Completed
 * **The Goal:** Enhance the companion serial terminal with an interactive, user-friendly text UI (reminiscent of Raspberry Pi's `raspi-config`) for configuring STM32 firmware features, accessible via a dedicated 6-second button hold (with smooth breathing PWM fade on the Red LED) or terminal command (`!MENU` / `!CONFIG`).

@@ -63,6 +63,7 @@ extern volatile uint32_t head;
 extern volatile uint32_t tail;
 extern volatile uint32_t active_mco_cfg;
 extern volatile uint8_t mco_throttled;
+extern volatile uint8_t active_is_tim1;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -164,8 +165,12 @@ void EXTI2_3_IRQHandler(void)
 {
   /* USER CODE BEGIN EXTI2_3_IRQn 0 */
   if (EXTI->PR & EXTI_PR_PR3){
-    // 1. Instantly freeze FPGA clock by disabling MCO in 1 instruction
-    RCC->CFGR &= ~RCC_CFGR_MCO;
+    // 1. Instantly freeze FPGA clock
+    if (active_is_tim1){
+      TIM1->CR1 &= ~TIM_CR1_CEN;
+    } else {
+      RCC->CFGR &= ~RCC_CFGR_MCO;
+    }
 
     // 2. Settle delay (2 NOPs ensure bus propagation delay is fully satisfied)
     __NOP();
@@ -181,7 +186,11 @@ void EXTI2_3_IRQHandler(void)
       outbox[tail] = data;
       tail = next_tail;
       // Re-enable FPGA clock immediately
-      RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCO | RCC_CFGR_MCOPRE)) | active_mco_cfg;
+      if (active_is_tim1){
+        TIM1->CR1 |= TIM_CR1_CEN;
+      } else {
+        RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCO | RCC_CFGR_MCOPRE)) | active_mco_cfg;
+      }
     } else {
       // Outbox nearly full: queue byte and keep FPGA clock paused until USB drains
       outbox[tail] = data;

@@ -57,7 +57,21 @@
 #define SPEED_HOTKEY_UP_DOWN     2   // Up Arrow / Down Arrow (\x1b[A / \x1b[B)
 #define SPEED_HOTKEY_PLUS_MINUS  3   // '+' / '-'
 
-#define MENU_ITEM_COUNT          9
+// Manual step tick advance options
+#define STEP_TICKS_1             0   // 1 Tick
+#define STEP_TICKS_10            1   // 10 Ticks
+#define STEP_TICKS_100           2   // 100 Ticks
+#define STEP_TICKS_1K            3   // 1,000 Ticks
+#define STEP_TICKS_10K           4   // 10,000 Ticks
+#define STEP_TICKS_100K          5   // 100,000 Ticks
+
+// Manual step key options
+#define STEP_KEY_SPACE           0   // Spacebar (0x20)
+#define STEP_KEY_TAB             1   // Tab (0x09)
+#define STEP_KEY_ENTER           2   // Enter (0x0D / 0x0A)
+
+#define MENU_ITEM_COUNT_COLLAPSED 9
+#define MENU_ITEM_COUNT_EXPANDED  11
 
 #define DFU_MAGIC_ADDR          (*((volatile uint32_t *)0x20003FF0))
 #define DFU_MAGIC_VALUE         0xDEADBEEF
@@ -75,6 +89,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc;
+TIM_HandleTypeDef htim1;
 
 /* USER CODE BEGIN PV */
 
@@ -95,6 +110,7 @@ volatile uint32_t tail;
 uint32_t tail_temp;
 volatile uint32_t active_mco_cfg = 0;
 volatile uint8_t  mco_throttled = 0;
+volatile uint8_t  active_is_tim1 = 0;
 
 // Runtime configuration settings (modifiable in interactive configuration menu)
 uint8_t  cfg_auto_prog_run_mode   = 1;   // 1 = Auto-enter program mode if code paste detected in RUN mode
@@ -102,6 +118,16 @@ uint32_t cfg_auto_prog_min_bytes  = 16;  // Minimum packet size to trigger uploa
 uint8_t  cfg_auto_reset_after_pgm = 1;   // 1 = Automatically reset and launch program after write finishes
 uint8_t  cfg_append_endless_loop  = 1;   // 1 = Automatically append '[-]+[]' infinite loop at EOF to halt PC cleanly
 uint8_t  cfg_speed_hotkey_mode    = SPEED_HOTKEY_PGUP_PGDN;
+uint8_t  cfg_manual_step_enabled  = 0;   // 0 = Normal continuous clock, 1 = Manual step mode (clock paused)
+uint8_t  cfg_manual_step_ticks    = STEP_TICKS_100; // Step burst size (1, 10, 100, 1k, 10k, 100k)
+uint8_t  cfg_manual_step_key      = STEP_KEY_SPACE; // Step trigger key (Space, Tab, Enter)
+
+// Manual clock stepping accumulator queue
+volatile uint32_t manual_step_ticks_pending = 0;
+
+// Delayed Flash wear-leveling timer
+uint8_t  settings_dirty = 0;
+uint32_t settings_dirty_tick = 0;
 
 int8_t   menu_cursor = 0;
 volatile uint8_t menu_needs_render = 0;
@@ -109,6 +135,7 @@ volatile uint8_t menu_exit_requested = 0;
 volatile int8_t  menu_action_pending = -1;
 
 volatile uint8_t dfu_requested;
+volatile uint8_t reset_requested;
 
 // Button debounce and hold tracking
 uint8_t btn_debounced;
@@ -139,6 +166,7 @@ uint8_t stream_init_done;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC_Init(void);
+static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 void initROMNormal(void);
@@ -192,32 +220,93 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 
 typedef struct {
 	const char *name;
+	uint32_t freq_hz;
+	uint8_t is_tim1;
+	uint16_t tim1_psc;
+	uint16_t tim1_arr;
 	uint32_t mco_cfg;
 } FreqConfig;
 
 static const FreqConfig freq_table[] = {
-	{ "62.5 kHz", RCC_MCO1SOURCE_HSI   | RCC_MCODIV_128 },
-	{ "125 kHz",  RCC_MCO1SOURCE_HSI   | RCC_MCODIV_64  },
-	{ "250 kHz",  RCC_MCO1SOURCE_HSI   | RCC_MCODIV_32  },
-	{ "500 kHz",  RCC_MCO1SOURCE_HSI   | RCC_MCODIV_16  },
-	{ "750 kHz",  RCC_MCO1SOURCE_HSI48 | RCC_MCODIV_64  },
-	{ "1 MHz",    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_8   },
-	{ "1.5 MHz",  RCC_MCO1SOURCE_HSI48 | RCC_MCODIV_32  },
-	{ "2 MHz",    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_4   },
-	{ "3 MHz",    RCC_MCO1SOURCE_HSI48 | RCC_MCODIV_16  },
-	{ "4 MHz",    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_2   },
-	{ "6 MHz",    RCC_MCO1SOURCE_HSI48 | RCC_MCODIV_8   },
-	{ "8 MHz",    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_1   },
-	{ "12 MHz",   RCC_MCO1SOURCE_HSI48 | RCC_MCODIV_4   },
+	// Ultra-low frequencies (TIM1_CH1 PWM on PA8)
+	{ "10 Hz",          10, 1, 47999, 99,   0 },
+	{ "25 Hz",          25, 1, 47999, 39,   0 },
+	{ "50 Hz",          50, 1, 47999, 19,   0 },
+	{ "100 Hz",        100, 1, 47999, 9,    0 },
+	{ "250 Hz",        250, 1, 47999, 3,    0 },
+	{ "500 Hz",        500, 1, 47999, 1,    0 },
+	{ "1 kHz",        1000, 1, 479,   99,   0 },
+	{ "2 kHz",        2000, 1, 479,   49,   0 },
+	{ "5 kHz",        5000, 1, 479,   19,   0 },
+	{ "10 kHz",      10000, 1, 479,   9,    0 },
+	{ "25 kHz",      25000, 1, 479,   3,    0 },
+	{ "50 kHz",      50000, 1, 479,   1,    0 },
+
+	// Standard & high frequencies (MCO on PA8)
+	{ "62.5 kHz",    62500, 0, 0,     0,    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_128 },
+	{ "125 kHz",    125000, 0, 0,     0,    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_64  },
+	{ "250 kHz",    250000, 0, 0,     0,    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_32  },
+	{ "500 kHz",    500000, 0, 0,     0,    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_16  },
+	{ "750 kHz",    750000, 0, 0,     0,    RCC_MCO1SOURCE_HSI48 | RCC_MCODIV_64  },
+	{ "1 MHz",     1000000, 0, 0,     0,    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_8   },
+	{ "1.5 MHz",   1500000, 0, 0,     0,    RCC_MCO1SOURCE_HSI48 | RCC_MCODIV_32  },
+	{ "2 MHz",     2000000, 0, 0,     0,    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_4   },
+	{ "3 MHz",     3000000, 0, 0,     0,    RCC_MCO1SOURCE_HSI48 | RCC_MCODIV_16  },
+	{ "4 MHz",     4000000, 0, 0,     0,    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_2   },
+	{ "6 MHz",     6000000, 0, 0,     0,    RCC_MCO1SOURCE_HSI48 | RCC_MCODIV_8   },
+	{ "8 MHz",     8000000, 0, 0,     0,    RCC_MCO1SOURCE_HSI   | RCC_MCODIV_1   },
+	{ "12 MHz",   12000000, 0, 0,     0,    RCC_MCO1SOURCE_HSI48 | RCC_MCODIV_4   },
 };
 #define FREQ_COUNT ((uint8_t)(sizeof(freq_table) / sizeof(freq_table[0])))
-#define DEFAULT_FREQ_INDEX 3 // 500 kHz
+#define DEFAULT_FREQ_INDEX 15 // 500 kHz
 
 void set_freq(uint8_t idx){
 	if (idx >= FREQ_COUNT) idx = DEFAULT_FREQ_INDEX;
 	freq = idx;
-	active_mco_cfg = freq_table[idx].mco_cfg;
-	HAL_RCC_MCOConfig(RCC_MCO, active_mco_cfg & RCC_CFGR_MCO, active_mco_cfg & RCC_CFGR_MCOPRE);
+
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+	GPIO_InitStruct.Pin = BF_CLK_Pin;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+
+	if (freq_table[idx].is_tim1){
+		// Disable MCO output first
+		HAL_RCC_MCOConfig(RCC_MCO, RCC_MCO1SOURCE_NOCLOCK, RCC_MCODIV_1);
+		active_mco_cfg = 0;
+
+		// Reconfigure PA8 as TIM1_CH1 (AF2)
+		GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+		GPIO_InitStruct.Alternate = GPIO_AF2_TIM1;
+		HAL_GPIO_Init(BF_CLK_GPIO_Port, &GPIO_InitStruct);
+
+		// Configure TIM1 Prescaler, Auto-Reload, and Compare Register (50% duty)
+		TIM1->CR1 &= ~TIM_CR1_CEN;
+		TIM1->PSC = freq_table[idx].tim1_psc;
+		TIM1->ARR = freq_table[idx].tim1_arr;
+		TIM1->CCR1 = (freq_table[idx].tim1_arr + 1) / 2;
+		TIM1->EGR = TIM_EGR_UG;
+		active_is_tim1 = 1;
+
+		if (!cfg_manual_step_enabled){
+			TIM1->CR1 |= TIM_CR1_CEN;
+		}
+	} else {
+		// Disable TIM1 counter
+		TIM1->CR1 &= ~TIM_CR1_CEN;
+		active_is_tim1 = 0;
+
+		// Reconfigure PA8 as MCO (AF0)
+		GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+		GPIO_InitStruct.Alternate = GPIO_AF0_MCO;
+		HAL_GPIO_Init(BF_CLK_GPIO_Port, &GPIO_InitStruct);
+
+		active_mco_cfg = freq_table[idx].mco_cfg;
+		if (!cfg_manual_step_enabled){
+			HAL_RCC_MCOConfig(RCC_MCO, active_mco_cfg & RCC_CFGR_MCO, active_mco_cfg & RCC_CFGR_MCOPRE);
+		} else {
+			HAL_RCC_MCOConfig(RCC_MCO, RCC_MCO1SOURCE_NOCLOCK, RCC_MCODIV_1);
+		}
+	}
 }
 
 const char *get_freq_name(uint8_t idx){
@@ -228,7 +317,8 @@ const char *get_freq_name(uint8_t idx){
 void speed_step_up(void){
 	if (freq + 1 < FREQ_COUNT){
 		set_freq(freq + 1);
-		// Transient overlay: save cursor, print dimmed clock status, restore cursor so BF code overwrites it naturally
+		settings_dirty = 1;
+		settings_dirty_tick = HAL_GetTick();
 		CDC_Printf("\x1b[s\x1b[2m[Clock: %s]\x1b[0m\x1b[u", get_freq_name(freq));
 		HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
 		for (volatile int i = 0; i < 60000; i++);
@@ -239,7 +329,8 @@ void speed_step_up(void){
 void speed_step_down(void){
 	if (freq > 0){
 		set_freq(freq - 1);
-		// Transient overlay: save cursor, print dimmed clock status, restore cursor so BF code overwrites it naturally
+		settings_dirty = 1;
+		settings_dirty_tick = HAL_GetTick();
 		CDC_Printf("\x1b[s\x1b[2m[Clock: %s]\x1b[0m\x1b[u", get_freq_name(freq));
 		HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
 		for (volatile int i = 0; i < 60000; i++);
@@ -295,61 +386,151 @@ void led_update_pulse(uint32_t period_ms){
 	}
 }
 
+static uint8_t get_menu_item_count(void){
+	return cfg_manual_step_enabled ? MENU_ITEM_COUNT_EXPANDED : MENU_ITEM_COUNT_COLLAPSED;
+}
+
+static const char *get_step_ticks_name(uint8_t t){
+	switch(t){
+		case STEP_TICKS_1:    return "1 Tick";
+		case STEP_TICKS_10:   return "10 Ticks";
+		case STEP_TICKS_100:  return "100 Ticks";
+		case STEP_TICKS_1K:   return "1k Ticks";
+		case STEP_TICKS_10K:  return "10k Ticks";
+		case STEP_TICKS_100K: return "100k Ticks";
+		default:              return "100 Ticks";
+	}
+}
+
+static const char *get_step_key_name(uint8_t k){
+	switch(k){
+		case STEP_KEY_SPACE: return "Spacebar";
+		case STEP_KEY_TAB:   return "Tab";
+		case STEP_KEY_ENTER: return "Enter";
+		default:             return "Spacebar";
+	}
+}
+
 void menu_render(void){
 	// Clear screen and home cursor (VT100 / ANSI)
 	CDC_Print("\x1b[2J\x1b[H\r\n");
-	CDC_Print("+-----------------------------------------------+\r\n");
-	CDC_Print("|         BRAINFUINO CONFIGURATION MENU         |\r\n");
-	CDC_Print("+-----------------------------------------------+\r\n");
-	CDC_Print("|  Use [Up/Down] & [Enter], or type [1-8, 0]    |\r\n");
-	CDC_Print("+-----------------------------------------------+\r\n");
+	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("|          BRAINFUINO CONFIGURATION MENU          |\r\n");
+	CDC_Print("+-------------------------------------------------+\r\n");
+	if (cfg_manual_step_enabled){
+		CDC_Print("|  Use [Up/Down] & [Enter], or type [1-9, A, 0]   |\r\n");
+	} else {
+		CDC_Print("|  Use [Up/Down] & [Enter], or type [1-8, 0]      |\r\n");
+	}
+	CDC_Print("+-------------------------------------------------+\r\n");
 
-	for (int i = 0; i < MENU_ITEM_COUNT; i++){
+	uint8_t count = get_menu_item_count();
+	if (menu_cursor >= count) menu_cursor = count - 1;
+
+	for (int i = 0; i < count; i++){
 		char val_str[16];
 		const char *label = "";
-		switch(i){
-			case 0:
-				label = "1. Auto-Program on Paste  ";
-				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_prog_run_mode ? "ENABLED" : "DISABLED");
-				break;
-			case 1:
-				label = "2. Paste Upload Threshold ";
-				snprintf(val_str, sizeof(val_str), "[   %2lu B   ]", (unsigned long)cfg_auto_prog_min_bytes);
-				break;
-			case 2:
-				label = "3. Auto-Reset after Flash ";
-				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_reset_after_pgm ? "ENABLED" : "DISABLED");
-				break;
-			case 3:
-				label = "4. Append Endless Loop    ";
-				snprintf(val_str, sizeof(val_str), "[  %-6s  ]", cfg_append_endless_loop ? "[-]+[]" : "NONE");
-				break;
-			case 4:
-				label = "5. FPGA Clock Frequency   ";
-				snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_freq_name(freq));
-				break;
-			case 5:
-				label = "6. Run Mode Speed Hotkeys ";
-				{
-					const char *hname = "NONE";
-					if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PGUP_PGDN) hname = "PgUp/Dn";
-					else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_UP_DOWN) hname = "Up/Down";
-					else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PLUS_MINUS) hname = "+ / -";
-					snprintf(val_str, sizeof(val_str), "[ %-8s ]", hname);
-				}
-				break;
-			case 6:
-				label = "7. Restore Default Demo   ";
-				snprintf(val_str, sizeof(val_str), "[ RESTORE  ]");
-				break;
-			case 7:
-				label = "8. Reboot to USB DFU      ";
-				snprintf(val_str, sizeof(val_str), "[  REBOOT  ]");
-				break;
-			case 8:
-				label = "0. Save & Exit            ";
-				snprintf(val_str, sizeof(val_str), "[   EXIT   ]");
-				break;
+
+		if (!cfg_manual_step_enabled){
+			// Collapsed menu (9 items)
+			switch(i){
+				case 0:
+					label = "1. Auto-Program on Paste  ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_prog_run_mode ? "ENABLED" : "DISABLED");
+					break;
+				case 1:
+					label = "2. Paste Upload Threshold ";
+					snprintf(val_str, sizeof(val_str), "[   %2lu B   ]", (unsigned long)cfg_auto_prog_min_bytes);
+					break;
+				case 2:
+					label = "3. Auto-Reset after Flash ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_reset_after_pgm ? "ENABLED" : "DISABLED");
+					break;
+				case 3:
+					label = "4. Append Endless Loop    ";
+					snprintf(val_str, sizeof(val_str), "[  %-6s  ]", cfg_append_endless_loop ? "[-]+[]" : "NONE");
+					break;
+				case 4:
+					label = "5. FPGA Clock Frequency   ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_freq_name(freq));
+					break;
+				case 5:
+					label = "6. Run Mode Speed Hotkeys ";
+					{
+						const char *hname = "NONE";
+						if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PGUP_PGDN) hname = "PgUp/Dn";
+						else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_UP_DOWN) hname = "Up/Down";
+						else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PLUS_MINUS) hname = "+ / -";
+						snprintf(val_str, sizeof(val_str), "[ %-8s ]", hname);
+					}
+					break;
+				case 6:
+					label = "7. Manual Stepping Mode   ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", "DISABLED");
+					break;
+				case 7:
+					label = "8. Restore Default Demo   ";
+					snprintf(val_str, sizeof(val_str), "[ RESTORE  ]");
+					break;
+				case 8:
+					label = "0. Save & Exit            ";
+					snprintf(val_str, sizeof(val_str), "[   EXIT   ]");
+					break;
+			}
+		} else {
+			// Expanded menu (11 items)
+			switch(i){
+				case 0:
+					label = "1. Auto-Program on Paste  ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_prog_run_mode ? "ENABLED" : "DISABLED");
+					break;
+				case 1:
+					label = "2. Paste Upload Threshold ";
+					snprintf(val_str, sizeof(val_str), "[   %2lu B   ]", (unsigned long)cfg_auto_prog_min_bytes);
+					break;
+				case 2:
+					label = "3. Auto-Reset after Flash ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_reset_after_pgm ? "ENABLED" : "DISABLED");
+					break;
+				case 3:
+					label = "4. Append Endless Loop    ";
+					snprintf(val_str, sizeof(val_str), "[  %-6s  ]", cfg_append_endless_loop ? "[-]+[]" : "NONE");
+					break;
+				case 4:
+					label = "5. FPGA Clock Frequency   ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_freq_name(freq));
+					break;
+				case 5:
+					label = "6. Run Mode Speed Hotkeys ";
+					{
+						const char *hname = "NONE";
+						if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PGUP_PGDN) hname = "PgUp/Dn";
+						else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_UP_DOWN) hname = "Up/Down";
+						else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PLUS_MINUS) hname = "+ / -";
+						snprintf(val_str, sizeof(val_str), "[ %-8s ]", hname);
+					}
+					break;
+				case 6:
+					label = "7. Manual Stepping Mode   ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", "ENABLED");
+					break;
+				case 7:
+					label = "8. Step Advance Ticks     ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_step_ticks_name(cfg_manual_step_ticks));
+					break;
+				case 8:
+					label = "9. Step Trigger Key       ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_step_key_name(cfg_manual_step_key));
+					break;
+				case 9:
+					label = "A. Restore Default Demo   ";
+					snprintf(val_str, sizeof(val_str), "[ RESTORE  ]");
+					break;
+				case 10:
+					label = "0. Save & Exit            ";
+					snprintf(val_str, sizeof(val_str), "[   EXIT   ]");
+					break;
+			}
 		}
 
 		if (i == menu_cursor){
@@ -360,56 +541,100 @@ void menu_render(void){
 		}
 	}
 
-	CDC_Print("+-----------------------------------------------+\r\n");
-	CDC_Print("|  Hardware: STM32F072 | Parallel ROM: 256 kB   |\r\n");
-	CDC_Print("+-----------------------------------------------+\r\n");
-	CDC_Print("Select option [0-8] or use arrows + Enter: ");
+	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("|  Hardware: STM32F072 | Parallel ROM: 256 kB     |\r\n");
+	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("Select option or use arrows + Enter: ");
 }
 
 void menu_execute_action(uint8_t item){
-	switch(item){
-		case 0:
-			cfg_auto_prog_run_mode = !cfg_auto_prog_run_mode;
-			break;
-		case 1:
-			if (cfg_auto_prog_min_bytes == 4) cfg_auto_prog_min_bytes = 8;
-			else if (cfg_auto_prog_min_bytes == 8) cfg_auto_prog_min_bytes = 16;
-			else if (cfg_auto_prog_min_bytes == 16) cfg_auto_prog_min_bytes = 32;
-			else if (cfg_auto_prog_min_bytes == 32) cfg_auto_prog_min_bytes = 64;
-			else cfg_auto_prog_min_bytes = 4;
-			break;
-		case 2:
-			cfg_auto_reset_after_pgm = !cfg_auto_reset_after_pgm;
-			break;
-		case 3:
-			cfg_append_endless_loop = !cfg_append_endless_loop;
-			break;
-		case 4:
-			set_freq((freq + 1) % FREQ_COUNT);
-			break;
-		case 5:
-			cfg_speed_hotkey_mode = (cfg_speed_hotkey_mode + 1) % 4;
-			break;
-		case 6:
-			CDC_Print("\r\nRestoring Default Demo to Flash...\r\n");
-			flashDefaultLogoProgram();
-			break;
-		case 7:
-			CDC_Print("\r\nRebooting to STM32 USB DFU Bootloader...\r\n");
-			HAL_Delay(200);
-			dfu_requested = 1;
-			state = STATE_RUN;
-			break;
-		case 8:
-			menu_exit();
-			break;
-		default:
-			break;
+	if (!cfg_manual_step_enabled){
+		// Collapsed menu actions (0-8)
+		switch(item){
+			case 0:
+				cfg_auto_prog_run_mode = !cfg_auto_prog_run_mode;
+				break;
+			case 1:
+				if (cfg_auto_prog_min_bytes == 4) cfg_auto_prog_min_bytes = 8;
+				else if (cfg_auto_prog_min_bytes == 8) cfg_auto_prog_min_bytes = 16;
+				else if (cfg_auto_prog_min_bytes == 16) cfg_auto_prog_min_bytes = 32;
+				else if (cfg_auto_prog_min_bytes == 32) cfg_auto_prog_min_bytes = 64;
+				else cfg_auto_prog_min_bytes = 4;
+				break;
+			case 2:
+				cfg_auto_reset_after_pgm = !cfg_auto_reset_after_pgm;
+				break;
+			case 3:
+				cfg_append_endless_loop = !cfg_append_endless_loop;
+				break;
+			case 4:
+				set_freq((freq + 1) % FREQ_COUNT);
+				break;
+			case 5:
+				cfg_speed_hotkey_mode = (cfg_speed_hotkey_mode + 1) % 4;
+				break;
+			case 6:
+				cfg_manual_step_enabled = 1;
+				break;
+			case 7:
+				CDC_Print("\r\nRestoring Default Demo to Flash...\r\n");
+				flashDefaultLogoProgram();
+				break;
+			case 8:
+				menu_exit();
+				break;
+			default:
+				break;
+		}
+	} else {
+		// Expanded menu actions (0-10)
+		switch(item){
+			case 0:
+				cfg_auto_prog_run_mode = !cfg_auto_prog_run_mode;
+				break;
+			case 1:
+				if (cfg_auto_prog_min_bytes == 4) cfg_auto_prog_min_bytes = 8;
+				else if (cfg_auto_prog_min_bytes == 8) cfg_auto_prog_min_bytes = 16;
+				else if (cfg_auto_prog_min_bytes == 16) cfg_auto_prog_min_bytes = 32;
+				else if (cfg_auto_prog_min_bytes == 32) cfg_auto_prog_min_bytes = 64;
+				else cfg_auto_prog_min_bytes = 4;
+				break;
+			case 2:
+				cfg_auto_reset_after_pgm = !cfg_auto_reset_after_pgm;
+				break;
+			case 3:
+				cfg_append_endless_loop = !cfg_append_endless_loop;
+				break;
+			case 4:
+				set_freq((freq + 1) % FREQ_COUNT);
+				break;
+			case 5:
+				cfg_speed_hotkey_mode = (cfg_speed_hotkey_mode + 1) % 4;
+				break;
+			case 6:
+				cfg_manual_step_enabled = 0;
+				break;
+			case 7:
+				cfg_manual_step_ticks = (cfg_manual_step_ticks + 1) % 6;
+				break;
+			case 8:
+				cfg_manual_step_key = (cfg_manual_step_key + 1) % 3;
+				break;
+			case 9:
+				CDC_Print("\r\nRestoring Default Demo to Flash...\r\n");
+				flashDefaultLogoProgram();
+				break;
+			case 10:
+				menu_exit();
+				break;
+			default:
+				break;
+		}
 	}
 }
 
 #define SETTINGS_FLASH_ADDR   0x0801F800UL
-#define SETTINGS_MAGIC        0xBF072C01UL
+#define SETTINGS_MAGIC        0xBF072C02UL
 
 typedef struct {
 	uint32_t magic;
@@ -418,9 +643,9 @@ typedef struct {
 	uint8_t  auto_reset_after_pgm;
 	uint8_t  append_endless_loop;
 	uint8_t  speed_hotkey_mode;
-	uint8_t  reserved1;
-	uint8_t  reserved2;
-	uint8_t  reserved3;
+	uint8_t  manual_step_enabled;
+	uint8_t  manual_step_ticks;
+	uint8_t  manual_step_key;
 	uint32_t auto_prog_min_bytes;
 	uint32_t checksum;
 } PersistentSettings;
@@ -428,7 +653,9 @@ typedef struct {
 static uint32_t calc_settings_checksum(const PersistentSettings *s){
 	return s->magic + (uint32_t)s->freq + (uint32_t)s->auto_prog_run_mode +
 	       (uint32_t)s->auto_reset_after_pgm + (uint32_t)s->append_endless_loop +
-	       (uint32_t)s->speed_hotkey_mode + s->auto_prog_min_bytes;
+	       (uint32_t)s->speed_hotkey_mode + (uint32_t)s->manual_step_enabled +
+	       (uint32_t)s->manual_step_ticks + (uint32_t)s->manual_step_key +
+	       s->auto_prog_min_bytes;
 }
 
 void settings_load(void){
@@ -441,6 +668,10 @@ void settings_load(void){
 		cfg_auto_reset_after_pgm = flash_cfg->auto_reset_after_pgm ? 1 : 0;
 		cfg_append_endless_loop = flash_cfg->append_endless_loop ? 1 : 0;
 		cfg_speed_hotkey_mode = (flash_cfg->speed_hotkey_mode <= 3) ? flash_cfg->speed_hotkey_mode : SPEED_HOTKEY_PGUP_PGDN;
+		cfg_manual_step_enabled = flash_cfg->manual_step_enabled ? 1 : 0;
+		cfg_manual_step_ticks = (flash_cfg->manual_step_ticks <= 5) ? flash_cfg->manual_step_ticks : STEP_TICKS_100;
+		cfg_manual_step_key = (flash_cfg->manual_step_key <= 2) ? flash_cfg->manual_step_key : STEP_KEY_SPACE;
+
 		if (flash_cfg->auto_prog_min_bytes >= 4 && flash_cfg->auto_prog_min_bytes <= 64){
 			cfg_auto_prog_min_bytes = flash_cfg->auto_prog_min_bytes;
 		} else {
@@ -452,6 +683,9 @@ void settings_load(void){
 		cfg_auto_reset_after_pgm = 1;
 		cfg_append_endless_loop = 1;
 		cfg_speed_hotkey_mode = SPEED_HOTKEY_PGUP_PGDN;
+		cfg_manual_step_enabled = 0;
+		cfg_manual_step_ticks = STEP_TICKS_100;
+		cfg_manual_step_key = STEP_KEY_SPACE;
 		cfg_auto_prog_min_bytes = 16;
 	}
 }
@@ -465,6 +699,9 @@ void settings_save(void){
 	new_cfg.auto_reset_after_pgm = cfg_auto_reset_after_pgm;
 	new_cfg.append_endless_loop = cfg_append_endless_loop;
 	new_cfg.speed_hotkey_mode = cfg_speed_hotkey_mode;
+	new_cfg.manual_step_enabled = cfg_manual_step_enabled;
+	new_cfg.manual_step_ticks = cfg_manual_step_ticks;
+	new_cfg.manual_step_key = cfg_manual_step_key;
 	new_cfg.auto_prog_min_bytes = cfg_auto_prog_min_bytes;
 	new_cfg.checksum = calc_settings_checksum(&new_cfg);
 
@@ -505,13 +742,19 @@ void menu_enter(void){
 void menu_exit(void){
 	settings_save();
 	state = STATE_RUN;
+	manual_step_ticks_pending = 0;
 	HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 	LED_GPIO_Port->BRR = LED_Pin;
 	CDC_Printf("\r\n\x1b[0m[Config Saved] Resuming Brainfuino (Clock: %s)...\r\n", get_freq_name(freq));
+	if (cfg_manual_step_enabled){
+		CDC_Printf("[Manual Step Mode Active: Press %s to step %s]\r\n",
+		           get_step_key_name(cfg_manual_step_key), get_step_ticks_name(cfg_manual_step_ticks));
+	}
 	initROMNormal();
 	wait(1000);
 	HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
 	wait(1000);
+	set_freq(freq);
 	// Pulse FPGA reset to restart execution cleanly with any new settings
 	HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
 	HAL_Delay(10);
@@ -543,6 +786,11 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 	if (state == STATE_RUN){
 		if (is_prefix_ci(buff, len, "!MENU") || is_prefix_ci(buff, len, "!CONFIG")){
 			menu_enter();
+			return 1;
+		}
+
+		if (is_prefix_ci(buff, len, "!RESET") || is_prefix_ci(buff, len, "!RST")){
+			reset_requested = 1;
 			return 1;
 		}
 
@@ -602,6 +850,23 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			}
 		}
 
+		// Manual Step Mode clock pulse trigger
+		if (cfg_manual_step_enabled){
+			uint8_t match = 0;
+			if (cfg_manual_step_key == STEP_KEY_SPACE && len == 1 && buff[0] == ' ') match = 1;
+			else if (cfg_manual_step_key == STEP_KEY_TAB && len == 1 && buff[0] == '\t') match = 1;
+			else if (cfg_manual_step_key == STEP_KEY_ENTER && (len == 1 && (buff[0] == '\r' || buff[0] == '\n'))) match = 1;
+
+			if (match){
+				uint32_t step_counts[] = { 1, 10, 100, 1000, 10000, 100000 };
+				uint32_t burst = (cfg_manual_step_ticks <= 5) ? step_counts[cfg_manual_step_ticks] : 100;
+				__disable_irq();
+				manual_step_ticks_pending += burst;
+				__enable_irq();
+				return 1;
+			}
+		}
+
 		// Pass characters cleanly to the running FPGA soft-processor without interception
 		if (len >= 1){
 			writeBFInput(*buff);
@@ -614,6 +879,8 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 	if (state == STATE_CONFIG){
 		static uint32_t last_num_key_tick = 0;
 		if (len == 0) return 1;
+
+		uint8_t count = get_menu_item_count();
 
 		// Standalone Spacebar: execute/toggle selected item
 		if (len == 1 && buff[0] == ' '){
@@ -630,13 +897,13 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			if (idx + 2 < len && (buff[idx+1] == '[' || buff[idx+1] == 'O')){
 				if (buff[idx+2] == 'A'){ // Up Arrow
 					menu_cursor--;
-					if (menu_cursor < 0) menu_cursor = MENU_ITEM_COUNT - 1;
+					if (menu_cursor < 0) menu_cursor = count - 1;
 					menu_needs_render = 1;
 					return 1;
 				}
 				else if (buff[idx+2] == 'B'){ // Down Arrow
 					menu_cursor++;
-					if (menu_cursor >= MENU_ITEM_COUNT) menu_cursor = 0;
+					if (menu_cursor >= count) menu_cursor = 0;
 					menu_needs_render = 1;
 					return 1;
 				}
@@ -646,13 +913,31 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			return 1;
 		}
 
-		// 2. Direct numbered shortcuts (1-8, 0) and quick exit ('q' / 'Q')
-		if (buff[idx] >= '1' && buff[idx] <= '8'){
-			last_num_key_tick = HAL_GetTick();
-			menu_cursor = buff[idx] - '1';
-			menu_action_pending = menu_cursor;
-			return 1;
+		// 2. Direct numbered / letter shortcuts
+		if (!cfg_manual_step_enabled){
+			// Collapsed menu (1-8, 0)
+			if (buff[idx] >= '1' && buff[idx] <= '8'){
+				last_num_key_tick = HAL_GetTick();
+				menu_cursor = buff[idx] - '1';
+				menu_action_pending = menu_cursor;
+				return 1;
+			}
+		} else {
+			// Expanded menu (1-9, A, 0)
+			if (buff[idx] >= '1' && buff[idx] <= '9'){
+				last_num_key_tick = HAL_GetTick();
+				menu_cursor = buff[idx] - '1';
+				menu_action_pending = menu_cursor;
+				return 1;
+			}
+			if (buff[idx] == 'a' || buff[idx] == 'A'){
+				last_num_key_tick = HAL_GetTick();
+				menu_cursor = 9; // Restore Default Demo
+				menu_action_pending = menu_cursor;
+				return 1;
+			}
 		}
+
 		if (buff[idx] == '0' || buff[idx] == 'q' || buff[idx] == 'Q'){
 			menu_exit_requested = 1;
 			return 1;
@@ -787,9 +1072,11 @@ int main(void)
   HAL_GPIO_Init(GPIOA, &usb_disc);
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
   HAL_Delay(100);
+  HAL_GPIO_DeInit(GPIOA, GPIO_PIN_12); // Release PA12 back to analog/USB mode
 
   MX_USB_DEVICE_Init();
   MX_ADC_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
   // Bootup alive blip on Red LED
@@ -846,6 +1133,24 @@ int main(void)
 	  if (dfu_requested){
 		  dfu_requested = 0;
 		  Execute_DFU_Jump();
+	  }
+
+	  // Check for soft-processor reset request
+	  if (reset_requested){
+		  reset_requested = 0;
+		  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+		  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+		  HAL_Delay(10);
+		  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+		  HAL_Delay(60);
+		  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+		  manual_step_ticks_pending = 0;
+		  set_freq(freq);
+		  CDC_Printf("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
+		  if (cfg_manual_step_enabled){
+			  CDC_Printf("[Manual Step Mode Active: Press %s to step %s]\r\n",
+			             get_step_key_name(cfg_manual_step_key), get_step_ticks_name(cfg_manual_step_ticks));
+		  }
 	  }
 
 	  // 1. Debounced button state machine (35ms stable window to filter mechanical chatter)
@@ -926,7 +1231,13 @@ int main(void)
 						  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
 						  HAL_Delay(60);
 						  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-						  CDC_Print("\r\n[Reset]\r\n");
+						  manual_step_ticks_pending = 0;
+						  set_freq(freq);
+						  CDC_Printf("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
+						  if (cfg_manual_step_enabled){
+							  CDC_Printf("[Manual Step Mode Active: Press %s to step %s]\r\n",
+							             get_step_key_name(cfg_manual_step_key), get_step_ticks_name(cfg_manual_step_ticks));
+						  }
 					  }
 				  }
 				  btn_held_3s = 0;
@@ -1106,7 +1417,15 @@ int main(void)
 		  uint16_t used = (tail >= head) ? (tail - head) : (OUTBOX_CAPACITY - (head - tail));
 		  if (used < (OUTBOX_CAPACITY / 2)){
 			  mco_throttled = 0;
-			  RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCO | RCC_CFGR_MCOPRE)) | active_mco_cfg;
+			  if (active_is_tim1){
+				  if (!cfg_manual_step_enabled){
+					  TIM1->CR1 |= TIM_CR1_CEN;
+				  }
+			  } else {
+				  if (!cfg_manual_step_enabled){
+					  RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCO | RCC_CFGR_MCOPRE)) | active_mco_cfg;
+				  }
+			  }
 		  }
 	  }
 
@@ -1139,7 +1458,15 @@ int main(void)
 			  uint16_t used = (tail >= head) ? (tail - head) : (OUTBOX_CAPACITY - (head - tail));
 			  if (used < (OUTBOX_CAPACITY / 2)){
 				  mco_throttled = 0;
-				  RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCO | RCC_CFGR_MCOPRE)) | active_mco_cfg;
+				  if (active_is_tim1){
+					  if (!cfg_manual_step_enabled){
+						  TIM1->CR1 |= TIM_CR1_CEN;
+					  }
+				  } else {
+					  if (!cfg_manual_step_enabled){
+						  RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCO | RCC_CFGR_MCOPRE)) | active_mco_cfg;
+					  }
+				  }
 			  }
 		  }
 	  }
@@ -1208,6 +1535,102 @@ int main(void)
 		  }
 
 		  code_dump = 0;
+	  }
+
+	  // 4. Delayed Flash save execution (wear-leveling debouncer: 3-second idle)
+	  if (settings_dirty && ((HAL_GetTick() - settings_dirty_tick) >= 3000)){
+		  settings_dirty = 0;
+		  settings_save();
+	  }
+
+	  // 5. Manual Step Mode clock pulse draining engine
+	  if ((state == STATE_RUN) && cfg_manual_step_enabled && (manual_step_ticks_pending > 0)){
+		  __disable_irq();
+		  uint32_t to_step = manual_step_ticks_pending;
+		  manual_step_ticks_pending = 0;
+		  __enable_irq();
+
+		  if (active_is_tim1){
+			  // In TIM1 mode (10 Hz - 50 kHz):
+			  // Enable TIM1 counter to emit PWM pulses
+			  TIM1->CR1 |= TIM_CR1_CEN;
+			  for (uint32_t s = 0; s < to_step; s++){
+				  TIM1->SR &= ~TIM_SR_UIF;
+				  while (!(TIM1->SR & TIM_SR_UIF)){
+					  // Drain any characters generated during this step to CDC
+					  if ((head != tail) && !TxBusy()){
+						  uint32_t cur_tail = tail;
+						  if (head < cur_tail){
+							  uint16_t sz = (cur_tail - head < 60) ? (cur_tail - head) : 60;
+							  CDC_Transmit_FS(outbox + head, sz);
+							  head += sz;
+						  } else {
+							  uint16_t sz = (OUTBOX_CAPACITY - head < 60) ? (OUTBOX_CAPACITY - head) : 60;
+							  CDC_Transmit_FS(outbox + head, sz);
+							  head = (head + sz >= OUTBOX_CAPACITY) ? 0 : head + sz;
+						  }
+					  }
+				  }
+			  }
+			  TIM1->CR1 &= ~TIM_CR1_CEN;
+		  } else {
+			  // In MCO mode (62.5 kHz - 12 MHz):
+			  // Clock is generated directly by MCU MCO hardware divider.
+			  RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCO | RCC_CFGR_MCOPRE)) | active_mco_cfg;
+
+			  uint32_t cur_freq_hz = freq_table[freq].freq_hz;
+			  uint32_t cpu_cycles_per_clk = 48000000UL / cur_freq_hz;
+			  if (cpu_cycles_per_clk == 0) cpu_cycles_per_clk = 1;
+
+			  if (to_step <= 100){
+				  for (uint32_t s = 0; s < to_step; s++){
+					  uint32_t loops = (cpu_cycles_per_clk >= 4) ? (cpu_cycles_per_clk / 4) : 1;
+					  for (volatile uint32_t d = 0; d < loops; d++){
+						  __NOP();
+					  }
+					  if ((head != tail) && !TxBusy()){
+						  uint32_t cur_tail = tail;
+						  if (head < cur_tail){
+							  uint16_t sz = (cur_tail - head < 60) ? (cur_tail - head) : 60;
+							  CDC_Transmit_FS(outbox + head, sz);
+							  head += sz;
+						  } else {
+							  uint16_t sz = (OUTBOX_CAPACITY - head < 60) ? (OUTBOX_CAPACITY - head) : 60;
+							  CDC_Transmit_FS(outbox + head, sz);
+							  head = (head + sz >= OUTBOX_CAPACITY) ? 0 : head + sz;
+						  }
+					  }
+				  }
+			  } else {
+				  uint32_t total_us = (uint32_t)(((uint64_t)to_step * 1000000ULL) / cur_freq_hz);
+				  if (total_us == 0) total_us = 1;
+
+				  uint32_t remaining_us = total_us;
+				  while (remaining_us > 0){
+					  uint32_t chunk = (remaining_us > 100) ? 100 : remaining_us;
+					  uint32_t loops = chunk * 6;
+					  for (volatile uint32_t d = 0; d < loops; d++){
+						  __NOP();
+					  }
+					  remaining_us -= chunk;
+
+					  if ((head != tail) && !TxBusy()){
+						  uint32_t cur_tail = tail;
+						  if (head < cur_tail){
+							  uint16_t sz = (cur_tail - head < 60) ? (cur_tail - head) : 60;
+							  CDC_Transmit_FS(outbox + head, sz);
+							  head += sz;
+						  } else {
+							  uint16_t sz = (OUTBOX_CAPACITY - head < 60) ? (OUTBOX_CAPACITY - head) : 60;
+							  CDC_Transmit_FS(outbox + head, sz);
+							  head = (head + sz >= OUTBOX_CAPACITY) ? 0 : head + sz;
+						  }
+					  }
+				  }
+			  }
+
+			  RCC->CFGR &= ~RCC_CFGR_MCO;
+		  }
 	  }
 
     /* USER CODE END WHILE */
@@ -1328,6 +1751,25 @@ static void MX_ADC_Init(void)
 
   /* USER CODE END ADC_Init 2 */
 
+}
+
+/**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+  __HAL_RCC_TIM1_CLK_ENABLE();
+
+  TIM1->CR1 = 0;
+  TIM1->PSC = 479;
+  TIM1->ARR = 1;
+  TIM1->CCR1 = 1;
+  TIM1->CCMR1 = (6 << TIM_CCMR1_OC1M_Pos) | TIM_CCMR1_OC1PE; // PWM mode 1, preload enable
+  TIM1->CCER = TIM_CCER_CC1E;                                // Enable CH1 output (PA8)
+  TIM1->BDTR = TIM_BDTR_MOE;                                 // Main Output Enable
+  TIM1->CR1 = TIM_CR1_ARPE;                                  // Auto-reload preload enable
 }
 
 /**
