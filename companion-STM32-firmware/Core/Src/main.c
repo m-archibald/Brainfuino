@@ -617,7 +617,28 @@ void lib_init_toc(void){
 	if (lib_toc[0].crc32 != TOC_MAGIC){
 		lib_format_toc();
 	} else {
-		lib_refresh_display_list();
+		// Clean up any deleted tombstones (status != 0x01 && status != 0xFF) or gaps in slot numbering
+		uint8_t needs_compact = 0;
+		for (uint8_t s = 1; s < MAX_LIB_SLOTS; s++){
+			if (lib_toc[s].status != 0xFF && lib_toc[s].status != 0x01){
+				needs_compact = 1;
+				break;
+			}
+		}
+		uint8_t seen_empty = 0;
+		for (uint8_t s = 1; s < MAX_LIB_SLOTS; s++){
+			if (lib_toc[s].status == 0xFF){
+				seen_empty = 1;
+			} else if (seen_empty && lib_toc[s].status == 0x01){
+				needs_compact = 1;
+				break;
+			}
+		}
+		if (needs_compact){
+			lib_rewrite_toc_compact();
+		} else {
+			lib_refresh_display_list();
+		}
 	}
 }
 
@@ -756,7 +777,7 @@ void lib_delete_program(uint8_t slot){
 		__HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_WRPERR | FLASH_FLAG_PGERR);
 		HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, LIBRARY_TOC_ADDR + (slot * sizeof(ProgramDescriptor)), 0x0000);
 		HAL_FLASH_Lock();
-		lib_refresh_display_list();
+		lib_rewrite_toc_compact();
 	}
 }
 
@@ -957,11 +978,11 @@ void menu_render_library(void){
 	CDC_Print("+-------------------------------------------------+\r\n");
 	CDC_Print("|            BRAINFUINO PROGRAM LIBRARY           |\r\n");
 	CDC_Print("+-------------------------------------------------+\r\n");
-	CDC_Print("|  [Enter/L] Run  [A] Add  [D] Delete  [0/ESC] Back |\r\n");
+	CDC_Print("|  [Enter/L] Run [A] Add [D] Delete [0/ESC] Back  |\r\n");
 	CDC_Print("+-------------------------------------------------+\r\n");
 
 	for (int i = 0; i < count; i++){
-		char line_buf[60];
+		char line_buf[80];
 		if (i < lib_display_count){
 			uint8_t slot = lib_display_slots[i];
 			const char *pname = (slot == 0) ? "Brainfuino Demo" : (const char *)lib_toc[slot].name;
@@ -974,23 +995,23 @@ void menu_render_library(void){
 			}
 
 			if (i == menu_cursor){
-				snprintf(line_buf, sizeof(line_buf), "| \x1b[7m> %02d. %-18s [%7s] <\x1b[0m |", slot, pname, size_str);
+				snprintf(line_buf, sizeof(line_buf), "| \x1b[7m> %02d. %-28s  [%7s] <\x1b[0m |", i, pname, size_str);
 			} else {
-				snprintf(line_buf, sizeof(line_buf), "|   %02d. %-18s [%7s]   |", slot, pname, size_str);
+				snprintf(line_buf, sizeof(line_buf), "|   %02d. %-28s  [%7s]   |", i, pname, size_str);
 			}
 		}
 		else if (i == lib_display_count){
 			if (i == menu_cursor){
-				snprintf(line_buf, sizeof(line_buf), "| \x1b[7m> [ + Add New Program ]                  <\x1b[0m |");
+				snprintf(line_buf, sizeof(line_buf), "| \x1b[7m> [ + Add New Program ]                       <\x1b[0m |");
 			} else {
-				snprintf(line_buf, sizeof(line_buf), "|   [ + Add New Program ]                    |");
+				snprintf(line_buf, sizeof(line_buf), "|   [ + Add New Program ]                         |");
 			}
 		}
 		else {
 			if (i == menu_cursor){
-				snprintf(line_buf, sizeof(line_buf), "| \x1b[7m> 0. Back to Main Menu         [   BACK   ] <\x1b[0m |");
+				snprintf(line_buf, sizeof(line_buf), "| \x1b[7m> 0. Back to Main Menu           [   BACK   ] <\x1b[0m |");
 			} else {
-				snprintf(line_buf, sizeof(line_buf), "|   0. Back to Main Menu         [   BACK   ]   |");
+				snprintf(line_buf, sizeof(line_buf), "|   0. Back to Main Menu             [   BACK   ] |");
 			}
 		}
 		CDC_Printf("%s\r\n", line_buf);
@@ -1000,7 +1021,7 @@ void menu_render_library(void){
 	uint32_t used_bytes = lib_get_total_used_bytes();
 	uint32_t used_kb = used_bytes / 1024;
 	uint32_t used_frac = (used_bytes % 1024) * 10 / 1024;
-	CDC_Printf("|  Library: %2d / 63 Programs | Used: %2lu.%1lu / 76 kB   |\r\n",
+	CDC_Printf("|  Library: %2d / 63 Programs | Used: %2lu.%1lu / 76 kB |\r\n",
 	           lib_display_count - 1, (unsigned long)used_kb, (unsigned long)used_frac);
 	CDC_Print("+-------------------------------------------------+\r\n");
 	CDC_Print("Select program [Enter/L=Run, A=Add, D=Del, 0=Back]: ");
@@ -1510,6 +1531,14 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			}
 		}
 		else if (menu_page == MENU_PAGE_LIBRARY){
+			if (buff[idx] >= '1' && buff[idx] <= '9'){
+				uint8_t sel_idx = buff[idx] - '0';
+				if (sel_idx < lib_display_count){
+					menu_cursor = sel_idx;
+					menu_needs_render = 1;
+				}
+				return 1;
+			}
 			if (buff[idx] == 'a' || buff[idx] == 'A'){
 				lib_start_add_requested = 1;
 				return 1;
