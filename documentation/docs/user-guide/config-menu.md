@@ -55,19 +55,19 @@ Select option or use arrows + Enter:
 ### Submenu 1: Program Library
 ```text
 +-------------------------------------------------+
-|          BRAINFUINO PROGRAM LIBRARY             |
+|            BRAINFUINO PROGRAM LIBRARY           |
 +-------------------------------------------------+
-|  Select program to run, [D] to delete           |
+| [Enter/L] Run [A] Add [D] Dump [X] Del [0] Back |
 +-------------------------------------------------+
-| > 00. Brainfuino Demo        : [   1.4 kB ] < |
-|   01. Mandelbrot             : [  11.2 kB ]   |
-|   02. Game of Life           : [   4.8 kB ]   |
-|   [ + Add New Program ]      : [  NEW PROG]   |
-|   0. Back to Main Menu       : [   BACK   ]   |
+| > 00. Brainfuino Demo               [  1.6kB] < |
+|   01. Mandelbrot                    [ 11.2kB]   |
+|   02. Game of Life                  [  4.8kB]   |
+|   [ + Add New Program ]                         |
+|   0. Back to Main Menu             [   BACK   ] |
 +-------------------------------------------------+
-|  2 / 63 Programs | Used: 16.0 / 76 kB           |
+|  Library:  2 / 63 Programs | Used: 16.0 / 76 kB |
 +-------------------------------------------------+
-Select program [0-2], [A]dd, [D]elete: 
+Select program [Enter/L=Run, A=Add, D=Dump, X=Del, 0=Back]: 
 ```
 
 ### Submenu 2: Hardware Settings
@@ -107,7 +107,8 @@ The menu architecture uses a hybrid parser supporting both modern rich terminal 
 | **Cycle Option Forward** | :material-arrow-right: Right Arrow, :material-keyboard-space: Spacebar, or :material-keyboard-return: Enter | Type item number and press Send |
 | **Cycle Option Backward** | :material-arrow-left: Left Arrow | — |
 | **Direct Select / Enter** | Numbers `1` – `9`, `A` / `B` | Numbers `1` – `9`, `A` |
-| **Delete Program (Library)**| `d` or `D` on highlighted slot | Type `d` and press Send |
+| **Dump Program Source (Library)**| `d` or `D` on highlighted slot | Type `d` and press Send |
+| **Delete Program (Library)**| `x`, `X`, or `Delete` key on highlighted slot | Type `x` and press Send |
 | **Add Program (Library)** | `a` or `A`, or select `[ + Add New Program ]` | Type `a` and press Send |
 | **Return / Cancel / Exit**| `0`, `q`, `Q`, or `ESC` | `0` or `q` |
 | **Hardware Button Exit** | Quick tap (< 3s) on Reset Button | Quick tap (< 3s) on Reset Button |
@@ -173,7 +174,8 @@ From the **Program Library** submenu:
   Rewriting Flash pool... Done.
   [Compaction complete: Active programs packed forward]
   ```
-* **Tombstone Deletion:** Highlighting any user program (slots 01–63) and pressing `d` or `D` immediately marks its status as deleted (`0x0000`). This takes **0 page erasures**, preserving Flash endurance.
+* **Tombstone Deletion (`x`):** Highlighting any user program (slots 01–63) and pressing `x`, `X`, or the `Delete` key immediately marks its status as deleted (`0x0000`). This takes **0 page erasures**, preserving Flash endurance.
+* **Program Source Code Dumping (`d`):** Highlighting any program (including `00. Brainfuino Demo`) and pressing `d` or `D` dumps its raw Brainfuck source code directly to the serial terminal. Pressing any key returns smoothly to the Program Library menu.
 * **Slot 00 Protection:** Slot `00. Brainfuino Demo` is permanently burned-in and cannot be deleted or overwritten.
 
 ---

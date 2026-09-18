@@ -185,6 +185,8 @@ uint8_t  lib_verify_requested = 0;
 volatile uint8_t lib_start_add_requested = 0;
 volatile int8_t  lib_delete_pending_slot = -1;
 volatile int8_t  lib_load_pending_slot = -1;
+volatile int8_t  lib_dump_pending_slot = -1;
+volatile uint8_t lib_dump_viewing = 0;
 volatile uint8_t lib_verify_choice_pending = 0;
 volatile uint8_t lib_verify_choice = 0;
 volatile uint8_t lib_verify_early_commit = 0;
@@ -274,7 +276,9 @@ void lib_rewrite_toc_compact(void);
 uint8_t lib_save_program(const char *name, uint32_t size, uint8_t pruned);
 void lib_delete_program(uint8_t slot);
 void lib_load_and_run(uint8_t slot);
+void lib_dump_program(uint8_t slot);
 void lib_start_add_program(void);
+void CDC_Write(const uint8_t *data, uint32_t len);
 
 
 /* USER CODE END PFP */
@@ -427,6 +431,19 @@ void CDC_Print(const char *str){
 	}
 }
 
+void CDC_Write(const uint8_t *data, uint32_t len){
+	uint32_t offset = 0;
+	while (offset < len){
+		uint16_t chunk = (len - offset > 64) ? 64 : (uint16_t)(len - offset);
+		uint32_t timeout = 200000;
+		while (TxBusy() && --timeout);
+		CDC_Transmit_FS((uint8_t *)(data + offset), chunk);
+		timeout = 200000;
+		while (TxBusy() && --timeout);
+		offset += chunk;
+	}
+}
+
 void CDC_Printf(const char *format, ...){
 	char msg[128];
 	va_list args;
@@ -490,8 +507,7 @@ const char DEFAULT_BRAINFUINO_LOGO_BF[] =
 	"+++..>>>>>>++++++++++++.<<<<<<.>.<.>.<.>.>>>>>------------.<<<<<.<.>.<.>.>>>>>..<<<<<<---."
 	"+++..>>>>>>++++++++++++.<<<<<<.>.<.>.<.>.>>>>>------------.<<<<<.<.>.<---.+++...>>>>>>"
 	"+++++++++++++++.---------------.<<<<<<<+++.---.>>>>>>>.................................................."
-	"<<<<<<<+++.---."
-	"[-]+[]";
+	"<<<<<<<+++.---.";
 
 static inline uint8_t is_bf_cmd(char c){
 	return (c == '+' || c == '-' || c == '<' || c == '>' ||
@@ -809,6 +825,30 @@ void lib_load_and_run(uint8_t slot){
 	menu_exit();
 }
 
+void lib_dump_program(uint8_t slot){
+	if (slot >= MAX_LIB_SLOTS) return;
+	const char *pname;
+	const uint8_t *src;
+	uint32_t psize;
+
+	if (slot == 0){
+		pname = "Brainfuino Demo";
+		src = (const uint8_t *)DEFAULT_BRAINFUINO_LOGO_BF;
+		psize = sizeof(DEFAULT_BRAINFUINO_LOGO_BF) - 1;
+	} else {
+		if (lib_toc[slot].status != 0x01) return;
+		pname = (const char *)lib_toc[slot].name;
+		src = (const uint8_t *)(LIBRARY_POOL_ADDR + lib_toc[slot].flash_offset);
+		psize = lib_toc[slot].size;
+	}
+
+	CDC_Print("\x1b[2J\x1b[H\r\n");
+	CDC_Printf("=== DUMP PROGRAM: %s (%lu bytes) ===\r\n\r\n", pname, (unsigned long)psize);
+	CDC_Write(src, psize);
+	CDC_Print("\r\n\r\n=== END OF PROGRAM ===\r\nPress any key to return to library menu...\r\n");
+	lib_dump_viewing = 1;
+}
+
 void lib_start_add_program(void){
 	lib_code_size = 0;
 	lib_name_len = 0;
@@ -991,7 +1031,7 @@ void menu_render_library(void){
 	CDC_Print("+-------------------------------------------------+\r\n");
 	CDC_Print("|            BRAINFUINO PROGRAM LIBRARY           |\r\n");
 	CDC_Print("+-------------------------------------------------+\r\n");
-	CDC_Print("|  [Enter/L] Run [A] Add [D] Delete [0/ESC] Back  |\r\n");
+	CDC_Print("| [Enter/L] Run [A] Add [D] Dump [X] Del [0] Back |\r\n");
 	CDC_Print("+-------------------------------------------------+\r\n");
 
 	for (int i = 0; i < count; i++){
@@ -1037,7 +1077,7 @@ void menu_render_library(void){
 	CDC_Printf("|  Library: %2d / 63 Programs | Used: %2lu.%1lu / 76 kB |\r\n",
 	           lib_display_count - 1, (unsigned long)used_kb, (unsigned long)used_frac);
 	CDC_Print("+-------------------------------------------------+\r\n");
-	CDC_Print("Select program [Enter/L=Run, A=Add, D=Del, 0=Back]: ");
+	CDC_Print("Select program [Enter/L=Run, A=Add, D=Dump, X=Del, 0=Back]: ");
 }
 
 void menu_render(void){
@@ -1446,6 +1486,11 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 	}
 
 	if (state == STATE_CONFIG){
+		if (lib_dump_viewing){
+			lib_dump_viewing = 0;
+			menu_needs_render = 1;
+			return 1;
+		}
 		static uint32_t last_num_key_tick = 0;
 		if (len == 0) return 1;
 
@@ -1488,6 +1533,15 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 					if (menu_page == MENU_PAGE_SETTINGS && menu_cursor < count - 1){
 						menu_action_pending = menu_cursor;
 						menu_action_dir = -1;
+					}
+					return 1;
+				}
+				else if (buff[idx+2] == '3' && idx + 3 < len && buff[idx+3] == '~'){ // VT100 Delete Key
+					if (menu_page == MENU_PAGE_LIBRARY && menu_cursor < lib_display_count){
+						uint8_t slot = lib_display_slots[menu_cursor];
+						if (slot > 0){
+							lib_delete_pending_slot = slot;
+						}
 					}
 					return 1;
 				}
@@ -1561,6 +1615,13 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				return 1;
 			}
 			if (buff[idx] == 'd' || buff[idx] == 'D'){
+				if (menu_cursor < lib_display_count){
+					uint8_t slot = lib_display_slots[menu_cursor];
+					lib_dump_pending_slot = slot;
+				}
+				return 1;
+			}
+			if (buff[idx] == 'x' || buff[idx] == 'X'){
 				if (menu_cursor < lib_display_count){
 					uint8_t slot = lib_display_slots[menu_cursor];
 					if (slot > 0){
@@ -2071,6 +2132,11 @@ int main(void)
 			  uint8_t slot = (uint8_t)lib_load_pending_slot;
 			  lib_load_pending_slot = -1;
 			  lib_load_and_run(slot);
+		  }
+		  else if (lib_dump_pending_slot >= 0){
+			  uint8_t slot = (uint8_t)lib_dump_pending_slot;
+			  lib_dump_pending_slot = -1;
+			  lib_dump_program(slot);
 		  }
 		  else if (menu_action_pending >= 0){
 			  uint8_t act = (uint8_t)menu_action_pending;
@@ -3320,8 +3386,8 @@ void flashDefaultLogoProgram(void){
 	flashBufferToROM((const uint8_t *)DEFAULT_BRAINFUINO_LOGO_BF,
 	                 sizeof(DEFAULT_BRAINFUINO_LOGO_BF) - 1,
 	                 "Brainfuino ASCII Logo",
-	                 0,
-	                 1);
+	                 cfg_append_endless_loop,
+	                 cfg_auto_reset_after_pgm);
 
 	// Reset any active programming state
 	prog_active = 0;

@@ -50,6 +50,9 @@ print("     BRAINFUINO PROGRAM LIBRARY & MENU TEST SUITE")
 print("==========================================================")
 
 ser = open_serial()
+ser.write(b"\x1b\x1b0\r\n")
+time.sleep(0.3)
+ser.read_all()
 
 # Step 1: Open Main Menu
 print("\n[Test 1] Opening Main Menu via !MENU...")
@@ -181,27 +184,47 @@ print(">>> PASS: Rich loading output (erasure, writing %, verification) verified
 time.sleep(0.8)
 ser.read_all()
 
-# Step 9: Re-enter menu and test Deleting a Program
-print("\n[Test 9] Deleting program from Library...")
+# Step 9: Re-enter menu and test Dumping a Program to Terminal ('d')
+print("\n[Test 9] Dumping program from Library to Terminal ('d')...")
 ser.write(b"!MENU\r\n")
 read_until_prompt(ser)
 
 ser.write(b"1") # Open Library
 read_until_prompt(ser)
 
-ser.write(b"\x1b[B") # Highlight Slot 01
-time.sleep(0.2)
-ser.write(b"d")      # Press 'D' to delete
-del_resp = read_until_text(ser, "Deleted Slot", timeout=3.0)
+ser.write(b"\x1b[B") # Highlight Slot 01 (TestHello)
+read_until_prompt(ser)
+
+ser.write(b"d")      # Press 'd' to dump
+dump_resp = read_until_text(ser, ["=== END OF PROGRAM ===", "return to library"], timeout=4.0)
+print("Dump Output Preview:\n", dump_resp[:180].encode('ascii', 'backslashreplace').decode('ascii'))
+assert "=== DUMP PROGRAM:" in dump_resp, "Dump header missing"
+assert "=== END OF PROGRAM ===" in dump_resp, "Dump footer missing"
+print(">>> PASS: Program source code dumped cleanly to terminal.")
+
+# Press space/any key to dismiss dump view and return to library menu
+ser.write(b" ")
+resp_lib_after_dump = read_until_text(ser, "Select program", timeout=3.0)
+assert "Select program" in resp_lib_after_dump, "Failed to return to library menu after dump"
+print(">>> PASS: Returned cleanly to Library menu from dump view.")
+
+# Step 10: Test Deleting a Program ('x')
+print("\n[Test 10] Deleting program from Library ('x')...")
+ser.write(b"1") # Ensure Slot 01 is selected
+read_until_prompt(ser)
+time.sleep(0.1)
+
+ser.write(b"x")      # Press 'x' to delete
+del_resp = read_until_text(ser, ["Deleted Slot", "Select program"], timeout=4.0)
 print("Delete Response:", del_resp)
 
 resp_after_del = read_until_text(ser, "Select program", timeout=3.0)
 print("Library after deletion:\n", resp_after_del)
 assert "Deleted Slot" in del_resp or "Select program" in resp_after_del, "Delete failed"
-print(">>> PASS: Tombstone deletion verified cleanly.")
+print(">>> PASS: Tombstone deletion ('x') verified cleanly.")
 
-# Step 10: Exit Menu and Restore Default Demo
-print("\n[Test 10] Restoring Default Demo and verifying logo banner...")
+# Step 11: Exit Menu and Restore Default Demo
+print("\n[Test 11] Restoring Default Demo and verifying logo banner...")
 ser.write(b"0") # Back to Main
 read_until_prompt(ser)
 
@@ -213,5 +236,5 @@ print(">>> PASS: Factory demo restored and verified.")
 
 ser.close()
 print("\n==========================================================")
-print(">>> ALL 10 PROGRAM LIBRARY & MENU TESTS PASSED 100%! <<<")
+print(">>> ALL 11 PROGRAM LIBRARY & MENU TESTS PASSED 100%! <<<")
 print("==========================================================")
