@@ -1,8 +1,15 @@
 import serial
+import serial.tools.list_ports as lp
 import time
 import sys
 
-PORT = 'COM28'
+def find_port():
+    for p in lp.comports():
+        if 'STMicroelectronics' in p.description or 'Brainfuino' in p.description:
+            return p.device
+    return 'COM28'
+
+PORT = find_port()
 BAUD = 115200
 
 def open_serial():
