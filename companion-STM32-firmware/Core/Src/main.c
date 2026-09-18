@@ -380,6 +380,10 @@ void set_freq(uint8_t idx){
 	}
 }
 
+#define SPEED_BADGE_WIDTH 18
+static volatile uint8_t speed_overlay_remaining = 0;
+void print_speed_badge(void);
+
 const char *get_freq_name(uint8_t idx){
 	if (idx >= FREQ_COUNT) return "Unknown";
 	return freq_table[idx].name;
@@ -390,7 +394,7 @@ void speed_step_up(void){
 		set_freq(freq + 1);
 		settings_dirty = 1;
 		settings_dirty_tick = HAL_GetTick();
-		CDC_Printf("\x1b[s\x1b[2m[Clock: %s]\x1b[0m\x1b[u", get_freq_name(freq));
+		print_speed_badge();
 		HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
 		for (volatile int i = 0; i < 60000; i++);
 		HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
@@ -402,7 +406,7 @@ void speed_step_down(void){
 		set_freq(freq - 1);
 		settings_dirty = 1;
 		settings_dirty_tick = HAL_GetTick();
-		CDC_Printf("\x1b[s\x1b[2m[Clock: %s]\x1b[0m\x1b[u", get_freq_name(freq));
+		print_speed_badge();
 		HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
 		for (volatile int i = 0; i < 60000; i++);
 		HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
@@ -430,6 +434,15 @@ void CDC_Printf(const char *format, ...){
 	vsnprintf(msg, sizeof(msg), format, args);
 	va_end(args);
 	CDC_Print(msg);
+}
+
+void print_speed_badge(void){
+	char inner[24];
+	char badge[32];
+	snprintf(inner, sizeof(inner), "[Clock: %s]", get_freq_name(freq));
+	snprintf(badge, sizeof(badge), "%-18s", inner);
+	CDC_Printf("\x1b[s\x1b[2m%s\x1b[0m\x1b[u", badge);
+	speed_overlay_remaining = SPEED_BADGE_WIDTH;
 }
 
 void led_update_pulse(uint32_t period_ms){
@@ -2355,26 +2368,69 @@ int main(void)
 	  if(((state == STATE_RUN) || (state == STATE_LIB_ADD && lib_add_substate == LIB_ADD_VERIFYING)) && (head != tail) && !TxBusy()){
 		  uint32_t cur_tail = tail;
 		  leaving = head;
-	  	  if(head < cur_tail){
-	  		  if( (cur_tail - head) < 60 ){ // easy case
-				  CDC_Transmit_FS(outbox+head, cur_tail - head);
-				  head = cur_tail;
-	  		  }
-	  		  else{ 				// chunk it
-				  CDC_Transmit_FS(outbox+head, 60);
-				  head += 60;
-	  		  }
-	  	  }
-	  	  else{
-	  		  if(head >= (OUTBOX_CAPACITY - 60)){ // easy case
-				  CDC_Transmit_FS(outbox+head, OUTBOX_CAPACITY - head);
-				  head = 0;
-	  		  }
-	  		  else{ 				// chunk it
-				  CDC_Transmit_FS(outbox+head, 60);
-				  head += 60;
-	  		  }
-	  	  }
+
+		  if (speed_overlay_remaining > 0){
+			  uint8_t c = outbox[head];
+			  if (c == '\r' || c == '\n'){
+				  // FPGA produced newline before speed overlay was fully overwritten:
+				  // 1. Pause FPGA clock
+				  if (active_is_tim1){
+					  TIM1->CR1 &= ~TIM_CR1_CEN;
+				  } else {
+					  HAL_RCC_MCOConfig(RCC_MCO, RCC_MCO1SOURCE_NOCLOCK, RCC_MCODIV_1);
+				  }
+
+				  // 2. Erase remaining badge characters to end of line
+				  CDC_Print("\x1b[K");
+
+				  // 3. Resume FPGA clock
+				  if (!cfg_manual_step_enabled){
+					  if (active_is_tim1){
+						  TIM1->CR1 |= TIM_CR1_CEN;
+					  } else {
+						  RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCO | RCC_CFGR_MCOPRE)) | active_mco_cfg;
+					  }
+				  }
+				  speed_overlay_remaining = 0;
+			  }
+			  else {
+				  // Non-newline bytes: scan up to speed_overlay_remaining non-newlines
+				  uint32_t avail = (head < cur_tail) ? (cur_tail - head) : (OUTBOX_CAPACITY - head);
+				  uint32_t chunk = 0;
+				  while (chunk < avail && chunk < speed_overlay_remaining &&
+				         outbox[head + chunk] != '\r' && outbox[head + chunk] != '\n'){
+					  chunk++;
+				  }
+				  if (chunk == 0) chunk = 1;
+				  CDC_Transmit_FS(outbox + head, chunk);
+				  head += chunk;
+				  if (head >= OUTBOX_CAPACITY) head = 0;
+				  if (chunk >= speed_overlay_remaining) speed_overlay_remaining = 0;
+				  else speed_overlay_remaining -= chunk;
+			  }
+		  }
+		  else {
+			  if(head < cur_tail){
+				  if( (cur_tail - head) < 60 ){ // easy case
+					  CDC_Transmit_FS(outbox+head, cur_tail - head);
+					  head = cur_tail;
+				  }
+				  else{ 				// chunk it
+					  CDC_Transmit_FS(outbox+head, 60);
+					  head += 60;
+				  }
+			  }
+			  else{
+				  if(head >= (OUTBOX_CAPACITY - 60)){ // easy case
+					  CDC_Transmit_FS(outbox+head, OUTBOX_CAPACITY - head);
+					  head = 0;
+				  }
+				  else{ 				// chunk it
+					  CDC_Transmit_FS(outbox+head, 60);
+					  head += 60;
+				  }
+			  }
+		  }
 
 		  if (mco_throttled){
 			  uint16_t used = (tail >= head) ? (tail - head) : (OUTBOX_CAPACITY - (head - tail));
