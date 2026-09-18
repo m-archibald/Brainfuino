@@ -88,4 +88,8 @@ brainfuck_uP-FPGA-softprocessor/reportview.xml
 companion-STM32-firmware/Debug/*.elf
 companion-STM32-firmware/Debug/*.map
 companion-STM32-firmware/Debug/build/
+
+# Bad Apple media intermediates
+scripts/bad_apple/frames/
+scripts/bad_apple/*.mp4
 
