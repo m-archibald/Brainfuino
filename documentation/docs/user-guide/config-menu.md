@@ -195,6 +195,7 @@ From the **Program Library** submenu:
 ### 4. Append Endless Loop
 * **Options:** `[-]+[]` *(default)*, `NONE`
 * **Description:** Automatically appends the robust Brainfuck halt idiom (`[-]+[]`) to the end of your program. This prevents the FPGA Program Counter from marching through unprogrammed ROM space (`0xFF`) and restarting at address `0`.
+* **Recommendation:** Keep this enabled (`[-]+[]`). With this setting on, you do not need to append manual halt loops to your Brainfuck programs; standard Brainfuck programs will halt cleanly upon completion.
 
 ### 5. Prune non-BF on Paste
 * **Options:** `ENABLED` *(default)*, `DISABLED`

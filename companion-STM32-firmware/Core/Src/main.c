@@ -1477,14 +1477,18 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 					menu_needs_render = 1;
 					return 1;
 				}
-				else if (buff[idx+2] == 'C'){ // Right Arrow -> cycle forward
-					menu_action_pending = menu_cursor;
-					menu_action_dir = 1;
+				else if (buff[idx+2] == 'C'){ // Right Arrow -> cycle forward in Settings only
+					if (menu_page == MENU_PAGE_SETTINGS && menu_cursor < count - 1){
+						menu_action_pending = menu_cursor;
+						menu_action_dir = 1;
+					}
 					return 1;
 				}
-				else if (buff[idx+2] == 'D'){ // Left Arrow -> cycle backward
-					menu_action_pending = menu_cursor;
-					menu_action_dir = -1;
+				else if (buff[idx+2] == 'D'){ // Left Arrow -> cycle backward in Settings only
+					if (menu_page == MENU_PAGE_SETTINGS && menu_cursor < count - 1){
+						menu_action_pending = menu_cursor;
+						menu_action_dir = -1;
+					}
 					return 1;
 				}
 			}

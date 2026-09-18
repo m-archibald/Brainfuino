@@ -66,30 +66,24 @@ The companion STM32 coprocessor monitors incoming serial packets: any pasted tex
 4. Press the hardware **Reset Button** on the Brainfuino to boot the FPGA into your new program!
 
 ```brainfuck title="Simple Hello World Example"
-+[-->-[>>+>-----<<]<--<---]>-.>>>+.>>..+++[.>]<<<<.+++------.<<<.>>>>+.[-]+[]
++[-->-[>>+>-----<<]<--<---]>-.>>>+.>>..+++[.>]<<<<.+++------.<<<.>>>>+.
 ```
 
 ---
 
 ## 5. Helpful Tips & Program Halting
 
-??? tip "Stopping your program gracefully: The `[-]+[]` Idiom"
-    **The Processor Never Stops!**
+??? tip "Automatic Program Halting (Append Endless Loop)"
+    **Automatic Halting Enabled by Default:**
     
-    The FPGA state machine fetches and executes bytes from ROM relentlessly. When it reaches the end of your code, it will march through empty ROM until it hits address 262,143, wrap back around to address 0, and run the code all over again.
+    The FPGA soft-processor fetches and executes instructions from ROM continuously. Without a halt loop, once execution reaches the end of your program, it would march through unprogrammed ROM (`0xFF`) until address 262,143, wrap back around to address 0, and restart the program.
     
-    To prevent your program from restarting in an endless loop, end your program with an intentional halt loop.
+    Brainfuino solves this automatically! The companion firmware includes an **Append Endless Loop** configuration option (enabled by default as `[-]+[]` in the [Configuration Menu](config-menu.md)). Whenever you upload code or load from the Program Library, the STM32 automatically appends the robust halt idiom to the end of your code before flashing.
     
-    **The Flawed Approach (`+[]`):**
-    Many tutorials suggest `+[]`. However, if your current memory cell happens to contain **255**, adding 1 wraps the cell around to **0** (`255 + 1 = 0`). The loop `[]` checks if the cell is non-zero, sees `0`, skips right over the loop, and the program restarts anyway!
+    **Recommendation:** Keep **Append Endless Loop** enabled (`[-]+[]`). You do not need to add manual halt loops to your Brainfuck programs—any standard Brainfuck code will halt cleanly at EOF!
     
-    **The Robust Idiom (`[-]+[]`):**
-    ```brainfuck
-    [-]+[]
-    ```
-    * `[-]`: Decrements the cell until it is guaranteed to be `0` (even if it started at 255).
-    * `+`: Increments `0` to `1`.
-    * `[]`: Enters an infinite loop on `1`, safely halting the processor forever!
+    **Behind the Scenes: The Robust `[-]+[]` Idiom:**
+    Many online tutorials suggest ending programs with `+[]`. However, if your program finishes with the current tape cell containing **255**, adding 1 wraps to **0** (`255 + 1 = 0`). The loop `[]` checks if the cell is non-zero, sees `0`, skips right past the loop, and restarts anyway! Brainfuino's auto-injected `[-]+[]` idiom zeroes the cell first, adds 1, and enters an unbreakable infinite halt loop.
 
 ??? note "Single-Key Commands"
     When you press a single key (packet length under 3 bytes), the STM32 interprets hotkeys:

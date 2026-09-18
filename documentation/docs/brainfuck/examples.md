@@ -6,11 +6,10 @@ These tested Brainfuck examples are verified for native execution on the Brainfu
 
 ## 1. Official Brainfuino Text Art Banner
 
-This program outputs the official Brainfuino ASCII logo to the serial terminal, ending with the hardware halt idiom `+[]`. Paste this code directly into your serial terminal (e.g. Tera Term or PuTTY) at 9600 baud:
+This program outputs the official Brainfuino ASCII logo to the serial terminal. With the companion STM32's **Append Endless Loop** feature enabled (on by default), the hardware automatically halts the program counter at EOF without needing manual halt loops. Paste this code directly into your serial terminal (e.g. Tera Term or PuTTY) at 9600 baud:
 
 ```brainfuck title="Brainfuino Text Art Banner Generator"
 ++++++++++[>+++++++++>++++++++++++>++++++>+++++>++++++++>+++++++++++>++++<<<<<<<-]>+>+++>>>>>--------..<<<<<<++++....>>>>>>............<<<<<<.>>>>>>........<<<<<<..>>>>>>.......<<<<<<.>>>>>>.............<<<<<<<+++++++++++++.---.>>>>>>>.<<<<<+.>>>>>.<<<<<<..>>>>>>.+++++++++.---------.<<<<<<.>>>>>>.<<<<<<..>>>>>>.<<<<<<..>>>>>>.<<<<<<.>>>>>>++++++++.<<<<<<.>>>>>>+.<<<<<<.>>>>>>---------.<<<<<<..>>>>>>..+++++++++++++++.---------------.<<<<<<.>.<.>>>>>>...<<<<<<.>>>>>>++++++++.<<<<<<.>>>>>>+.<<<<<<.>>>>>>---------.<<<<<<..>>>>>>...<<<<<<...>>>>>>..<<<<<<<+++.---.>>>>>>>.<<<<<.>>>>>..<<<<<<.>>>>>>.<<<<<<---.>.>>>>>.+++++++.<<<<<<+++..>>>>>>++++++++.---------------.<<<<<<.+.>>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.+++++++.<<<<<<-.>>>>>>-------.<<<<<<---.>.>>>>>.<<<<<.<+++.>.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.+++++++.<<<<<<.>>>>>>-------.<<<<<<---.>>>>>>.+++++++++++++++.---------------.<<<<<<+++.>>>>>>.<<<<<<---.>>>>>>.<<<<<<<+++.---.>>>>>>>.<<<<<.>>>>>.<<<<<.<+++.>>>>>>+++++++++.---------.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.++++++++.<<<<<<.>.>>>>>--------.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>..<<<<<<.>.>>>>>.<<<<<.<.>.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.++++++++.<<<<<<.>>>>>>+.---------.<<<<<.<<+++.---.>>>>>>>.<<<<<.<....>>>>>>+++++++++++++++.<<<<<.<.>.>>>>>---------------..<<<<<<---.+++..>>>>>>++++++++++++.<<<<<<.>.<.>.<.>.>>>>>------------.<<<<<.<.>.<.>.>>>>>..<<<<<<---.+++..>>>>>>++++++++++++.<<<<<<.>.<.>.<.>.>>>>>------------.<<<<<.<.>.<---.+++...>>>>>>+++++++++++++++.---------------.<<<<<<<+++.---.>>>>>>>..................................................<<<<<<<+++.---.
-+[]
 ```
 
 **Terminal Output:**
@@ -80,7 +79,7 @@ Reads an incoming character from the serial terminal and echoes it back immediat
 
 ## 4. Sierpinski Triangle Generator
 
-An iconic Brainfuck fractal program authored by **NYYRIKKI** (2002) formatted in the shape of a Sierpinski triangle. It computes and renders a 32-line Sierpinski fractal pattern across an 80-column display, then enters an infinite halt loop `[]`:
+An iconic Brainfuck fractal program authored by **NYYRIKKI** (2002) formatted in the shape of a Sierpinski triangle. It computes and renders a 32-line Sierpinski fractal pattern across an 80-column display (the EOF halt loop is automatically appended by the firmware):
 
 ```brainfuck title="Sierpinski Triangle by NYYRIKKI (2002)"
 [ This program prints Sierpinski triangle on 80-column display. ]
@@ -116,7 +115,6 @@ An iconic Brainfuck fractal program authored by **NYYRIKKI** (2002) formatted in
    < ]     < <     < <     ] +     + +     + +     + +     + +    
   +   .   +   +   +   .   [   -   ]   <   ]   +   +   +   +   +    
  * * * * * M a d e * B y : * N Y Y R I K K I * 2 0 0 2 * * * * *    
-[]
 ```
 
 **Terminal Output:**

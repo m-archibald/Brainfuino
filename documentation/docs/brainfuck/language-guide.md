@@ -43,9 +43,6 @@ Because the Brainfuino runs on real physical chips (parallel SRAM and Flash ROM)
 
 ### 4. Halting & Program Termination
 * Standard Brainfuck specifications do not define an explicit "exit" instruction.
-* In hardware, the FPGA will keep stepping through Flash ROM until address `262,143`, wrap back to `0`, and re-execute.
-* **Best Practice:** End programs with an intentional bulletproof infinite loop:
-  ```brainfuck
-  [-]+[]
-  ```
-  *(Zeroes the cell first to guarantee it is non-zero when entering `+[]`, preventing accidental loop exits on wraparound).*
+* In hardware, the FPGA soft-processor executes bytes from Flash ROM continuously. Without a halt loop, it would step through unprogrammed Flash space until address `262,143`, wrap back to `0`, and re-execute from the beginning.
+* **Automatic Halt Loop Append (Recommended):** Brainfuino includes an **Append Endless Loop** configuration option in the STM32 firmware (enabled by default as `[-]+[]`). Whenever you paste or upload a program, the firmware automatically appends the robust halt idiom to the end of your code in ROM. You do not need to add halt loops manually to your Brainfuck source files!
+* **Behind the Scenes (`[-]+[]`):** Brainfuino uses the bulletproof `[-]+[]` idiom rather than `+[]`. Zeroing the cell first guarantees that the cell is non-zero after `+` (avoiding the 255 + 1 = 0 wraparound bug in standard `+[]`), parking the FPGA program counter indefinitely at EOF.
