@@ -25,23 +25,15 @@
 
 ---
 
-## The Joke That Went Way Too Far
+## What is Brainfuino?
 
-Most programmers who discover [Brainfuck](https://en.wikipedia.org/wiki/Brainfuck)—the infamous 1993 esoteric language with only eight single-character commands (`+`, `-`, `<`, `>`, `[`, `]`, `.`, `,`)—write a quick 50-line interpreter in Python or C, giggle at the absurdity, and move on.
-
-**We did not move on.**
-
-Instead, the Brainfuino [-]+. (pronounced *"Brainfuino Uno"*) asks the ultimate question: *What if an Arduino ran Brainfuck directly in physical hardware?*
-
-No compiler. No bytecode. No virtual machine. No emulation. 
-
-When you write Brainfuck code for the Brainfuino, the raw ASCII characters (`0x2B` for `+`, `0x5B` for `[`, etc.) are written directly into a parallel Flash ROM chip. A soft-processor synthesized on a Lattice MachXO2 FPGA fetches those raw ASCII bytes and executes them instruction-by-instruction in real hardware logic gates.
+You may have seen the Brainfuino [Hackaday project](https://hackaday.com/2021/01/12/make-room-for-a-new-arduino-competitor-with-native-brainfck/) released during COVID in 2021. Originally created by Eduardo Corpeño, it's a programming board that runs the esoteric programming language Brainfuck completely in hardware. The language is extremely minimal, with just 8 characters, yet it is entirely Turing complete. When uploading code to the Brainfuino, there is no conversion or compression, the ascii brainfuck characters are saved into rom exactly as they are written. Programming in Brainfuck is difficult, hilarious, and rewarding, and doing it with Brainfuino is even better.
 
 ---
 
-## All Hail the Lattice MachXO2
+## Two Processors: Pure Hardware and Quality of Life
 
-In the Brainfuino universe, the **FPGA is the undisputed center of the cosmos**. Everything else on the board exists purely in humble service of the FPGA and its soft-processor core, **`brainfuck_uP`**:
+There are two processors on the Brainfuino, the actual Brainfuck based soft processor implemented in hardware on the Lattice FPGA, and the STM32 which makes the whole thing user "friendly". Since the FPGA is configured basically as an old fashioned Harvard CPU, instructions move through the soft processor in a continuous stream of parallel bits, these flash into and out of existence, and the STM32 is there to catch them and serialize them so you can use it with a modern PC instead of an ancient parallel based terminal interface. The FPGA does all the hard work here though. When programs are run, all the output is being generated real time in hardware via the FPGA. The FPGA reads bytes of data from good old parallel flash program memory, and when it encounters bytes representing one of the 8 ascii characters used in Brainfuck it executes that with its built in soft processor based instruction set according to the character. Since it's a harvard style cpu, it also uses parallel based RAM to read and write data to and from for computation purposes. The STM32 uses its hardware timer to drive a clock pin to the FPGA at speeds from 500 khz up to 12 mhz. You may wonder if the STM32 is overkill, and your curiosity is valid, it probably is overkill, but by leveraging a separate microcontroller for these quality of life improvements, it allows the Brainfuck soft processor implemented in Verilog on the Lattice FPGA to remain pure and stay true to its purpose to compute Brainfuck. We leave the rest to the STM32: Usb communication, parallel to serial conversion, program memory flushing and prep, variable clock speed control, and an interactive terminal interface.
 
 ```mermaid
 flowchart TD
@@ -50,34 +42,37 @@ flowchart TD
     
     FPGA["Lattice MachXO2 FPGA<br/>'brainfuck_uP' Soft-Processor Core<br/>Native ASCII State Machine"]
 
-    STM32["STM32F072 Coprocessor<br/>(The FPGA's Butler)<br/>Clock Synth • USB Serial • Flash Burner"]
+    STM32["STM32F072 Coprocessor<br/>(Host Interface & Clock Synth)<br/>Clock Generation • USB Serial • Flash Burner"]
 
     SHIELD["Arduino-Style Headers<br/>Parallel 8-bit In/Out & Handshakes<br/>(Via 74ALVC164245 Level Shifter)"]
 
     ROM <-->|18-bit PC Address and 8-bit Instruction| FPGA
     FPGA <-->|17-bit Pointer and 8-bit Bidirectional Tape| RAM
-    STM32 -->|Clock Pulses: 0.5 to 48 MHz| FPGA
+    STM32 -->|Clock Pulses: 500 kHz to 12 MHz| FPGA
     STM32 <-->|Reset and Serialized ASCII Stream| FPGA
     STM32 -.->|Flash Programming Bus| ROM
     FPGA <-->|3.3V to 5V Level Shifter| SHIELD
 ```
 
+---
 
+## Why Brainfuino?
 
-* **The Soft-Processor (`brainfuck_uP`):** The heart of the machine. Implements a direct hardware state machine that treats raw ASCII Brainfuck as machine code.
-* **The Butler (STM32F072):** The soft-processor was way too hardcore to talk to directly without an oscilloscope, so the STM32 handles user interaction: generating clock pulses, piping USB serial to your PC, and flashing new programs into ROM.
-* **The Memory Chips:** Dedicated parallel chips give the FPGA a massive **128 kB data tape** (SRAM) and **256 kB program space** (Flash ROM).
-* **The Form Factor:** Designed in the classic Arduino Uno footprint—mostly for the sheer comedy of having an "Arduino" that runs native Brainfuck!
+As to answer the question of why? Well: The challenge. And to quote the original author Eduardo Corpeño, with the Brainfuino you get "bragging rights for writing code that works! You certainly won't get that from the Arduino."
 
 ---
 
-## Why Would Anyone Build This?
+## What's in Revision 1.1
 
-Because nothing matches the feeling of:
+My revision 1.1 of the Brainfuino has:
+- Improved clock routing to the FPGA soft processor using an FPGA pin optimized for clock input rather than a generic GPIO
+- Proper VBus to 3.3v connection on the STM32 increasing STM32 clock stability
+- JLCPCB compatible parts list and reduced cost by switching to prestocked "basic" components.
+- USB C!
+- A nifty 3D printed case
+- KiCAD design files (migrated from the original Autodesk Eagle)
 
-* **Bragging rights:** You wrote a program in one of the hardest esoteric languages on earth, and you ran it on bare silicon.
-* **Genuine engineering:** An FPGA soft-processor with Harvard architecture, parallel memory buses, clock synthesis, and custom level shifting.
-* **Pure entertainment:** Watching ASCII characters fly by in a PuTTY serial console powered by hardware gates.
+See the original demo video: [Brainfuino: Hardware Brainfuck Processor (YouTube)](https://www.youtube.com/watch?v=QloNq8AoHvU)
 
 ---
 

@@ -26,45 +26,33 @@
 
 ## What is Brainfuino?
 
-Most programmers who discover [Brainfuck](https://en.wikipedia.org/wiki/Brainfuck)—the famous 1993 esoteric language created by Urban Müller with only eight single-character commands (`+`, `-`, `<`, `>`, `[`, `]`, `.`, `,`)—write a quick software interpreter, marvel at its Turing completeness, and move on.
-
-**Brainfuino takes the concept to bare-metal hardware.**
-
-The **Brainfuino [-]+.** (pronounced *"Brainfuino Uno"*) is an open-source development board built around a custom Verilog soft-processor called [**`brainfuck_uP`**](./brainfuck_uP-FPGA-softprocessor/).
-
-There is no compiler, no bytecode, and no software emulation layer. When you send a Brainfuck source file to the board, the **plain ASCII text** (`0x2B` for `+`, `0x2D` for `-`, `0x5B` for `[`, etc.) is burned directly into physical Flash memory. The FPGA soft-processor fetches those raw ASCII characters from ROM and executes them instruction-by-instruction across a physical SRAM tape in hardware logic gates.
+You may have seen the Brainfuino [Hackaday project](https://hackaday.com/2021/01/12/make-room-for-a-new-arduino-competitor-with-native-brainfck/) released during COVID in 2021. Originally created by Eduardo Corpeño, it's a programming board that runs the esoteric programming language Brainfuck completely in hardware. The language is extremely minimal, with just 8 characters, yet it is entirely Turing complete. When uploading code to the Brainfuino, there is no conversion or compression, the ascii brainfuck characters are saved into rom exactly as they are written. Programming in Brainfuck is difficult, hilarious, and rewarding, and doing it with Brainfuino is even better.
 
 ---
 
-## Hardware Architecture
+## Two Processors: Pure Hardware and Quality of Life
 
-The Brainfuino pairs a high-speed FPGA soft-processor with a modern ARM microcontroller and dedicated parallel memories in a classic Arduino Uno form factor:
-
-- **Lattice MachXO2 FPGA Core:** The `brainfuck_uP` soft-processor is synthesized in a Lattice MachXO2 FPGA (LCMXO2-1200HC in a TQFP-100 package). It implements the complete Brainfuck instruction decoder, data pointer tracking, bracket matching state machine, and I/O registers in pure digital logic.
-- **True Harvard Architecture:** The processor features two completely independent parallel buses for program memory and the tape:
-  - **Program Memory (ROM):** 256 kB parallel Flash ROM chip storing raw ASCII Brainfuck instructions.
-  - **Data Tape (RAM):** 128 kB parallel high-speed SRAM chip acting as the physical execution tape.
-- **STM32F072 Companion Coprocessor:** An ARM Cortex-M0 MCU serves as the host interface and system controller:
-  - **USB Virtual COM Port (CDC):** Provides seamless serial terminal input/output.
-  - **Programmable Clock Generation:** Synthesizes the master clock signal for the FPGA, dynamically tunable from 500 kHz up to 48 MHz.
-  - **In-System Flash Programmer:** Receives Brainfuck source code over USB and burns it into the parallel Flash ROM on the fly with no external chip programmers required.
-  - **Analog Input:** Donates an on-chip 12-bit ADC channel to bring analog sensing capabilities to Brainfuck.
-- **5V Level Shifting & Shield Compatibility:** Dedicated high-speed bus transceivers (74ALVC164245) bridge the FPGA's 3.3V logic to 5V TTL, maintaining full electrical and mechanical compatibility with Arduino Uno shields.
-- **In-System Programming Headers:** Convienient DFU mode jumper for flashing the STM32 firmware and headers for flashing the FPGA bitstream (JTAG via Lattice Diamond or openFPGALoader).
+There are two processors on the Brainfuino, the actual Brainfuck based soft processor implemented in hardware on the Lattice FPGA, and the STM32 which makes the whole thing user "friendly". Since the FPGA is configured basically as an old fashioned Harvard CPU, instructions move through the soft processor in a continuous stream of parallel bits, these flash into and out of existence, and the STM32 is there to catch them and serialize them so you can use it with a modern PC instead of an ancient parallel based terminal interface. The FPGA does all the hard work here though. When programs are run, all the output is being generated real time in hardware via the FPGA. The FPGA reads bytes of data from good old parallel flash program memory, and when it encounters bytes representing one of the 8 ascii characters used in Brainfuck it executes that with its built in soft processor based instruction set according to the character. Since it's a harvard style cpu, it also uses parallel based RAM to read and write data to and from for computation purposes. The STM32 uses its hardware timer to drive a clock pin to the FPGA at speeds from 500 khz up to 12 mhz. You may wonder if the STM32 is overkill, and your curiosity is valid, it probably is overkill, but by leveraging a separate microcontroller for these quality of life improvements, it allows the Brainfuck soft processor implemented in Verilog on the Lattice FPGA to remain pure and stay true to its purpose to compute Brainfuck. We leave the rest to the STM32: Usb communication, parallel to serial conversion, program memory flushing and prep, variable clock speed control, and an interactive terminal interface.
 
 ---
 
 ## Why Brainfuino?
 
-This project is an homage to esoteric programming languages: part technical feat, part educational platform, and part delightful geek toy.
+As to answer the question of why? Well: The challenge. And to quote the original author Eduardo Corpeño, with the Brainfuino you get "bragging rights for writing code that works! You certainly won't get that from the Arduino."
 
-If we look at the Arduino Uno as a playful benchmark, Brainfuino delivers:
+---
 
-1. **Native Silicon Execution:** You are not running an interpreter or a virtual machine inside a C program. Raw ASCII bytes directly drive digital logic gates.
-2. **One of a Kind:** Brainfuino is the only dedicated physical development board built from the ground up to execute native Brainfuck in silicon.
-3. **Arduino Uno Shield Compatibility:** Standard Uno pin headers, 5V level-shifted I/O, and analog input let you connect real sensors, relays, displays, and shields to an 8-instruction computer.
-4. **Transparent Computer Architecture:** A complete, accessible study in computer engineering—connecting Verilog soft-processor design, FPGA synthesis, memory bus arbitration, embedded firmware, and compiler theory.
-5. **Pure Bragging Rights:** Writing an algorithm or a fractal generator in 8 single-character instructions and seeing it calculate in real silicon hardware provides unmatched hacker satisfaction and bragging rights. You certainly won't get that with an Arduino!
+## What's in Revision 1.1
+
+My revision 1.1 of the Brainfuino has:
+- Improved clock routing to the FPGA soft processor using an FPGA pin optimized for clock input rather than a generic GPIO
+- Proper VBus to 3.3v connection on the STM32 increasing STM32 clock stability
+- JLCPCB compatible parts list and reduced cost by switching to prestocked "basic" components.
+- USB C!
+- A nifty 3D printed case
+- KiCAD design files (migrated from the original Autodesk Eagle)
+
+See the original demo video: [Brainfuino: Hardware Brainfuck Processor (YouTube)](https://www.youtube.com/watch?v=QloNq8AoHvU)
 
 ---
 

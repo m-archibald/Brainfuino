@@ -64,6 +64,12 @@ fp-info-cache
 *.bak
 *.tmp
 
+# Python cache & temporary scratch
+__pycache__/
+*.py[cod]
+*$py.class
+scratch/
+
 # OS junk
 .DS_Store
 Thumbs.db

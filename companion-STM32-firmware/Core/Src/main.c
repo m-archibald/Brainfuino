@@ -158,6 +158,12 @@ uint8_t  cfg_manual_step_ticks    = STEP_TICKS_100; // Step burst size (1, 10, 1
 uint8_t  cfg_manual_step_key      = STEP_KEY_SPACE; // Step trigger key (Space, Tab, Enter)
 uint8_t  cfg_prune_on_paste       = 0;   // 0 = Disabled, 1 = Strip non-BF commands on paste
 uint8_t  cfg_prune_in_library     = 1;   // 0 = Disabled, 1 = Strip non-BF commands when saving to library
+uint8_t  cfg_cr_to_lf             = 1;   // 1 = Convert Windows \r (CR) -> \n (LF) in RUN mode
+
+#define SERIAL_INBOX_SIZE 64
+static volatile uint8_t serial_inbox[SERIAL_INBOX_SIZE];
+static volatile uint8_t serial_inbox_head = 0;
+static volatile uint8_t serial_inbox_tail = 0;
 
 // Manual clock stepping accumulator queue
 volatile uint32_t manual_step_ticks_pending = 0;
@@ -287,9 +293,17 @@ void CDC_Write(const uint8_t *data, uint32_t len);
 /* USER CODE BEGIN 0 */
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
-	if (GPIO_Pin == GPIO_PIN_1){  // InStrobe
+	if (GPIO_Pin == GPIO_PIN_1){  // InStrobe falling edge: FPGA acknowledged current input byte
 		HAL_GPIO_WritePin(BF_INCMG_GPIO_Port, BF_INCMG_Pin, GPIO_PIN_RESET);
-		serial_input = 0;
+		if (serial_inbox_head != serial_inbox_tail){
+			uint8_t next_b = serial_inbox[serial_inbox_head];
+			serial_inbox_head = (serial_inbox_head + 1) % SERIAL_INBOX_SIZE;
+			writeBFInput(next_b);
+			HAL_GPIO_WritePin(BF_INCMG_GPIO_Port, BF_INCMG_Pin, GPIO_PIN_SET);
+			serial_input = 1;
+		} else {
+			serial_input = 0;
+		}
 	}
 }
 
@@ -866,7 +880,7 @@ static uint8_t get_menu_item_count(void){
 	if (menu_page == MENU_PAGE_MAIN){
 		return 6;
 	} else if (menu_page == MENU_PAGE_SETTINGS){
-		return cfg_manual_step_enabled ? 12 : 10;
+		return cfg_manual_step_enabled ? 13 : 11;
 	} else if (menu_page == MENU_PAGE_LIBRARY){
 		lib_refresh_display_list();
 		return lib_display_count + 2;
@@ -942,7 +956,7 @@ void menu_render_settings(void){
 	CDC_Print("|  Use [Up/Down], [Left/Right], or [Enter]        |\r\n");
 	CDC_Print("+-------------------------------------------------+\r\n");
 
-	uint8_t count = cfg_manual_step_enabled ? 12 : 10;
+	uint8_t count = cfg_manual_step_enabled ? 13 : 11;
 	if (menu_cursor >= count) menu_cursor = count - 1;
 
 	for (int i = 0; i < count; i++){
@@ -978,7 +992,11 @@ void menu_render_settings(void){
 				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_prune_in_library ? "ENABLED" : "DISABLED");
 				break;
 			case 7:
-				label = "8. Run Mode Speed Hotkeys ";
+				label = "8. Serial Input CR -> LF  ";
+				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_cr_to_lf ? "ENABLED" : "DISABLED");
+				break;
+			case 8:
+				label = "9. Run Mode Speed Hotkeys ";
 				{
 					const char *hname = "NONE";
 					if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PGUP_PGDN) hname = "PgUp/Dn";
@@ -987,24 +1005,24 @@ void menu_render_settings(void){
 					snprintf(val_str, sizeof(val_str), "[ %-8s ]", hname);
 				}
 				break;
-			case 8:
-				label = "9. Manual Stepping Mode   ";
+			case 9:
+				label = "A. Manual Stepping Mode   ";
 				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_manual_step_enabled ? "ENABLED" : "DISABLED");
 				break;
-			case 9:
+			case 10:
 				if (cfg_manual_step_enabled){
-					label = "A. Step Advance Ticks     ";
+					label = "B. Step Advance Ticks     ";
 					snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_step_ticks_name(cfg_manual_step_ticks));
 				} else {
 					label = "0. Back to Main Menu      ";
 					snprintf(val_str, sizeof(val_str), "[   BACK   ]");
 				}
 				break;
-			case 10:
-				label = "B. Step Trigger Key       ";
+			case 11:
+				label = "C. Step Trigger Key       ";
 				snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_step_key_name(cfg_manual_step_key));
 				break;
-			case 11:
+			case 12:
 				label = "0. Back to Main Menu      ";
 				snprintf(val_str, sizeof(val_str), "[   BACK   ]");
 				break;
@@ -1163,16 +1181,19 @@ void menu_execute_action(uint8_t item, int8_t dir){
 				cfg_prune_in_library = !cfg_prune_in_library;
 				break;
 			case 7:
+				cfg_cr_to_lf = !cfg_cr_to_lf;
+				break;
+			case 8:
 				if (dir > 0){
 					cfg_speed_hotkey_mode = (cfg_speed_hotkey_mode + 1) % 4;
 				} else {
 					cfg_speed_hotkey_mode = (cfg_speed_hotkey_mode + 3) % 4;
 				}
 				break;
-			case 8:
+			case 9:
 				cfg_manual_step_enabled = !cfg_manual_step_enabled;
 				break;
-			case 9:
+			case 10:
 				if (cfg_manual_step_enabled){
 					if (dir > 0){
 						cfg_manual_step_ticks = (cfg_manual_step_ticks + 1) % 6;
@@ -1185,14 +1206,14 @@ void menu_execute_action(uint8_t item, int8_t dir){
 					menu_needs_render = 1;
 				}
 				break;
-			case 10:
+			case 11:
 				if (dir > 0){
 					cfg_manual_step_key = (cfg_manual_step_key + 1) % 3;
 				} else {
 					cfg_manual_step_key = (cfg_manual_step_key + 2) % 3;
 				}
 				break;
-			case 11:
+			case 12:
 				menu_page = MENU_PAGE_MAIN;
 				menu_cursor = 1;
 				menu_needs_render = 1;
@@ -1219,7 +1240,7 @@ void menu_execute_action(uint8_t item, int8_t dir){
 }
 
 #define SETTINGS_FLASH_ADDR   0x0801F800UL
-#define SETTINGS_MAGIC        0xBF072C03UL
+#define SETTINGS_MAGIC        0xBF072C04UL
 
 typedef struct {
 	uint32_t magic;
@@ -1233,7 +1254,8 @@ typedef struct {
 	uint8_t  manual_step_key;
 	uint8_t  prune_on_paste;
 	uint8_t  prune_in_library;
-	uint16_t reserved;
+	uint8_t  cr_to_lf;
+	uint8_t  reserved;
 	uint32_t auto_prog_min_bytes;
 	uint32_t checksum;
 } PersistentSettings;
@@ -1244,7 +1266,7 @@ static uint32_t calc_settings_checksum(const PersistentSettings *s){
 	       (uint32_t)s->speed_hotkey_mode + (uint32_t)s->manual_step_enabled +
 	       (uint32_t)s->manual_step_ticks + (uint32_t)s->manual_step_key +
 	       (uint32_t)s->prune_on_paste + (uint32_t)s->prune_in_library +
-	       s->auto_prog_min_bytes;
+	       (uint32_t)s->cr_to_lf + s->auto_prog_min_bytes;
 }
 
 void settings_load(void){
@@ -1262,6 +1284,7 @@ void settings_load(void){
 		cfg_manual_step_key = (flash_cfg->manual_step_key <= 2) ? flash_cfg->manual_step_key : STEP_KEY_SPACE;
 		cfg_prune_on_paste = flash_cfg->prune_on_paste ? 1 : 0;
 		cfg_prune_in_library = flash_cfg->prune_in_library ? 1 : 0;
+		cfg_cr_to_lf = flash_cfg->cr_to_lf ? 1 : 0;
 
 		if (flash_cfg->auto_prog_min_bytes >= 4 && flash_cfg->auto_prog_min_bytes <= 64){
 			cfg_auto_prog_min_bytes = flash_cfg->auto_prog_min_bytes;
@@ -1279,6 +1302,7 @@ void settings_load(void){
 		cfg_manual_step_key = STEP_KEY_SPACE;
 		cfg_prune_on_paste = 0;
 		cfg_prune_in_library = 1;
+		cfg_cr_to_lf = 1;
 		cfg_auto_prog_min_bytes = 16;
 	}
 }
@@ -1297,6 +1321,7 @@ void settings_save(void){
 	new_cfg.manual_step_key = cfg_manual_step_key;
 	new_cfg.prune_on_paste = cfg_prune_on_paste;
 	new_cfg.prune_in_library = cfg_prune_in_library;
+	new_cfg.cr_to_lf = cfg_cr_to_lf;
 	new_cfg.auto_prog_min_bytes = cfg_auto_prog_min_bytes;
 	new_cfg.checksum = calc_settings_checksum(&new_cfg);
 
@@ -1476,9 +1501,34 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			}
 		}
 
-		// Pass characters cleanly to the running FPGA soft-processor without interception
-		if (len >= 1){
-			writeBFInput(*buff);
+		// Pass characters cleanly to the running FPGA soft-processor via serial_inbox queue
+		static uint8_t last_was_cr = 0;
+		for (uint32_t i = 0; i < len; i++){
+			uint8_t ch = buff[i];
+			if (cfg_cr_to_lf){
+				if (ch == '\r'){
+					ch = '\n';
+					last_was_cr = 1;
+				} else if (ch == '\n' && last_was_cr){
+					// Ignore LF immediately following CR (consume Windows CRLF pair as single LF)
+					last_was_cr = 0;
+					continue;
+				} else {
+					last_was_cr = 0;
+				}
+			}
+			uint8_t next_tail = (serial_inbox_tail + 1) % SERIAL_INBOX_SIZE;
+			if (next_tail != serial_inbox_head){
+				serial_inbox[serial_inbox_tail] = ch;
+				serial_inbox_tail = next_tail;
+			}
+		}
+
+		// If FPGA is not currently busy reading an input byte, present the first byte immediately
+		if (!serial_input && (serial_inbox_head != serial_inbox_tail)){
+			uint8_t byte_to_send = serial_inbox[serial_inbox_head];
+			serial_inbox_head = (serial_inbox_head + 1) % SERIAL_INBOX_SIZE;
+			writeBFInput(byte_to_send);
 			HAL_GPIO_WritePin(BF_INCMG_GPIO_Port, BF_INCMG_Pin, GPIO_PIN_SET);
 			serial_input = 1;
 		}
@@ -1582,7 +1632,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				menu_action_dir = 1;
 				return 1;
 			}
-			if (cfg_manual_step_enabled && (buff[idx] == 'a' || buff[idx] == 'A')){
+			if (buff[idx] == 'a' || buff[idx] == 'A'){
 				menu_cursor = 9;
 				menu_action_pending = 9;
 				menu_action_dir = 1;
@@ -1591,6 +1641,12 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			if (cfg_manual_step_enabled && (buff[idx] == 'b' || buff[idx] == 'B')){
 				menu_cursor = 10;
 				menu_action_pending = 10;
+				menu_action_dir = 1;
+				return 1;
+			}
+			if (cfg_manual_step_enabled && (buff[idx] == 'c' || buff[idx] == 'C')){
+				menu_cursor = 11;
+				menu_action_pending = 11;
 				menu_action_dir = 1;
 				return 1;
 			}
@@ -1976,6 +2032,9 @@ int main(void)
 		  HAL_Delay(60);
 		  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 		  manual_step_ticks_pending = 0;
+		  serial_inbox_head = 0;
+		  serial_inbox_tail = 0;
+		  serial_input = 0;
 		  set_freq(freq);
 		  CDC_Printf("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
 		  if (cfg_manual_step_enabled){
@@ -2051,6 +2110,9 @@ int main(void)
 					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
 					  HAL_Delay(10);
 					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+					  serial_inbox_head = 0;
+					  serial_inbox_tail = 0;
+					  serial_input = 0;
 					  state = STATE_RUN;
 					  CDC_Print("\r\n[Running program]\r\n");
 				  }
@@ -2063,6 +2125,9 @@ int main(void)
 					  HAL_Delay(60);
 					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 					  manual_step_ticks_pending = 0;
+					  serial_inbox_head = 0;
+					  serial_inbox_tail = 0;
+					  serial_input = 0;
 					  set_freq(freq);
 					  CDC_Printf("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
 					  if (cfg_manual_step_enabled){
@@ -2443,24 +2508,20 @@ int main(void)
 			  uint8_t c = outbox[head];
 			  if (c == '\r' || c == '\n'){
 				  // FPGA produced newline before speed overlay was fully overwritten:
-				  // 1. Pause FPGA clock
-				  if (active_is_tim1){
-					  TIM1->CR1 &= ~TIM_CR1_CEN;
-				  } else {
-					  HAL_RCC_MCOConfig(RCC_MCO, RCC_MCO1SOURCE_NOCLOCK, RCC_MCODIV_1);
+				  // Transmit \x1b[K to erase rest of line, plus the newline byte(s), in one single USB packet!
+				  uint8_t nl_pkt[16];
+				  uint8_t nlen = 0;
+				  nl_pkt[nlen++] = 0x1B;
+				  nl_pkt[nlen++] = '[';
+				  nl_pkt[nlen++] = 'K';
+
+				  while ((head != cur_tail) && (outbox[head] == '\r' || outbox[head] == '\n') && (nlen < sizeof(nl_pkt))){
+					  nl_pkt[nlen++] = outbox[head];
+					  head++;
+					  if (head >= OUTBOX_CAPACITY) head = 0;
 				  }
 
-				  // 2. Erase remaining badge characters to end of line
-				  CDC_Print("\x1b[K");
-
-				  // 3. Resume FPGA clock
-				  if (!cfg_manual_step_enabled){
-					  if (active_is_tim1){
-						  TIM1->CR1 |= TIM_CR1_CEN;
-					  } else {
-						  RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCO | RCC_CFGR_MCOPRE)) | active_mco_cfg;
-					  }
-				  }
+				  CDC_Transmit_FS(nl_pkt, nlen);
 				  speed_overlay_remaining = 0;
 			  }
 			  else {
@@ -3373,6 +3434,9 @@ uint8_t flashBufferToROM(const uint8_t *code, uint32_t len, const char *title, u
 		HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
 		HAL_Delay(10);
 		HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+		serial_inbox_head = 0;
+		serial_inbox_tail = 0;
+		serial_input = 0;
 		state = STATE_RUN;
 	} else {
 		CDC_Print("Press the Reset button to run the program.\r\n");

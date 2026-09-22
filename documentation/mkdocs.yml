@@ -62,6 +62,7 @@ markdown_extensions:
 
 exclude_docs: |
   snippets/*
+  programs/README.md
 
 nav:
   - Home: index.md
@@ -84,4 +85,5 @@ nav:
   - Brainfuck Reference:
       - Language & Hardware: brainfuck/language-guide.md
       - Example Programs: brainfuck/examples.md
+      - Streaming Pi Spigot: brainfuck/pi-spigot.md
   - Project Roadmap: roadmap.md
