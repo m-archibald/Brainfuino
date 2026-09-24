@@ -77,7 +77,7 @@ To upload new Brainfuck code into Flash ROM:
      ```
 2. **Paste Your Code:**
    * Simply paste your Brainfuck code into the terminal emulator.
-   * **Programs $\le$ 4 kB:** The STM32 buffers the code in SRAM. When reception pauses for **100 ms**, it prints the total size, erases ROM, fast-writes to Flash while reporting live percentage progress (`Writing: 50% (2048 / 4096 bytes)...`), verifies against RAM, appends `[-]+[]`, and auto-launches.
+   * **Programs ≤ 4 kB:** The STM32 buffers the code in SRAM. When reception pauses for **100 ms**, it prints the total size, erases ROM, fast-writes to Flash while reporting live percentage progress (`Writing: 50% (2048 / 4096 bytes)...`), verifies against RAM, appends `[-]+[]`, and auto-launches.
    * **Programs > 4 kB (up to 256 kB):** If the 4 kB buffer fills, the firmware automatically announces:
      ```text
      Program larger than RAM buffer. Streaming directly to Flash...
@@ -100,5 +100,5 @@ The Brainfuino button utilizes a 35 ms hardware debounce filter to eliminate tac
 | **Short Press** (Program Mode) | < 3 seconds | Turns OFF | Exits Program Mode and executes the program currently in ROM. |
 | **Program Mode Hold** | 3 – 6 seconds | **Solid ON** | Enters **Dedicated Program Mode** (ready for Brainfuck code paste). |
 | **Config Menu Hold** | 6 – 10 seconds | **Smooth Breathing / Pulse** | Enters **[Configuration Menu](config-menu.md)** (`STATE_CONFIG`) for tuning clock, hotkeys, and features. |
-| **Factory Demo Restore** | $\ge$ 10 seconds | **Rapid Strobe** (50 ms) | Erases parallel ROM, restores official Brainfuino ASCII logo demo, and auto-launches it! |
+| **Factory Demo Restore** | ≥ 10 seconds | **Rapid Strobe** (50 ms) | Erases parallel ROM, restores official Brainfuino ASCII logo demo, and auto-launches it! |
 

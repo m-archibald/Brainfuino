@@ -71,15 +71,15 @@ python programs/pi/run_pi.py programs/pi/pi_stream.b --count 10 --timeout 60
 
 ### 3. Mathematical Sequences (`programs/math/`)
 * **`fibonacci.b`** (247 bytes)
-    * **Description:** Generates and outputs an unbounded stream of multi-precision decimal Fibonacci numbers ($0, 1, 1, 2, 3, 5, 8, 13, 21, 34, ...$).
+    * **Description:** Generates and outputs an unbounded stream of multi-precision decimal Fibonacci numbers (0, 1, 1, 2, 3, 5, 8, 13, 21, 34, ...).
     * **Author:** Daniel B. Cristofani
     * **Source:** [Daniel B. Cristofani's fib.b (brainfuck.org)](http://www.brainfuck.org/fib.b)
 * **`golden.b`** (375 bytes)
-    * **Description:** Computes and streams the digits of the Golden Ratio ($\phi = 1.6180339887...$) continuously in decimal.
+    * **Description:** Computes and streams the digits of the Golden Ratio (φ = 1.6180339887...) continuously in decimal.
     * **Author:** Daniel B. Cristofani (2019)
     * **Source:** [Daniel B. Cristofani's golden.b (brainfuck.org)](http://www.brainfuck.org/golden.b)
 * **`factorial.b`** (554 bytes)
-    * **Description:** Arbitrary-precision factorial generator emitting $1!, 2!, 3!, 4!, ...$ in decimal with newline separation.
+    * **Description:** Arbitrary-precision factorial generator emitting 1!, 2!, 3!, 4!, ... in decimal with newline separation.
     * **Author:** Daniel B. Cristofani (2019)
     * **Source:** [Daniel B. Cristofani's factorial2.b (brainfuck.org)](http://www.brainfuck.org/factorial2.b)
 
@@ -89,8 +89,8 @@ python programs/pi/run_pi.py programs/pi/pi_stream.b --count 10 --timeout 60
     * **Author:** Daniel B. Cristofani (2021) based on the interface by Linus Åkesson (2007)
     * **Source:** [Daniel B. Cristofani's life.b (brainfuck.org)](http://www.brainfuck.org/life.b) / [Linus Åkesson's Game of Life](http://www.linusakesson.net/programming/brainfuck/index.php)
 
-### 5. Streaming $\pi$ Spigot (`programs/pi/`)
+### 5. Streaming π Spigot (`programs/pi/`)
 * **`pi_stream.b`** (20,261 bytes)
-    * **Description:** Unbounded streaming $\pi$ spigot based on Jeremy Gibbons' Linear Fractional Transformation (LFT) matrix algorithm.
-    * **Dynamic On-Demand Tape:** Starts with 4 active slots ($64$ bytes) for sub-millisecond boot and dynamically expands across 128 kB SRAM (up to 8,000 slots) on carry propagation.
+    * **Description:** Unbounded streaming π spigot based on Jeremy Gibbons' Linear Fractional Transformation (LFT) matrix algorithm.
+    * **Dynamic On-Demand Tape:** Starts with 4 active slots (64 bytes) for sub-millisecond boot and dynamically expands across 128 kB SRAM (up to 8,000 slots) on carry propagation.
     * **Source:** [Brainfuino Pi Spigot Architecture](../documentation/docs/brainfuck/pi-spigot.md)

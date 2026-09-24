@@ -42,15 +42,15 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 * **The Solution:** Implemented a dedicated **Program Mode** entered via a 3-second button hold. When in standard Run Mode, incoming characters pass cleanly through to the running Brainfuck soft-processor without interception.
 
 ### Smart Variable Clock Rate & Output Throttle — :material-check-circle: Completed
-* **The Problem:** At high clock speeds, output instructions (`.`) hold data on the bus for only 20 clock cycles ($1.66\ \mu\text{s}$ at 12 MHz). Closely-spaced prints (e.g. `\r\n` line endings in Mandelbrot) outpaced Cortex-M0 interrupt latency, causing dropped characters.
+* **The Problem:** At high clock speeds, output instructions (`.`) hold data on the bus for only 20 clock cycles (1.66 µs at 12 MHz). Closely-spaced prints (e.g. `\r\n` line endings in Mandelbrot) outpaced Cortex-M0 interrupt latency, causing dropped characters.
 * **The Solution:** Implemented hardware clock-pausing directly in `EXTI2_3_IRQHandler` on `BF_OUTSTRB` falling edge. The STM32 gates MCO in 1 instruction (`RCC->CFGR &= ~RCC_CFGR_MCO`), latches data with zero bus skew, and resumes or throttles based on USB queue capacity.
 
 ### 25-Speed Frequency Ladder (10 Hz – 12 MHz) & Manual Stepping Mode — :material-check-circle: Completed
-* **The Finding:** Discovered that the `SST39LF020-55` parallel Flash ROM has a maximum address access time of $55\text{ ns}$ ($18.18\text{ MHz}$ physical limit). Speeds of 24 MHz ($41.6\text{ ns}$) and 48 MHz ($20.8\text{ ns}$) violated silicon access times during single-cycle fetch.
+* **The Finding:** Discovered that the `SST39LF020-55` parallel Flash ROM has a maximum address access time of 55 ns (18.18 MHz physical limit). Speeds of 24 MHz (41.6 ns) and 48 MHz (20.8 ns) violated silicon access times during single-cycle fetch.
 * **The Solution:** Implemented a dual-engine architecture providing 25 speeds spanning 6 orders of magnitude:
     * **10 Hz – 50 kHz:** Hardware TIM1 PWM generating square wave clocks with full cycle precision.
-    * **62.5 kHz – 12 MHz:** MCO hardware clock dividers with positive timing margin ($+28.3\text{ ns}$ at 12 MHz).
-* **Manual Stepping Mode:** Added single-stepping and burst-stepping capabilities with an accumulator queue engine supporting Spacebar, Tab, or Enter trigger keys with $1$ to $100\text{k}$ tick multipliers.
+    * **62.5 kHz – 12 MHz:** MCO hardware clock dividers with positive timing margin (+28.3 ns at 12 MHz).
+* **Manual Stepping Mode:** Added single-stepping and burst-stepping capabilities with an accumulator queue engine supporting Spacebar, Tab, or Enter trigger keys with 1 to 100k tick multipliers.
 
 ### Non-Volatile Flash Configuration Persistence & Delayed Wear Leveling — :material-check-circle: Completed
 * **The Feature:** All configuration menu settings automatically write to the STM32's top internal Flash page (Page 63: `0x0801F800`) on exit with CRC verification and wear-mitigation checking.
@@ -75,10 +75,10 @@ With over 15 uncommitted GPIO pins available on the 100-pin TQFP package of the 
 * **The Goal:** Eliminate external JTAG programmers (no Raspberry Pi Pico, ST-Link, or Lattice HW-USBN dongles) and allow both the FPGA bitstream (`.jed`) and Brainfuck code (`.b`) to be flashed over a single USB-C cable or directly through the Web Flasher.
 * **Architecture & Wiring:**
     * Route 4 dedicated STM32 GPIO pins directly to the Lattice MachXO2 JTAG port:
-        * **`PD8`** $\rightarrow$ `TCK` (Test Clock)
-        * **`PD9`** $\rightarrow$ `TMS` (Test Mode Select)
-        * **`PD10`** $\rightarrow$ `TDI` (Test Data In)
-        * **`PD11_JTAG`** (or `PF6`) $\rightarrow$ `TDO` (Test Data Out)
+        * **`PD8`** → `TCK` (Test Clock)
+        * **`PD9`** → `TMS` (Test Mode Select)
+        * **`PD10`** → `TDI` (Test Data In)
+        * **`PD11_JTAG`** (or `PF6`) → `TDO` (Test Data Out)
     * The external 6-pin header is retained for backwards compatibility with external debuggers.
 * **Firmware Implementation:**
     * Integrate an embedded XSVF/SVF player or expose a USB-JTAG bridge (such as CMSIS-DAP or DirtyJTAG) via a secondary USB endpoint.

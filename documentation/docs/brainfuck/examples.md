@@ -168,7 +168,7 @@ Authored by **Erik Bosman** (2004), this is one of the most famous Brainfuck ben
 
 [:material-download: Download `fibonacci.b`](../programs/math/fibonacci.b){ .md-button .md-button--small }
 
-Authored by **Daniel B. Cristofani**, this program computes and outputs an unbounded stream of multi-precision decimal Fibonacci numbers ($0, 1, 1, 2, 3, 5, 8, 13, 21, 34, ...$) with newline separation. Unlike naive implementations that overflow 8-bit cells after the 13th number ($233$), this program maintains multi-cell decimal registers to scale indefinitely across the tape.
+Authored by **Daniel B. Cristofani**, this program computes and outputs an unbounded stream of multi-precision decimal Fibonacci numbers (0, 1, 1, 2, 3, 5, 8, 13, 21, 34, ...) with newline separation. Unlike naive implementations that overflow 8-bit cells after the 13th number (233), this program maintains multi-cell decimal registers to scale indefinitely across the tape.
 
 * **Author:** Daniel B. Cristofani
 * **Source:** [Daniel B. Cristofani's `fib.b` (brainfuck.org)](http://www.brainfuck.org/fib.b)
@@ -209,7 +209,7 @@ Authored by **Daniel B. Cristofani**, this program computes and outputs an unbou
 
 [:material-download: Download `golden.b`](../programs/math/golden.b){ .md-button .md-button--small }
 
-Authored by **Daniel B. Cristofani** (2019), this program computes and streams the decimal digits of the Golden Ratio ($\phi = \frac{1 + \sqrt{5}}{2} \approx 1.6180339887...$, [OEIS A001622](https://oeis.org/A001622)) continuously in pure Brainfuck.
+Authored by **Daniel B. Cristofani** (2019), this program computes and streams the decimal digits of the Golden Ratio (φ = (1 + √5)/2 ≈ 1.6180339887..., [OEIS A001622](https://oeis.org/A001622)) continuously in pure Brainfuck.
 
 * **Author:** Daniel B. Cristofani (2019)
 * **Source:** [Daniel B. Cristofani's `golden.b` (brainfuck.org)](http://www.brainfuck.org/golden.b)
@@ -239,7 +239,7 @@ Authored by **Daniel B. Cristofani** (2019), this program computes and streams t
 
 [:material-download: Download `factorial.b`](../programs/math/factorial.b){ .md-button .md-button--small }
 
-Authored by **Daniel B. Cristofani** (2019), this program computes and emits consecutive factorials ($1!, 2!, 3!, 4!, \dots$, [OEIS A000142](https://oeis.org/A000142)) in multi-precision decimal format. It uses an optimized long-multiplication and carry algorithm.
+Authored by **Daniel B. Cristofani** (2019), this program computes and emits consecutive factorials (1!, 2!, 3!, 4!, ..., [OEIS A000142](https://oeis.org/A000142)) in multi-precision decimal format. It uses an optimized long-multiplication and carry algorithm.
 
 * **Author:** Daniel B. Cristofani (2019)
 * **Source:** [Daniel B. Cristofani's `factorial2.b` (brainfuck.org)](http://www.brainfuck.org/factorial2.b)
@@ -330,14 +330,14 @@ j----------
 
 ---
 
-## 10. Unbounded Streaming $\pi$ Spigot (128 kB SRAM)
+## 10. Unbounded Streaming π Spigot (128 kB SRAM)
 
 [:material-download: Download `pi_stream.b` (20.2 kB)](../programs/pi/pi_stream.b){ .md-button .md-button--primary }
 [:material-book-open-page-variant: Read Full Technical Deep-Dive →](pi-spigot.md){ .md-button }
 
-An unbounded streaming $\pi$ spigot executing directly on bare FPGA silicon. Based on Jeremy Gibbons' Linear Fractional Transformation (LFT) spigot algorithm, it features a **pure Brainfuck dynamic on-demand self-expanding tape engine**:
-- **Instantaneous Boot**: Starts with only 4 active slots ($64$ bytes), emitting early digits in **< 0.05 seconds** (2,033× faster than fixed-allocation startup).
-- **Dynamic Growth**: Dynamically activates new 16-byte register slots across the full 128 kB SRAM tape ($8,000$ slots) whenever arithmetic carries propagate.
+An unbounded streaming π spigot executing directly on bare FPGA silicon. Based on Jeremy Gibbons' Linear Fractional Transformation (LFT) spigot algorithm, it features a **pure Brainfuck dynamic on-demand self-expanding tape engine**:
+- **Instantaneous Boot**: Starts with only 4 active slots (64 bytes), emitting early digits in **< 0.05 seconds** (2,033× faster than fixed-allocation startup).
+- **Dynamic Growth**: Dynamically activates new 16-byte register slots across the full 128 kB SRAM tape (8,000 slots) whenever arithmetic carries propagate.
 - **Hardware Verified**: Emits continuous digits (`3.141592653...`) at 12 MHz on bare silicon.
 
 * **Algorithm:** Jeremy Gibbons (2004), *Unbounded Spigot Algorithms for the Digits of Pi*
@@ -357,7 +357,7 @@ An unbounded streaming $\pi$ spigot executing directly on bare FPGA silicon. Bas
     ```bash
     python programs/pi/run_pi.py programs/pi/pi_stream.b --count 10
     ```
-    For the complete source code, mathematical proofs, and architectural details, see the [Streaming $\pi$ Spigot Deep-Dive](pi-spigot.md).
+    For the complete source code, mathematical proofs, and architectural details, see the [Streaming π Spigot Deep-Dive](pi-spigot.md).
 
 ---
 

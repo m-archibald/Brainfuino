@@ -1526,6 +1526,12 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		return 1;
 	}
 
+	// Program ROM Dump (!DUMP, !ROM:DUMP, or !)
+	if (is_cmd_ci(buff, len, "!DUMP") || is_cmd_ci(buff, len, "!ROM:DUMP") || is_cmd_ci(buff, len, "!")){
+		code_dump = 1;
+		return 1;
+	}
+
 	// ExpressLRS-style Dynamic Parameter Schema Query (!MENU*)
 	if (is_cmd_ci(buff, len, "!MENU*")){
 		dynamic_schema_requested = 1;
@@ -1571,6 +1577,35 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			p++;
 		}
 		cmd_lib_del_slot = (int8_t)slot;
+		return 1;
+	}
+
+	// Dynamic Library Direct Add without Verification (!LIB:ADD_NOVERIFY:<name>)
+	if (len >= 18 && is_prefix_ci(buff, len, "!LIB:ADD_NOVERIFY:")){
+		const char *p = (const char *)buff + 18;
+		uint32_t nlen = 0;
+		while (*p && *p != '\r' && *p != '\n' && nlen < (LIB_NAME_MAX_LEN - 1)){
+			if (*p >= 0x20 && *p <= 0x7E && *p != ';') {
+				lib_name_buf[nlen++] = *p;
+			}
+			p++;
+		}
+		if (nlen == 0){
+			strncpy(lib_name_buf, "User_Prog", sizeof(lib_name_buf));
+			nlen = strlen(lib_name_buf);
+		}
+		lib_name_buf[nlen] = '\0';
+		lib_name_len = (uint8_t)nlen;
+
+		initROMProgramming();
+		eraseROMFast();
+		lib_code_size = 0;
+		lib_raw_rx_size = 0;
+		lib_add_last_rx_tick = HAL_GetTick();
+		lib_auto_verify = 2; // 2 = direct commit without verification test
+		state = STATE_LIB_ADD;
+		lib_add_substate = LIB_ADD_PASTE;
+		CDC_Printf("!LIB:ADD:READY:%s\r\n", lib_name_buf);
 		return 1;
 	}
 
@@ -2626,7 +2661,12 @@ int main(void)
 					  lib_add_substate = LIB_ADD_CAPACITY_WARN;
 				  }
 				  else {
-					  if (lib_auto_verify){
+					  if (lib_auto_verify == 2){
+						  lib_auto_verify = 0;
+						  CDC_Print("\r\nSaving directly to Library (No test requested)...\r\n");
+						  lib_add_substate = LIB_ADD_COMMIT;
+					  }
+					  else if (lib_auto_verify == 1){
 						  lib_auto_verify = 0;
 						  CDC_Print("\r\n\r\nRunning on Brainfuino...\r\n");
 						  CDC_Print("!LIB:TEST:START:10\r\n");

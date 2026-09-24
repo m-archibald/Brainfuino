@@ -51,10 +51,10 @@ The 256 kB Flash memory chip (`SST39LF020`) has its control and address pins sha
 
 1. **Isolation:** When `STATE_PROGRAM` is active, the STM32 pulls the FPGA reset line low (`BF_RST = 0`). This places the FPGA's 18-bit program counter lines into high impedance (`assign pc_pins = (reset) ? pc : 18'bzz...`), releasing the ROM address bus.
 2. **Dual-Mode Flashing Strategy:**
-   * **Programs $\le$ 4 kB:** Buffered in internal STM32 SRAM (`prog_buffer`). Once a 100 ms idle timeout elapses, the STM32 erases ROM, programs bytes with live percentage updates, verifies against RAM, appends an endless loop (`[-]+[]`), and auto-launches.
+   * **Programs ≤ 4 kB:** Buffered in internal STM32 SRAM (`prog_buffer`). Once a 100 ms idle timeout elapses, the STM32 erases ROM, programs bytes with live percentage updates, verifies against RAM, appends an endless loop (`[-]+[]`), and auto-launches.
    * **Streaming Engine (> 4 kB up to 256 kB):** When incoming code exceeds 4 kB, the firmware transitions into streaming mode. It erases the Flash chip and writes the initial 4 kB chunk. Subsequent packets are buffered through a circular staging FIFO (`stream_staging`, 1 kB) and continuously written to Flash.
 3. **Hardware USB CDC Flow Control (NAK Backpressure):**
-   * Parallel Flash erase takes ~20 ms, and byte programming takes ~10 $\mu$s per byte. To prevent host USB buffer overflows during rapid terminal pasting, the firmware implements true hardware flow control at the USB CDC endpoint level.
+   * Parallel Flash erase takes ~20 ms, and byte programming takes ~10 µs per byte. To prevent host USB buffer overflows during rapid terminal pasting, the firmware implements true hardware flow control at the USB CDC endpoint level.
    * When the staging buffer is near capacity or during Flash erase, `CDC_Receive_Callback` halts endpoint re-arming and sets `cdc_rx_paused = 1`. The STM32 hardware USB engine returns hardware **NAK tokens** to the host PC, pausing host transmissions with zero dropped bytes.
    * As the main execution loop drains the staging FIFO to Flash, `CDC_Resume_Rx()` re-arms the OUT endpoint (`USBD_CDC_ReceivePacket`), smoothly resuming host transmission.
 4. **Byte Programming:** Using direct single-cycle register writes (`GPIOE->ODR` for address lines `A0`–`A15` and `GPIOB->ODR` for data lines `D0`–`D7`), the STM32 writes the program to Flash in tens of milliseconds while streaming live percentage progress to the terminal.
@@ -81,7 +81,7 @@ To eliminate the need for physical jumper manipulation during firmware updates:
 
 ## Smart Hardware Clock-Pausing & Output Throttling
 
-Brainfuino's MachXO2 FPGA soft-processor executes Brainfuck instructions in parallel without hardware wait-states. At high frequencies, output instructions (`.`) hold data on the bus for only 20 clock cycles ($1.66\ \mu\text{s}$ at 12 MHz). Closely-spaced prints (e.g. `\r\n` line endings in Mandelbrot or ASCII banner loops) would outpace Cortex-M0 interrupt latency, causing dropped characters.
+Brainfuino's MachXO2 FPGA soft-processor executes Brainfuck instructions in parallel without hardware wait-states. At high frequencies, output instructions (`.`) hold data on the bus for only 20 clock cycles (1.66 µs at 12 MHz). Closely-spaced prints (e.g. `\r\n` line endings in Mandelbrot or ASCII banner loops) would outpace Cortex-M0 interrupt latency, causing dropped characters.
 
 To guarantee **100% character fidelity at all speeds**, the firmware implements a hardware clock-pausing mechanism:
 
@@ -108,9 +108,11 @@ The clock fed to the FPGA soft-processor pin `PA8` utilizes a **dual-engine arch
 --8<-- "snippets/clock-speeds.md"
 
 ### The 55 ns Physical Silicon Ceiling
-The parallel NOR Flash on Brainfuino is the `SST39LF020-55-4C-WHE` ($T_{AA} = 55\text{ ns}$). Because the MachXO2 fetches instructions in a single cycle without wait-states:
+The parallel NOR Flash on Brainfuino is the `SST39LF020-55-4C-WHE` (*T*~AA~ = 55 ns). Because the MachXO2 fetches instructions in a single cycle without wait-states:
+
 $$F_{\text{max}} = \frac{1}{T_{AA} + T_{co} + T_{su} + 2\cdot T_{\text{trace}}} \approx \frac{1}{55\text{ ns} + 8.5\text{ ns}} \approx 15.75\text{ MHz}$$
-Speeds above 12 MHz (such as 24 MHz at $41.6\text{ ns}$ or 48 MHz at $20.8\text{ ns}$) physically violate the Flash access time, causing un-waitstated fetches to fail. **12 MHz** is the highest divider that provides positive timing margin ($+28.3\text{ ns}$) and delivers 100% character fidelity.
+
+Speeds above 12 MHz (such as 24 MHz at 41.6 ns or 48 MHz at 20.8 ns) physically violate the Flash access time, causing un-waitstated fetches to fail. **12 MHz** is the highest divider that provides positive timing margin (+28.3 ns) and delivers 100% character fidelity.
 
 ---
 
@@ -119,8 +121,8 @@ Speeds above 12 MHz (such as 24 MHz at $41.6\text{ ns}$ or 48 MHz at $20.8\text{
 When Manual Stepping Mode is enabled, the STM32 halts the continuous clock signal on `PA8`. The coprocessor features an accumulator engine (`manual_step_ticks_pending`) that coordinates stepping:
 
 * **Keystroke Accumulation:** Each trigger keystroke adds the configured step multiplier (1, 10, 100, 1k, 10k, or 100k ticks) to the pending counter. Rapidly pressed or spammed keys pile up in the accumulator and drain without loss.
-* **PWM Stepping Precision:** For frequencies $\le 50\text{ kHz}$, the engine enables `TIM1->CR1 |= TIM_CR1_CEN` and monitors hardware update interrupt flags (`TIM_SR_UIF`) on full cycle transitions.
-* **MCO Burst Gating:** For frequencies $\ge 62.5\text{ kHz}$, the engine gates `RCC->CFGR` using calibrated microsecond bursts while servicing USB CDC character streaming in real time.
+* **PWM Stepping Precision:** For frequencies ≤ 50 kHz, the engine enables `TIM1->CR1 |= TIM_CR1_CEN` and monitors hardware update interrupt flags (`TIM_SR_UIF`) on full cycle transitions.
+* **MCO Burst Gating:** For frequencies ≥ 62.5 kHz, the engine gates `RCC->CFGR` using calibrated microsecond bursts while servicing USB CDC character streaming in real time.
 
 ---
 

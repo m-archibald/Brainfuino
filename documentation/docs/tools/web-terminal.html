@@ -1530,68 +1530,83 @@
     .github-programs-tree {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 3px;
       max-height: calc(100vh - 380px);
       overflow-y: auto;
       padding-right: 2px;
+      font-family: 'Roboto Mono', Consolas, monospace;
     }
-    .github-category-group {
+    .github-tree-root-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 700;
+      color: var(--accent-indigo);
+      padding: 3px 6px 5px;
+      font-size: 0.68rem;
+    }
+    .github-tree-folder {
       border: 1px solid var(--border-main);
-      border-radius: 6px;
+      border-radius: 5px;
       overflow: hidden;
       background: var(--card-bg, #ffffff);
+      margin-bottom: 2px;
     }
-    [data-theme="dark"] .github-category-group {
+    [data-theme="dark"] .github-tree-folder {
       background: var(--bg-card);
     }
-    .github-category-header {
-      padding: 6px 10px;
+    .github-tree-folder-header {
+      padding: 5px 8px;
       background: var(--bg-sidebar);
-      font-size: 0.70rem;
+      font-size: 0.68rem;
       font-weight: 700;
       color: var(--text-main);
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
       display: flex;
       justify-content: space-between;
       align-items: center;
       cursor: pointer;
-      border-bottom: 1px solid var(--border-main);
       user-select: none;
-    }
-    .github-category-header:hover {
-      background: rgba(99, 102, 241, 0.08);
-    }
-    .github-category-count {
-      font-size: 0.65rem;
-      font-weight: normal;
-      color: var(--text-muted);
-      background: var(--badge-bg);
-      padding: 1px 6px;
-      border-radius: 10px;
-    }
-    .github-program-item {
-      padding: 6px 10px;
-      font-size: 0.72rem;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      cursor: pointer;
-      border-bottom: 1px solid var(--border-main);
-      color: var(--text-main);
       transition: background 0.15s ease;
     }
-    .github-program-item:last-child {
-      border-bottom: none;
+    .github-tree-folder-header:hover {
+      background: rgba(99, 102, 241, 0.08);
     }
-    .github-program-item:hover {
+    .github-tree-branch {
+      position: relative;
+      padding: 2px 0 2px 4px;
+    }
+    .github-tree-leaf {
+      padding: 3px 6px;
+      font-size: 0.68rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: all 0.15s ease;
+      border-radius: 3px;
+      margin: 1px 2px;
+    }
+    .github-tree-leaf:hover {
       background: rgba(99, 102, 241, 0.10);
       color: var(--accent-indigo);
     }
-    .github-program-size {
+    .github-tree-leaf-left {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .tree-guide {
+      color: var(--text-dim);
       font-size: 0.65rem;
-      font-family: "Roboto Mono", monospace;
-      color: var(--text-muted);
+    }
+    .tree-file-name {
+      font-size: 0.68rem;
+      color: var(--text-main);
+    }
+    .tree-file-size {
+      font-size: 0.62rem;
+      color: var(--text-dim);
     }
 
     /* Code Editor in Write Tab */
@@ -1921,7 +1936,7 @@
           <div class="btn-group">
             <button class="action-btn" onclick="sendCmd('!RST\r\n')" title="Reset FPGA soft-processor">!RST</button>
             <button class="action-btn" onclick="sendCmd('!MENU\r\n')" title="Open Interactive Menu">!MENU</button>
-            <button class="action-btn" onclick="sendCmd('!\r\n')" title="Dump Program ROM">Dump (!)</button>
+            <button class="action-btn" onclick="sendCmd('!DUMP\r\n')" title="Dump Program ROM (!DUMP)">!DUMP</button>
           </div>
 
           <h4 style="margin-top:10px;">FPGA Clock Frequency</h4>
@@ -1983,9 +1998,10 @@
         <div class="sidebar-section">
           <h4>Hardware DFU Entry</h4>
           <p style="font-size:0.68rem; color:var(--text-muted); line-height:1.45;">
-            1. Unplug USB-C<br>
-            2. Hold Pushbutton<br>
-            3. Plug in USB-C while holding
+            1. Unplug USB-C cable<br>
+            2. Place jumper on BOOT0 pins<br>
+            3. Plug in USB-C cable<br>
+            4. Remove jumper after flashing
           </p>
         </div>
 
@@ -2360,9 +2376,9 @@
                   <details style="font-size:0.68rem; color:var(--text-muted); cursor:pointer; margin-top:4px;">
                     <summary style="font-weight:600; color:var(--text-main);">Windows Driver / Hardware DFU Help</summary>
                     <div style="margin-top:6px; line-height:1.45; padding:8px 12px; background:var(--bg-sidebar); border-radius:4px;">
-                      <p style="margin-bottom:4px;"><strong>Manual DFU Entry:</strong> Unplug USB-C, hold the pushbutton, and plug in USB-C while holding. Release after 1 second.</p>
+                      <p style="margin-bottom:4px;"><strong>Manual DFU Entry:</strong> Unplug USB-C, place the jumper on the <code>BOOT0</code> header (pulls BOOT0 HIGH to 3.3V), and reconnect USB-C. Remove or return the jumper to normal position after programming.</p>
                       <p style="margin-bottom:4px;"><strong>Windows WinUSB:</strong> If Chrome reports <em>Access Denied</em>, Windows has bound the legacy ST driver. Run <strong>Zadig</strong> once to assign the <code>WinUSB</code> driver to <code>STM32 BOOTLOADER</code>.</p>
-                      <p><strong>CLI Alternative:</strong> <code>python build.py -Flash</code></p>
+                      <p><strong>CLI Alternative:</strong> <code>pwsh companion-STM32-firmware/build.ps1 -Flash</code></p>
                     </div>
                   </details>
                 </div>
@@ -2542,23 +2558,27 @@
                 </div>
 
                 <!-- Action Button Row -->
-                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
-                  <button class="tool-btn" onclick="clearWriteEditor()" style="padding:10px 16px;">
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+                  <button class="tool-btn" onclick="clearWriteEditor()" style="padding:10px 14px;">
                     <span>Clear</span>
                   </button>
-                  <button class="btn-primary-action" id="btn-write-run" onclick="executeWriteLiveRun()" style="min-width:160px;">
+                  <button class="btn-primary-action" id="btn-write-run" onclick="executeWriteLiveRun()" style="min-width:140px;">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                     <span>Write (Live Run)</span>
                   </button>
-                  <button class="btn-primary-action" id="btn-write-lib" onclick="executeWriteToLibrary()" style="min-width:170px; background:linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                  <button class="btn-primary-action" id="btn-write-lib-test" onclick="executeWriteToLibrary(true)" style="min-width:170px; background:linear-gradient(135deg, #10b981 0%, #059669 100%);">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                    <span>Write to Library</span>
+                    <span>Write to Library (with Test)</span>
+                  </button>
+                  <button class="btn-primary-action" id="btn-write-lib-notest" onclick="executeWriteToLibrary(false)" style="min-width:170px; background:linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                    <span>Write to Library (no Test)</span>
                   </button>
                 </div>
               </div>
             </div>
 
-            <!-- BOTTOM CARD: HARDWARE PROGRAM LIBRARY MANAGER -->
+            <!-- CARD 2: HARDWARE PROGRAM LIBRARY MANAGER -->
             <div class="flasher-card">
               <div class="flasher-card-header">
                 <div class="settings-card-title-group">
@@ -2605,6 +2625,53 @@
                       </tr>
                     </tbody>
                   </table>
+                </div>
+              </div>
+            </div>
+
+            <!-- CARD 3: EXECUTION & VERIFICATION MONITOR (PERMANENT) -->
+            <div class="flasher-card" id="verify-monitor-card">
+              <div class="flasher-card-header">
+                <div class="settings-card-title-group">
+                  <span class="settings-card-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                  </span>
+                  <h3 class="settings-card-title">Execution & Verification Monitor</h3>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span class="status-strip-dot" id="verify-status-dot"></span>
+                  <span class="verify-countdown-badge" id="verify-countdown-badge">IDLE</span>
+                </div>
+              </div>
+
+              <div class="flasher-card-body" style="gap:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.70rem; color:var(--text-muted);">
+                  <span id="verify-monitor-sub">Soft-processor execution & interactive test stream:</span>
+                  <span id="verify-monitor-stats" style="font-family:'Roboto Mono', monospace;">0 bytes received</span>
+                </div>
+
+                <!-- Progress bar for 10s countdown (shown during active test) -->
+                <div class="verify-progress-track" id="verify-progress-track" style="opacity: 0.25;">
+                  <div class="verify-progress-fill" id="verify-progress-fill" style="width: 0%;"></div>
+                </div>
+
+                <!-- Mini-Terminal Screen for Soft-Processor Output -->
+                <div id="verify-terminal-screen" class="verify-terminal-screen" tabindex="0">Ready. Output from live runs or verification tests will appear here.</div>
+
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                  <div class="verify-modal-hint" style="text-align:left;">Interactive Mode: Click monitor above to type input directly to soft-processor</div>
+                  <div class="verify-modal-actions" style="margin-top:0;">
+                    <button class="tool-btn" onclick="clearVerifyTerminal()" title="Clear monitor output">
+                      <span>Clear</span>
+                    </button>
+                    <button class="tool-btn" id="btn-verify-abort" onclick="abortVerification()" style="border-color:#ef4444; color:#ef4444; display:none;" title="Abort test, restore default demo, and discard">
+                      <span>Cancel Test</span>
+                    </button>
+                    <button class="btn-primary-action" id="btn-verify-commit" onclick="commitVerificationNow()" style="background:linear-gradient(135deg, #10b981 0%, #059669 100%); display:none;">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      <span>Save Now</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -3280,18 +3347,18 @@
       if (line.startsWith('!LIB:TEST:START:')) {
         const parts = line.split(':');
         const secs = (parts.length >= 4) ? parseInt(parts[3], 10) : 10;
-        startVerificationModal(secs || 10);
+        startVerificationSession(secs || 10);
         return;
       }
       if (line.startsWith('!LIB:TEST:DONE:')) {
         const parts = line.split(':');
         const slot = (parts.length >= 4) ? parseInt(parts[3], 10) : 0;
-        closeVerificationModal(true, slot);
+        closeVerificationSession(true, slot);
         queryDynamicLibrary();
         return;
       }
       if (line.startsWith('!LIB:TEST:CANCEL') || line.startsWith('!LIB:TEST:ERROR')) {
-        closeVerificationModal(false);
+        closeVerificationSession(false);
         queryDynamicLibrary();
         return;
       }
@@ -3739,7 +3806,7 @@
       if (isReceivingDump) {
         dumpPayload += rawText;
       }
-      if (isVerifyingModalOpen) {
+      if (isVerifyingModalOpen || currentTab === 'write') {
         appendVerifyTerminalText(rawText);
       }
 
@@ -5332,7 +5399,6 @@
       {
         category: "Games",
         programs: [
-          { name: "Bounce Simulator", filename: "bounce.b", path: "games/bounce.b", size: "5.7 kB", desc: "Physics bounding box ball animation" },
           { name: "Game of Life", filename: "life.b", path: "games/life.b", size: "810 B", desc: "Conway's cellular automaton" }
         ]
       },
@@ -5376,22 +5442,38 @@
       const tree = document.getElementById('github-programs-tree');
       if (!tree) return;
 
-      let html = '';
+      let html = `
+        <div class="github-tree-root-label">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+          <span>programs/</span>
+        </div>
+      `;
+
       GITHUB_PROGRAMS_SUITE.forEach((group, gIdx) => {
         html += `
-          <div class="github-category-group">
-            <div class="github-category-header" onclick="toggleCategoryGroup(${gIdx})">
-              <span>${group.category}</span>
+          <div class="github-tree-folder">
+            <div class="github-tree-folder-header" onclick="toggleCategoryGroup(${gIdx})">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <svg id="github-chevron-${gIdx}" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="transform:rotate(90deg); transition:transform 0.15s ease;"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                <span>${group.category.toLowerCase()}/</span>
+              </div>
               <span class="github-category-count">${group.programs.length}</span>
             </div>
-            <div class="github-category-body" id="github-cat-body-${gIdx}">
+            <div class="github-tree-branch" id="github-cat-body-${gIdx}">
         `;
 
-        group.programs.forEach(p => {
+        group.programs.forEach((p, pIdx) => {
+          const isLast = (pIdx === group.programs.length - 1);
+          const branchSymbol = isLast ? '└──' : '├──';
           html += `
-            <div class="github-program-item" onclick="loadGitHubProgram('${p.path}', '${p.name.replace(/'/g, "\\'")}', '${p.filename}')" title="${escapeHtml(p.desc)}">
-              <span style="font-weight:500;">${escapeHtml(p.name)}</span>
-              <span class="github-program-size">${p.size}</span>
+            <div class="github-tree-leaf" onclick="loadGitHubProgram('${p.path}', '${p.name.replace(/'/g, "\\'")}', '${p.filename}')" title="${escapeHtml(p.desc)}">
+              <div class="github-tree-leaf-left">
+                <span class="tree-guide">${branchSymbol}</span>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                <span class="tree-file-name">${escapeHtml(p.filename)}</span>
+              </div>
+              <span class="tree-file-size">${p.size}</span>
             </div>
           `;
         });
@@ -5407,8 +5489,13 @@
 
     function toggleCategoryGroup(gIdx) {
       const body = document.getElementById(`github-cat-body-${gIdx}`);
+      const chevron = document.getElementById(`github-chevron-${gIdx}`);
       if (body) {
-        body.style.display = (body.style.display === 'none') ? 'block' : 'none';
+        const isHidden = (body.style.display === 'none');
+        body.style.display = isHidden ? 'block' : 'none';
+        if (chevron) {
+          chevron.style.transform = isHidden ? 'rotate(90deg)' : 'rotate(0deg)';
+        }
       }
     }
 
@@ -5715,7 +5802,7 @@
       switchTab('terminal');
     }
 
-    async function executeWriteToLibrary() {
+    async function executeWriteToLibrary(withTest = true) {
       const area = document.getElementById('write-code-area');
       const nameInput = document.getElementById('write-prog-name');
       if (!area || !area.value.trim()) {
@@ -5731,10 +5818,13 @@
       progName = progName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 15);
       const code = area.value;
 
-      updateWriteLibStatus(`Initiating Library write for '${progName}'...`, true);
-
-      // Trigger !LIB:ADD:<name>
-      await sendCmd(`!LIB:ADD:${progName}\r\n`);
+      if (withTest) {
+        updateWriteLibStatus(`Initiating Library write with 10s test for '${progName}'...`, true);
+        await sendCmd(`!LIB:ADD:${progName}\r\n`);
+      } else {
+        updateWriteLibStatus(`Initiating direct Library write (no test) for '${progName}'...`, true);
+        await sendCmd(`!LIB:ADD_NOVERIFY:${progName}\r\n`);
+      }
       await new Promise(r => setTimeout(r, 120));
 
       // Stream payload
@@ -5746,26 +5836,61 @@
         await new Promise(r => setTimeout(r, 4));
       }
       await writer.write(enc.encode('\r\n'));
-      updateWriteLibStatus('Code uploaded. Testing on Brainfuino before save...', true);
+
+      if (withTest) {
+        updateWriteLibStatus('Code uploaded. Testing on Brainfuino before save...', true);
+      } else {
+        updateWriteLibStatus('Code uploaded. Saving directly to Library...', true);
+        // Fallback for firmware compatibility: commit immediately
+        setTimeout(() => {
+          sendCmd('!COMMIT\r\n');
+        }, 300);
+      }
     }
 
-    // --- 10-Second Verification Mini-Terminal Modal ---
-    function startVerificationModal(seconds = 10) {
+    // --- Execution & Verification Monitor (Permanent Card below Library) ---
+    let verifyBytesReceived = 0;
+
+    function clearVerifyTerminal() {
+      const screen = document.getElementById('verify-terminal-screen');
+      const stats = document.getElementById('verify-monitor-stats');
+      if (screen) screen.textContent = 'Ready. Output from live runs or verification tests will appear here.\n';
+      verifyBytesReceived = 0;
+      if (stats) stats.textContent = '0 bytes received';
+    }
+
+    function startVerificationSession(seconds = 10) {
       isVerifyingModalOpen = true;
-      const modal = document.getElementById('verify-modal');
       const badge = document.getElementById('verify-countdown-badge');
       const progress = document.getElementById('verify-progress-fill');
+      const track = document.getElementById('verify-progress-track');
+      const dot = document.getElementById('verify-status-dot');
       const screen = document.getElementById('verify-terminal-screen');
-      if (modal) modal.style.display = 'flex';
+      const btnAbort = document.getElementById('btn-verify-abort');
+      const btnCommit = document.getElementById('btn-verify-commit');
+      const stats = document.getElementById('verify-monitor-stats');
+
+      if (dot) {
+        dot.className = 'status-strip-dot active';
+        dot.style.animation = 'pulse 1s infinite';
+      }
+      if (track) track.style.opacity = '1';
+      if (btnAbort) btnAbort.style.display = 'inline-flex';
+      if (btnCommit) btnCommit.style.display = 'inline-flex';
       if (screen) {
-        screen.textContent = '--- Testing on Brainfuino: Soft-processor running ---\n';
+        screen.textContent = '--- Testing on Brainfuino: Soft-processor running (10s auto-save) ---\n';
         screen.focus();
       }
+      verifyBytesReceived = 0;
+      if (stats) stats.textContent = '0 bytes received';
 
       verifyRemainingMs = seconds * 1000;
       const totalMs = seconds * 1000;
 
-      if (badge) badge.textContent = `${seconds.toFixed(1)}s`;
+      if (badge) {
+        badge.textContent = `TESTING (${seconds.toFixed(1)}s)`;
+        badge.style.color = '#10b981';
+      }
       if (progress) progress.style.width = '100%';
 
       if (verifyTimerInterval) clearInterval(verifyTimerInterval);
@@ -5775,29 +5900,51 @@
           verifyRemainingMs = 0;
           clearInterval(verifyTimerInterval);
           verifyTimerInterval = null;
-          if (badge) badge.textContent = 'Saving...';
+          if (badge) badge.textContent = 'SAVING...';
           if (progress) progress.style.width = '0%';
         } else {
-          if (badge) badge.textContent = `${(verifyRemainingMs / 1000).toFixed(1)}s`;
+          if (badge) badge.textContent = `TESTING (${(verifyRemainingMs / 1000).toFixed(1)}s)`;
           if (progress) progress.style.width = `${((verifyRemainingMs / totalMs) * 100).toFixed(1)}%`;
         }
       }, 100);
     }
 
-    function closeVerificationModal(saved = false, slot = 0) {
+    function closeVerificationSession(saved = false, slot = 0) {
       isVerifyingModalOpen = false;
       if (verifyTimerInterval) {
         clearInterval(verifyTimerInterval);
         verifyTimerInterval = null;
       }
-      const modal = document.getElementById('verify-modal');
-      if (modal) modal.style.display = 'none';
+      const badge = document.getElementById('verify-countdown-badge');
+      const progress = document.getElementById('verify-progress-fill');
+      const track = document.getElementById('verify-progress-track');
+      const dot = document.getElementById('verify-status-dot');
+      const btnAbort = document.getElementById('btn-verify-abort');
+      const btnCommit = document.getElementById('btn-verify-commit');
+
+      if (dot) {
+        dot.className = 'status-strip-dot';
+        dot.style.animation = 'none';
+      }
+      if (track) track.style.opacity = '0.25';
+      if (progress) progress.style.width = '0%';
+      if (btnAbort) btnAbort.style.display = 'none';
+      if (btnCommit) btnCommit.style.display = 'none';
 
       if (saved) {
+        if (badge) {
+          badge.textContent = `SAVED (SLOT ${slot + 1})`;
+          badge.style.color = '#10b981';
+        }
         updateWriteLibStatus(`Verification complete! Saved to Library Slot ${slot + 1}.`, false);
-        alert(`Program successfully tested and committed to Brainfuino Library (Slot ${slot + 1})!`);
+        appendVerifyTerminalText(`\n[SUCCESS: Program saved to Library Slot ${slot + 1}]\n`);
       } else {
+        if (badge) {
+          badge.textContent = 'CANCELLED';
+          badge.style.color = '#ef4444';
+        }
         updateWriteLibStatus('Verification aborted. Default demo restored.', false);
+        appendVerifyTerminalText('\n[CANCELLED: Program discarded, demo restored]\n');
       }
     }
 
@@ -5809,7 +5956,7 @@
 
     function abortVerification() {
       sendCmd('!CANCEL\r\n');
-      closeVerificationModal(false);
+      closeVerificationSession(false);
     }
 
     function appendVerifyTerminalText(text) {
@@ -5851,41 +5998,5 @@
     initRouteFromHash();
     autoReconnectSerial();
   </script>
-
-  <!-- 10-SECOND VERIFICATION MINI-TERMINAL MODAL -->
-  <div id="verify-modal" class="modal-overlay" style="display: none;">
-    <div class="verify-modal-box">
-      <div class="verify-modal-header">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <span class="status-strip-dot active" style="animation:pulse 1s infinite;"></span>
-          <span class="verify-modal-title">Testing on Brainfuino</span>
-        </div>
-        <span class="verify-countdown-badge" id="verify-countdown-badge">10.0s</span>
-      </div>
-      <div class="verify-modal-sub">
-        Soft-processor execution test in progress. Output streams live below:
-      </div>
-
-      <!-- Progress bar for 10s countdown -->
-      <div class="verify-progress-track">
-        <div class="verify-progress-fill" id="verify-progress-fill" style="width: 100%;"></div>
-      </div>
-
-      <!-- Mini-Terminal Screen for Soft-Processor Output -->
-      <div id="verify-terminal-screen" class="verify-terminal-screen" tabindex="0"></div>
-      <div class="verify-modal-hint">Interactive Mode: Click screen to type input to program</div>
-
-      <!-- Actions -->
-      <div class="verify-modal-actions">
-        <button class="tool-btn" onclick="abortVerification()" style="border-color:#ef4444; color:#ef4444;" title="Abort test, restore default demo, and discard">
-          <span>Cancel</span>
-        </button>
-        <button class="btn-primary-action" onclick="commitVerificationNow()" style="background:linear-gradient(135deg, #10b981 0%, #059669 100%);">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-          <span>Save Now</span>
-        </button>
-      </div>
-    </div>
-  </div>
 </body>
 </html>

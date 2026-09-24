@@ -1,8 +1,8 @@
-# Unbounded Streaming $\pi$ Spigot on Bare Silicon
+# Unbounded Streaming π Spigot on Bare Silicon
 
-This document details the architecture, mathematics, and hardware verification of an unbounded streaming $\pi$ spigot executing in pure Brainfuck on the Brainfuino FPGA soft-processor.
+This document details the architecture, mathematics, and hardware verification of an unbounded streaming π spigot executing in pure Brainfuck on the Brainfuino FPGA soft-processor.
 
-Operating directly on bare silicon with a 128 kB SRAM memory tape and 12 MHz clock, the program emits continuous decimal digits of $\pi$ in real-time without external floating-point libraries, operating systems, or runtimes.
+Operating directly on bare silicon with a 128 kB SRAM memory tape and 12 MHz clock, the program emits continuous decimal digits of π in real-time without external floating-point libraries, operating systems, or runtimes.
 
 ---
 
@@ -22,40 +22,52 @@ The algorithm is based on **Jeremy Gibbons' streaming spigot algorithm** (2004) 
 
 $$\begin{pmatrix} q & r \\ s & t \end{pmatrix}(x) = \frac{q x + r}{s x + t}$$
 
-Using the Lambert / Euler continued fraction expansion for $\pi$:
+Using the Lambert / Euler continued fraction expansion for π:
 
 $$\pi = \begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix} \prod_{k=1}^\infty \begin{pmatrix} k & 4k+2 \\ 0 & 2k+1 \end{pmatrix}(0)$$
 
-Since the lower-left element $s$ remains $0$ throughout execution, the transformation simplifies to an upper-triangular state matrix $\begin{pmatrix} q & r \\ 0 & t \end{pmatrix}$.
+Since the lower-left element s remains 0 throughout execution, the transformation simplifies to an upper-triangular state matrix (q, r, 0, t).
 
 ### Spigot Step Logic
 
-At each iteration $k \ge 1$ with state matrix $(q, r, t)$:
+At each iteration k ≥ 1 with state matrix (q, r, t):
 
 1. **Extract Digit Candidate**:
-   $$n = \lfloor (3q + r) / t \rfloor$$
+
+    $$
+    n = \lfloor (3q + r) / t \rfloor
+    $$
 
 2. **Refinement Check**:
-   Test whether the interval bounds produce the same integer digit:
-   $$4q + 2r - 2t < n \cdot t$$
+    Test whether the interval bounds produce the same integer digit:
+
+    $$
+    4q + 2r - 2t < n \cdot t
+    $$
 
 3. **Branch A (Digit Produced)**:
-   If the condition holds, digit $n$ is confirmed:
-   - Output ASCII digit $n$ (`'0' + n`)
-   - If this is the first digit, also output decimal point `.`
-   - Scale matrix for base-10 streaming:
-     $$q \leftarrow 10q, \quad r \leftarrow 10(r - n \cdot t)$$
+    If the condition holds, digit n is confirmed:
+    - Output ASCII digit n (`'0' + n`)
+    - If this is the first digit, also output decimal point `.`
+    - Scale matrix for base-10 streaming:
+
+        $$
+        q \leftarrow 10q, \quad r \leftarrow 10(r - n \cdot t)
+        $$
 
 4. **Branch B (Ingest Next Matrix)**:
-   If the digit cannot yet be confirmed:
-   - Ingest next term $(k, 4k+2, 2k+1)$ where $l = 2k+1$:
-     $$r \leftarrow q(4k+2) + r \cdot l, \quad t \leftarrow t \cdot l, \quad q \leftarrow q \cdot k, \quad l \leftarrow l + 2, \quad k \leftarrow k + 1$$
+    If the digit cannot yet be confirmed:
+    - Ingest next term (k, 4k+2, 2k+1) where l = 2k+1:
+
+        $$
+        r \leftarrow q(4k+2) + r \cdot l, \quad t \leftarrow t \cdot l, \quad q \leftarrow q \cdot k, \quad l \leftarrow l + 2, \quad k \leftarrow k + 1
+        $$
 
 ---
 
 ## 2. Multi-Precision Tape Memory Architecture
 
-To handle numbers growing to thousands of decimal digits, memory is partitioned into **16-byte register slots** across the 128 kB SRAM tape ($8,000$ total slots available).
+To handle numbers growing to thousands of decimal digits, memory is partitioned into **16-byte register slots** across the 128 kB SRAM tape (8,000 total slots available).
 
 ```text
 [ Tape Cell 0..15: Global State Header ]
@@ -100,7 +112,7 @@ Fixed-length tapes suffer from a fundamental trade-off: small tapes run quickly 
 The Brainfuino spigot solves this with **pure Brainfuck self-expansion**:
 
 1. **Minimal Boot Allocation**:
-   Execution starts with only **4 active slots** ($64$ bytes). Slot 4 has `FLAG = 0`.
+   Execution starts with only **4 active slots** (64 bytes). Slot 4 has `FLAG = 0`.
 2. **Carry Out Detection**:
    In `add_reg` and `mul_scalar_const`, when the forward pass exits the last active slot, the pointer lands on `slot_{last+1}`:
    - If `CARRY > 0`: an arithmetic overflow occurred.
@@ -152,7 +164,7 @@ Digit Streaming Timeline:
 
 ### Comparative Architecture Performance
 
-| Metric / Digit | Fixed 8,000 Slots (128 kB) | Fixed 256 Slots (4 kB) | Dynamic Self-Expanding (4 $\to$ $N$) |
+| Metric / Digit | Fixed 8,000 Slots (128 kB) | Fixed 256 Slots (4 kB) | Dynamic Self-Expanding (4 → N) |
 | :--- | :--- | :--- | :--- |
 | **Startup / Boot Latency** | 42.84 s | 1.35 s | **< 0.05 s (Instantaneous)** |
 | **Digit 1 (`3.1`)** | 101.67 s | 3.81 s | **0.05 s (2,033× faster!)** |
