@@ -57,9 +57,9 @@
 #define LIB_ADD_COMMIT          5
 #define LIB_ADD_CAPACITY_WARN   6
 
-#define LIBRARY_TOC_ADDR        0x0800C000UL
-#define LIBRARY_POOL_ADDR       0x0800C800UL
-#define LIBRARY_POOL_SIZE       (76UL * 1024UL) // 76 kB
+#define LIBRARY_TOC_ADDR        0x08014000UL
+#define LIBRARY_POOL_ADDR       0x08014800UL
+#define LIBRARY_POOL_SIZE       (44UL * 1024UL) // 44 kB (Pages 41-62, safe from 80 kB firmware region)
 #define MAX_LIB_SLOTS           64
 #define LIB_NAME_MAX_LEN        16
 
@@ -200,6 +200,13 @@ volatile int8_t  lib_capacity_delete_slot = -1;
 
 volatile uint8_t dfu_requested;
 volatile uint8_t reset_requested;
+volatile uint8_t dynamic_schema_requested = 0;
+volatile uint8_t dynamic_lib_requested = 0;
+volatile int8_t  cmd_lib_run_slot = -1;
+volatile int8_t  cmd_lib_dump_slot = -1;
+volatile int8_t  cmd_lib_del_slot = -1;
+volatile uint8_t lib_auto_verify = 0;
+volatile uint8_t cmd_restore_requested = 0;
 
 // Button debounce and hold tracking
 uint8_t  btn_is_pressed = 0;
@@ -283,6 +290,7 @@ uint8_t lib_save_program(const char *name, uint32_t size, uint8_t pruned);
 void lib_delete_program(uint8_t slot);
 void lib_load_and_run(uint8_t slot);
 void lib_dump_program(uint8_t slot);
+void lib_export_dynamic_schema(void);
 void lib_start_add_program(void);
 void CDC_Write(const uint8_t *data, uint32_t len);
 
@@ -856,11 +864,13 @@ void lib_dump_program(uint8_t slot){
 		psize = lib_toc[slot].size;
 	}
 
-	CDC_Print("\x1b[2J\x1b[H\r\n");
-	CDC_Printf("=== DUMP PROGRAM: %s (%lu bytes) ===\r\n\r\n", pname, (unsigned long)psize);
+	CDC_Printf("!DUMP:START:%u:%s:%lu\r\n", (unsigned int)slot, pname, (unsigned long)psize);
 	CDC_Write(src, psize);
-	CDC_Print("\r\n\r\n=== END OF PROGRAM ===\r\nPress any key to return to library menu...\r\n");
-	lib_dump_viewing = 1;
+	CDC_Print("\r\n!DUMP:END\r\n");
+	if (state == STATE_CONFIG){
+		CDC_Print("Press any key to return to library menu...\r\n");
+		lib_dump_viewing = 1;
+	}
 }
 
 void lib_start_add_program(void){
@@ -1011,7 +1021,7 @@ void menu_render_settings(void){
 				break;
 			case 10:
 				if (cfg_manual_step_enabled){
-					label = "B. Step Advance Ticks     ";
+					label = "T. Step Advance Ticks     ";
 					snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_step_ticks_name(cfg_manual_step_ticks));
 				} else {
 					label = "0. Back to Main Menu      ";
@@ -1049,7 +1059,7 @@ void menu_render_library(void){
 	CDC_Print("+-------------------------------------------------+\r\n");
 	CDC_Print("|            BRAINFUINO PROGRAM LIBRARY           |\r\n");
 	CDC_Print("+-------------------------------------------------+\r\n");
-	CDC_Print("| [Enter/L] Run [A] Add [D] Dump [X] Del [0] Back |\r\n");
+	CDC_Print("| [Enter/E] Run [A] Add [D/Del] Del [B/0] Back    |\r\n");
 	CDC_Print("+-------------------------------------------------+\r\n");
 
 	for (int i = 0; i < count; i++){
@@ -1095,7 +1105,7 @@ void menu_render_library(void){
 	CDC_Printf("|  Library: %2d / 63 Programs | Used: %2lu.%1lu / 76 kB |\r\n",
 	           lib_display_count - 1, (unsigned long)used_kb, (unsigned long)used_frac);
 	CDC_Print("+-------------------------------------------------+\r\n");
-	CDC_Print("Select program [Enter/L=Run, A=Add, D=Dump, X=Del, 0=Back]: ");
+	CDC_Print("Select program [Enter/E=Run, D/Del=Delete, B=Back, A=Add]: ");
 }
 
 void menu_render(void){
@@ -1384,6 +1394,97 @@ void menu_exit(void){
 	LED_GPIO_Port->BRR = LED_Pin;
 }
 
+void menu_export_dynamic_schema(void){
+	CDC_Print("!MENU:START:13\r\n");
+	// Folders (Category groupings)
+	CDC_Print("0;FOLDER;0;Execution & Clock\r\n");
+	CDC_Print("1;FOLDER;0;Auto-Programming\r\n");
+	CDC_Print("2;FOLDER;0;Input & Step Control\r\n");
+	CDC_Print("3;FOLDER;0;System Commands\r\n");
+
+	// Folder 0: Execution & Clock
+	// Field 10: Clock Frequency (SELECT)
+	CDC_Printf("10;SELECT;0;FPGA Clock Frequency;%u;", (unsigned int)freq);
+	for (uint8_t i = 0; i < FREQ_COUNT; i++){
+		CDC_Printf("%s%s", get_freq_name(i), (i + 1 < FREQ_COUNT) ? ";" : "\r\n");
+	}
+
+	// Field 11: Speed Hotkey Mode (SELECT)
+	CDC_Printf("11;SELECT;0;Run Mode Hotkeys;%u;NONE;PgUp/PgDn;Up/Down;+ / -\r\n", (unsigned int)cfg_speed_hotkey_mode);
+
+	// Folder 1: Auto-Programming
+	// Field 12: Auto-Program on Paste (TOGGLE)
+	CDC_Printf("12;TOGGLE;1;Auto-Program on Paste;%u;DISABLED;ENABLED\r\n", (unsigned int)cfg_auto_prog_run_mode);
+
+	// Field 13: Paste Upload Threshold (SELECT)
+	uint8_t thresh_idx = 0;
+	if (cfg_auto_prog_min_bytes == 8) thresh_idx = 1;
+	else if (cfg_auto_prog_min_bytes == 16) thresh_idx = 2;
+	else if (cfg_auto_prog_min_bytes == 32) thresh_idx = 3;
+	else if (cfg_auto_prog_min_bytes == 64) thresh_idx = 4;
+	CDC_Printf("13;SELECT;1;Paste Threshold;%u;4 Bytes;8 Bytes;16 Bytes;32 Bytes;64 Bytes\r\n", (unsigned int)thresh_idx);
+
+	// Field 14: Auto-Reset after Flash (TOGGLE)
+	CDC_Printf("14;TOGGLE;1;Auto-Reset after Flash;%u;DISABLED;ENABLED\r\n", (unsigned int)cfg_auto_reset_after_pgm);
+
+	// Field 15: Append Loop [-]+[] (TOGGLE)
+	CDC_Printf("15;TOGGLE;1;Append Loop [-]+[];%u;DISABLED;ENABLED\r\n", (unsigned int)cfg_append_endless_loop);
+
+	// Field 16: Prune non-BF on Paste (TOGGLE)
+	CDC_Printf("16;TOGGLE;1;Prune non-BF on Paste;%u;DISABLED;ENABLED\r\n", (unsigned int)cfg_prune_on_paste);
+
+	// Field 17: Prune non-BF in Library (TOGGLE)
+	CDC_Printf("17;TOGGLE;1;Prune non-BF in Library;%u;DISABLED;ENABLED\r\n", (unsigned int)cfg_prune_in_library);
+
+	// Folder 2: Input & Step Control
+	// Field 18: Serial CR to LF (TOGGLE)
+	CDC_Printf("18;TOGGLE;2;Serial Input CR to LF;%u;DISABLED;ENABLED\r\n", (unsigned int)cfg_cr_to_lf);
+
+	// Field 19: Manual Stepping Mode (TOGGLE)
+	CDC_Printf("19;TOGGLE;2;Manual Stepping Mode;%u;DISABLED;ENABLED\r\n", (unsigned int)cfg_manual_step_enabled);
+
+	// Field 20: Step Advance Ticks (SELECT)
+	CDC_Printf("20;SELECT;2;Step Advance Ticks;%u;1 Tick;10 Ticks;100 Ticks;1,000 Ticks;10,000 Ticks;100,000 Ticks\r\n",
+	           (unsigned int)(cfg_manual_step_ticks <= 5 ? cfg_manual_step_ticks : 2));
+
+	// Field 21: Step Trigger Key (SELECT)
+	CDC_Printf("21;SELECT;2;Step Trigger Key;%u;Spacebar;Tab;Enter\r\n",
+	           (unsigned int)(cfg_manual_step_key <= 2 ? cfg_manual_step_key : 0));
+
+	// Folder 3: System Commands
+	CDC_Print("30;COMMAND;3;Reboot to USB DFU\r\n");
+	CDC_Print("31;COMMAND;3;Restore Factory Demo\r\n");
+	CDC_Print("32;COMMAND;3;Soft Reset FPGA\r\n");
+
+	CDC_Print("!MENU:END\r\n");
+}
+
+void lib_export_dynamic_schema(void){
+	uint8_t count = 0;
+	if (lib_toc[0].crc32 == TOC_MAGIC) count++;
+	for (uint8_t s = 1; s < MAX_LIB_SLOTS; s++){
+		if (lib_toc[s].status == 0x01) count++;
+	}
+	uint32_t used = lib_get_total_used_bytes();
+	CDC_Printf("!LIB:START:%u:%lu:%lu\r\n", (unsigned int)count, (unsigned long)used, (unsigned long)LIBRARY_POOL_SIZE);
+
+	// Slot 0: Brainfuino Factory Demo (Protected)
+	uint32_t demo_size = sizeof(DEFAULT_BRAINFUINO_LOGO_BF) - 1;
+	CDC_Printf("!LIB:PROG:0;Brainfuino;%lu;1;1\r\n", (unsigned long)demo_size);
+
+	// Slots 1..63: User-installed programs
+	for (uint8_t s = 1; s < MAX_LIB_SLOTS; s++){
+		if (lib_toc[s].status == 0x01){
+			CDC_Printf("!LIB:PROG:%u;%s;%lu;%u;0\r\n",
+			           (unsigned int)s,
+			           lib_toc[s].name,
+			           (unsigned long)lib_toc[s].size,
+			           (unsigned int)lib_toc[s].pruned);
+		}
+	}
+	CDC_Print("!LIB:END\r\n");
+}
+
 static uint8_t is_prefix_ci(const uint8_t *b, uint32_t len, const char *prefix){
 	uint32_t plen = strlen(prefix);
 	if (len < plen) return 0;
@@ -1393,6 +1494,22 @@ static uint8_t is_prefix_ci(const uint8_t *b, uint32_t len, const char *prefix){
 		if (c1 >= 'a' && c1 <= 'z') c1 -= 32;
 		if (c2 >= 'a' && c2 <= 'z') c2 -= 32;
 		if (c1 != c2) return 0;
+	}
+	return 1;
+}
+
+static uint8_t is_cmd_ci(const uint8_t *b, uint32_t len, const char *cmd){
+	uint32_t clen = strlen(cmd);
+	if (len < clen) return 0;
+	for (uint32_t i = 0; i < clen; i++){
+		char c1 = (char)b[i];
+		char c2 = cmd[i];
+		if (c1 >= 'a' && c1 <= 'z') c1 -= 32;
+		if (c2 >= 'a' && c2 <= 'z') c2 -= 32;
+		if (c1 != c2) return 0;
+	}
+	for (uint32_t i = clen; i < len; i++){
+		if (b[i] != '\r' && b[i] != '\n' && b[i] != ' ' && b[i] != '\t') return 0;
 	}
 	return 1;
 }
@@ -1409,8 +1526,202 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		return 1;
 	}
 
+	// ExpressLRS-style Dynamic Parameter Schema Query (!MENU*)
+	if (is_cmd_ci(buff, len, "!MENU*")){
+		dynamic_schema_requested = 1;
+		return 1;
+	}
+
+	// Dynamic Program Library Schema Query (!LIB* or !LIB:LIST)
+	if (is_cmd_ci(buff, len, "!LIB*") || is_cmd_ci(buff, len, "!LIB:LIST")){
+		dynamic_lib_requested = 1;
+		return 1;
+	}
+
+	// Dynamic Library Execution (!LIB:RUN:<slot>)
+	if (len >= 9 && is_prefix_ci(buff, len, "!LIB:RUN:")){
+		uint32_t slot = 0;
+		const char *p = (const char *)buff + 9;
+		while (*p >= '0' && *p <= '9'){
+			slot = slot * 10 + (*p - '0');
+			p++;
+		}
+		cmd_lib_run_slot = (int8_t)slot;
+		return 1;
+	}
+
+	// Dynamic Library Code Dump (!LIB:DUMP:<slot>)
+	if (len >= 10 && is_prefix_ci(buff, len, "!LIB:DUMP:")){
+		uint32_t slot = 0;
+		const char *p = (const char *)buff + 10;
+		while (*p >= '0' && *p <= '9'){
+			slot = slot * 10 + (*p - '0');
+			p++;
+		}
+		cmd_lib_dump_slot = (int8_t)slot;
+		return 1;
+	}
+
+	// Dynamic Library Program Deletion (!LIB:DEL:<slot>)
+	if (len >= 9 && is_prefix_ci(buff, len, "!LIB:DEL:")){
+		uint32_t slot = 0;
+		const char *p = (const char *)buff + 9;
+		while (*p >= '0' && *p <= '9'){
+			slot = slot * 10 + (*p - '0');
+			p++;
+		}
+		cmd_lib_del_slot = (int8_t)slot;
+		return 1;
+	}
+
+	// Dynamic Library Direct Add (!LIB:ADD:<name>)
+	if (len >= 9 && is_prefix_ci(buff, len, "!LIB:ADD:")){
+		const char *p = (const char *)buff + 9;
+		uint32_t nlen = 0;
+		while (*p && *p != '\r' && *p != '\n' && nlen < (LIB_NAME_MAX_LEN - 1)){
+			if (*p >= 0x20 && *p <= 0x7E && *p != ';') {
+				lib_name_buf[nlen++] = *p;
+			}
+			p++;
+		}
+		if (nlen == 0){
+			strncpy(lib_name_buf, "User_Prog", sizeof(lib_name_buf));
+			nlen = strlen(lib_name_buf);
+		}
+		lib_name_buf[nlen] = '\0';
+		lib_name_len = (uint8_t)nlen;
+
+		initROMProgramming();
+		eraseROMFast();
+		lib_code_size = 0;
+		lib_raw_rx_size = 0;
+		lib_add_last_rx_tick = HAL_GetTick();
+		lib_auto_verify = 1;
+		state = STATE_LIB_ADD;
+		lib_add_substate = LIB_ADD_PASTE;
+		CDC_Printf("!LIB:ADD:READY:%s\r\n", lib_name_buf);
+		return 1;
+	}
+
+	// Verification early commit / abort
+	if (is_cmd_ci(buff, len, "!COMMIT") || is_cmd_ci(buff, len, "!LIB:COMMIT")){
+		lib_verify_early_commit = 1;
+		return 1;
+	}
+	if (is_cmd_ci(buff, len, "!CANCEL") || is_cmd_ci(buff, len, "!LIB:CANCEL")){
+		reset_requested = 1;
+		return 1;
+	}
+
+	// Standard VT100 Interactive Menu
 	if (is_prefix_ci(buff, len, "!MENU") || is_prefix_ci(buff, len, "!CONFIG")){
 		menu_enter();
+		return 1;
+	}
+
+	// Dynamic Parameter Value Mutation (!SET:<id>=<val>)
+	if (len >= 6 && is_prefix_ci(buff, len, "!SET:")){
+		uint32_t id = 0, val = 0;
+		const char *p = (const char *)buff + 5;
+		while (*p >= '0' && *p <= '9'){
+			id = id * 10 + (*p - '0');
+			p++;
+		}
+		if (*p == '='){
+			p++;
+			while (*p >= '0' && *p <= '9'){
+				val = val * 10 + (*p - '0');
+				p++;
+			}
+			switch(id){
+				case 10:
+					if (val < FREQ_COUNT) set_freq((uint8_t)val);
+					break;
+				case 11:
+					cfg_speed_hotkey_mode = (uint8_t)(val % 4);
+					break;
+				case 12:
+					cfg_auto_prog_run_mode = val ? 1 : 0;
+					break;
+				case 13:
+					{
+						uint8_t th_table[] = { 4, 8, 16, 32, 64 };
+						cfg_auto_prog_min_bytes = (val < 5) ? th_table[val] : 4;
+					}
+					break;
+				case 14:
+					cfg_auto_reset_after_pgm = val ? 1 : 0;
+					break;
+				case 15:
+					cfg_append_endless_loop = val ? 1 : 0;
+					break;
+				case 16:
+					cfg_prune_on_paste = val ? 1 : 0;
+					break;
+				case 17:
+					cfg_prune_in_library = val ? 1 : 0;
+					break;
+				case 18:
+					cfg_cr_to_lf = val ? 1 : 0;
+					break;
+				case 19:
+					cfg_manual_step_enabled = val ? 1 : 0;
+					set_freq(freq);
+					break;
+				case 20:
+					if (val <= 5) cfg_manual_step_ticks = (uint8_t)val;
+					break;
+				case 21:
+					if (val <= 2) cfg_manual_step_key = (uint8_t)val;
+					break;
+				default:
+					break;
+			}
+			settings_dirty = 1;
+			settings_dirty_tick = HAL_GetTick();
+			CDC_Printf("!SET:OK:%lu=%lu\r\n", (unsigned long)id, (unsigned long)val);
+			return 1;
+		}
+	}
+
+	// Dynamic Parameter Command Execution (!CMD:<id>)
+	if (len >= 6 && is_prefix_ci(buff, len, "!CMD:")){
+		uint32_t cid = 0;
+		const char *p = (const char *)buff + 5;
+		while (*p >= '0' && *p <= '9'){
+			cid = cid * 10 + (*p - '0');
+			p++;
+		}
+		CDC_Printf("!CMD:OK:%lu\r\n", (unsigned long)cid);
+		if (cid == 30){
+			dfu_requested = 1;
+		} else if (cid == 31){
+			cmd_restore_requested = 1;
+		} else if (cid == 32){
+			reset_requested = 1;
+		}
+		return 1;
+	}
+
+	// FPGA Clock Frequency commands: !clk+, !clk-, !clk (silent adjustment, query prints)
+	if (is_cmd_ci(buff, len, "!CLK+") || is_cmd_ci(buff, len, "!CLOCK+")){
+		if (freq + 1 < FREQ_COUNT){
+			set_freq(freq + 1);
+			settings_dirty = 1;
+			settings_dirty_tick = HAL_GetTick();
+		}
+		return 1;
+	}
+	if (is_cmd_ci(buff, len, "!CLK-") || is_cmd_ci(buff, len, "!CLOCK-")){
+		if (freq > 0){
+			set_freq(freq - 1);
+			settings_dirty = 1;
+			settings_dirty_tick = HAL_GetTick();
+		}
+		return 1;
+	}
+	if (is_cmd_ci(buff, len, "!CLK") || is_cmd_ci(buff, len, "!CLOCK")){
+		CDC_Printf("[Clock: %s]\r\n", get_freq_name(freq));
 		return 1;
 	}
 
@@ -1617,7 +1928,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				menu_action_dir = 1;
 				return 1;
 			}
-			if (buff[idx] == '0' || buff[idx] == 'q' || buff[idx] == 'Q'){
+			if (buff[idx] == '0' || buff[idx] == 'q' || buff[idx] == 'Q' || buff[idx] == 'b' || buff[idx] == 'B' || buff[idx] == 0x08 || buff[idx] == 0x7F){
 				menu_cursor = 5; // Exit without saving
 				menu_action_pending = 5;
 				menu_action_dir = 1;
@@ -1638,19 +1949,20 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				menu_action_dir = 1;
 				return 1;
 			}
-			if (cfg_manual_step_enabled && (buff[idx] == 'b' || buff[idx] == 'B')){
+			if (cfg_manual_step_enabled && (buff[idx] == 't' || buff[idx] == 'T')){
 				menu_cursor = 10;
 				menu_action_pending = 10;
 				menu_action_dir = 1;
 				return 1;
 			}
-			if (cfg_manual_step_enabled && (buff[idx] == 'c' || buff[idx] == 'C')){
+			if (cfg_manual_step_enabled && (buff[idx] == 'c' || buff[idx] == 'C' || buff[idx] == 'k' || buff[idx] == 'K')){
 				menu_cursor = 11;
 				menu_action_pending = 11;
 				menu_action_dir = 1;
 				return 1;
 			}
-			if (buff[idx] == '0' || buff[idx] == 'q' || buff[idx] == 'Q'){
+			// 'b', 'B', '0', 'q', 'Q', Backspace (0x08, 0x7F) -> Back to main menu
+			if (buff[idx] == '0' || buff[idx] == 'q' || buff[idx] == 'Q' || buff[idx] == 'b' || buff[idx] == 'B' || buff[idx] == 0x08 || buff[idx] == 0x7F){
 				menu_page = MENU_PAGE_MAIN;
 				menu_cursor = 1;
 				menu_needs_render = 1;
@@ -1670,14 +1982,8 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				lib_start_add_requested = 1;
 				return 1;
 			}
-			if (buff[idx] == 'd' || buff[idx] == 'D'){
-				if (menu_cursor < lib_display_count){
-					uint8_t slot = lib_display_slots[menu_cursor];
-					lib_dump_pending_slot = slot;
-				}
-				return 1;
-			}
-			if (buff[idx] == 'x' || buff[idx] == 'X'){
+			// 'd', 'D', 'x', 'X' -> Delete selected program
+			if (buff[idx] == 'd' || buff[idx] == 'D' || buff[idx] == 'x' || buff[idx] == 'X'){
 				if (menu_cursor < lib_display_count){
 					uint8_t slot = lib_display_slots[menu_cursor];
 					if (slot > 0){
@@ -1686,14 +1992,24 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				}
 				return 1;
 			}
-			if (buff[idx] == 'l' || buff[idx] == 'L'){
+			// 'e', 'E', 'l', 'L' -> Run selected program
+			if (buff[idx] == 'e' || buff[idx] == 'E' || buff[idx] == 'l' || buff[idx] == 'L'){
 				if (menu_cursor < lib_display_count){
 					uint8_t slot = lib_display_slots[menu_cursor];
 					lib_load_pending_slot = slot;
 				}
 				return 1;
 			}
-			if (buff[idx] == '0' || buff[idx] == 'q' || buff[idx] == 'Q'){
+			// 'v', 'V' -> Dump/View selected program
+			if (buff[idx] == 'v' || buff[idx] == 'V'){
+				if (menu_cursor < lib_display_count){
+					uint8_t slot = lib_display_slots[menu_cursor];
+					lib_dump_pending_slot = slot;
+				}
+				return 1;
+			}
+			// 'b', 'B', '0', 'q', 'Q', Backspace (0x08, 0x7F) -> Back to main menu
+			if (buff[idx] == 'b' || buff[idx] == 'B' || buff[idx] == '0' || buff[idx] == 'q' || buff[idx] == 'Q' || buff[idx] == 0x08 || buff[idx] == 0x7F){
 				menu_page = MENU_PAGE_MAIN;
 				menu_cursor = 0;
 				menu_needs_render = 1;
@@ -2016,6 +2332,45 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 
   while (1){
+	  // Check for dynamic schema query request (!MENU*) in Thread Mode
+	  if (dynamic_schema_requested){
+		  dynamic_schema_requested = 0;
+		  menu_export_dynamic_schema();
+	  }
+
+	  // Check for dynamic library query request (!LIB*) in Thread Mode
+	  if (dynamic_lib_requested){
+		  dynamic_lib_requested = 0;
+		  lib_export_dynamic_schema();
+	  }
+
+	  // Check for dynamic library action requests
+	  if (cmd_lib_run_slot >= 0){
+		  uint8_t s = (uint8_t)cmd_lib_run_slot;
+		  cmd_lib_run_slot = -1;
+		  CDC_Printf("!LIB:RUN:OK:%u\r\n", (unsigned int)s);
+		  lib_load_and_run(s);
+	  }
+	  if (cmd_lib_dump_slot >= 0){
+		  uint8_t s = (uint8_t)cmd_lib_dump_slot;
+		  cmd_lib_dump_slot = -1;
+		  lib_dump_program(s);
+	  }
+	  if (cmd_lib_del_slot >= 0){
+		  uint8_t s = (uint8_t)cmd_lib_del_slot;
+		  cmd_lib_del_slot = -1;
+		  lib_delete_program(s);
+		  CDC_Printf("!LIB:DEL:OK:%u\r\n", (unsigned int)s);
+		  dynamic_lib_requested = 1;
+	  }
+
+	  // Check for restore factory demo request in Thread Mode
+	  if (cmd_restore_requested){
+		  cmd_restore_requested = 0;
+		  CDC_Print("\r\nRestoring Default Demo to Flash...\r\n");
+		  flashDefaultLogoProgram();
+	  }
+
 	  // Check for DFU jump request (executed in Thread Mode outside interrupt)
 	  if (dfu_requested){
 		  dfu_requested = 0;
@@ -2271,8 +2626,35 @@ int main(void)
 					  lib_add_substate = LIB_ADD_CAPACITY_WARN;
 				  }
 				  else {
-					  CDC_Print("Run on FPGA to verify before saving? [Y/n]: ");
-					  lib_add_substate = LIB_ADD_VERIFY_PROMPT;
+					  if (lib_auto_verify){
+						  lib_auto_verify = 0;
+						  CDC_Print("\r\n\r\nRunning on Brainfuino...\r\n");
+						  CDC_Print("!LIB:TEST:START:10\r\n");
+						  lib_verify_requested = 1;
+						  if (cfg_append_endless_loop){
+							  writeROMFast(lib_code_size, '[');
+							  writeROMFast(lib_code_size + 1, '-');
+							  writeROMFast(lib_code_size + 2, ']');
+							  writeROMFast(lib_code_size + 3, '+');
+							  writeROMFast(lib_code_size + 4, '[');
+							  writeROMFast(lib_code_size + 5, ']');
+						  }
+						  initROMNormal();
+						  wait(1000);
+						  HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
+						  wait(1000);
+						  set_freq(freq);
+						  head = tail = 0;
+						  mco_throttled = 0;
+						  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+						  HAL_Delay(10);
+						  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+						  lib_verify_start_tick = HAL_GetTick();
+						  lib_add_substate = LIB_ADD_VERIFYING;
+					  } else {
+						  CDC_Print("Run on Brainfuino to verify before saving? [Y/n]: ");
+						  lib_add_substate = LIB_ADD_VERIFY_PROMPT;
+					  }
 				  }
 			  }
 		  }
@@ -2286,7 +2668,7 @@ int main(void)
 				  uint32_t free_bytes = (used_bytes < LIBRARY_POOL_SIZE) ? (LIBRARY_POOL_SIZE - used_bytes) : 0;
 				  if (lib_code_size <= free_bytes){
 					  CDC_Printf("[Sufficient space cleared: %lu B free. Proceeding!]\r\n\r\n", (unsigned long)free_bytes);
-					  CDC_Print("Run on FPGA to verify before saving? [Y/n]: ");
+					  CDC_Print("Run on Brainfuino to verify before saving? [Y/n]: ");
 					  lib_add_substate = LIB_ADD_VERIFY_PROMPT;
 				  } else {
 					  CDC_Printf("Still need %lu B more. Type another slot to delete (or 0 to cancel): ",
@@ -2303,7 +2685,8 @@ int main(void)
 					  lib_add_substate = LIB_ADD_COMMIT;
 				  }
 				  else {
-					  CDC_Print("Yes\r\n\r\nRunning on FPGA soft-processor...\r\n");
+					  CDC_Print("Yes\r\n\r\nRunning on Brainfuino...\r\n");
+					  CDC_Print("!LIB:TEST:START:10\r\n");
 					  CDC_Print("Press RESET button (or type !RST) within 10s to abort.\r\n");
 					  CDC_Print("Auto-saving in 10s (or press Enter to save now)...\r\n\r\n");
 					  lib_verify_requested = 1;
@@ -2336,6 +2719,7 @@ int main(void)
 				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
 				  flashDefaultLogoProgram();
 				  CDC_Print("\r\n\r\n[Upload Cancelled: Program was NOT saved to Library]\r\n\r\n");
+				  CDC_Print("!LIB:TEST:CANCEL\r\n");
 				  HAL_Delay(1200);
 				  state = STATE_CONFIG;
 				  menu_page = MENU_PAGE_LIBRARY;
@@ -2357,13 +2741,16 @@ int main(void)
 			  uint8_t slot = lib_save_program(lib_name_buf, lib_code_size, cfg_prune_in_library);
 			  if (slot > 0){
 				  CDC_Printf("\r\n[SUCCESS: Saved to Slot %02d: '%s' (%lu bytes)]\r\n\r\n", slot, lib_name_buf, (unsigned long)lib_code_size);
+				  CDC_Printf("!LIB:TEST:DONE:%u\r\n", (unsigned int)slot);
 			  } else {
 				  CDC_Print("\r\n[ERROR: Failed to save program to Library partition]\r\n\r\n");
+				  CDC_Print("!LIB:TEST:ERROR\r\n");
 			  }
 			  HAL_Delay(1500);
 			  state = STATE_CONFIG;
 			  menu_page = MENU_PAGE_LIBRARY;
 			  menu_needs_render = 1;
+			  dynamic_lib_requested = 1;
 		  }
 	  }
 

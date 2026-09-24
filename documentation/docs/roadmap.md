@@ -18,8 +18,9 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 | **Multi-Program Library & TOC** | STM32 Firmware | :material-check-circle: **Done** | Internal 76 kB flash partition, 64-slot TOC, dynamic compaction, non-BF pruning |
 | **Interactive Terminal Menu UI** | STM32 Firmware | :material-check-circle: **Done** | Multi-page raspi-config style interface with Left/Right option cycling ([Guide](user-guide/config-menu.md)) |
 | **USB DFU Bootloader Mode** | STM32 Firmware | :material-check-circle: **Done** | Soft-jump into ST factory ROM bootloader over USB (`!DFU!` or `.\build.ps1 -Flash`) |
-| **In-Circuit FPGA Flashing** | Hardware & FW | :material-lightbulb-outline: Future Idea | Potential concept: wire STM32 GPIOs to MachXO2 JTAG pins for USB bitstream updates |
-| **External QSPI Multi-Program Storage**| Hardware (Rev 1.2) | :material-lightbulb-outline: Future Idea | High-capacity SPI/QSPI NOR Flash (e.g. 4 MB) for massive program collections |
+| **In-Circuit FPGA JTAG Flashing** | Hardware (Rev 1.2) | :material-clock-outline: **Planned** | Route STM32 GPIOs directly to MachXO2 JTAG for zero-dongle single-cable bitstream updates |
+| **High-Capacity QSPI/SPI Flash** | Hardware (Rev 1.2) | :material-clock-outline: **Planned** | 8 MB – 16 MB W25Q128 NOR Flash for massive offline program library and media streaming |
+| **Hardware Flow Control UART** | Hardware (Rev 1.2) | :material-clock-outline: **Planned** | USART1 (PA9/PA10) + RTS/CTS (PD11/PD12) for DEC VT100 / vintage terminal pause support |
 
 ---
 
@@ -66,12 +67,69 @@ The Brainfuino project continues to evolve from an esoteric proof-of-concept int
 
 ## Hardware Roadmap (Rev 1.2 & Beyond)
 
-### In-Circuit FPGA Flashing via STM32 (Potential Future Idea)
-* **The Concept:** A potential, maybe-someday feature to explore: allowing the STM32 coprocessor to flash the Lattice FPGA in-circuit, eliminating the need for an external JTAG programmer or Raspberry Pi Pico debugger.
-* **Implementation Concept:**
-    * Route unused GPIO pins from the STM32F072 microcontroller to the Lattice MachXO2 JTAG header pins (`TCK`, `TMS`, `TDI`, `TDO`).
-    * Port Lattice's open-source **`embedded_jtag`** or **`ispVM Embedded`** C routines into the STM32 firmware.
-    * Users would be able to update the FPGA soft-processor bitstream directly over USB-C using a simple utility.
+With over 15 uncommitted GPIO pins available on the 100-pin TQFP package of the `STM32F072V8T6`, the next hardware revision (Rev 1.2) is planned around three key additions:
 
-### External QSPI NOR Flash for Multi-Megabyte Libraries
-* **The Concept:** While the STM32's internal 76 kB partition supports up to 63 user programs, an external SPI or QSPI NOR Flash chip (e.g. W25Q32, 4 MB) could be added to store vast collections of Brainfuck programs, operating systems, and massive benchmarks.
+---
+
+### 1. In-Circuit FPGA JTAG Flashing via STM32
+* **The Goal:** Eliminate external JTAG programmers (no Raspberry Pi Pico, ST-Link, or Lattice HW-USBN dongles) and allow both the FPGA bitstream (`.jed`) and Brainfuck code (`.b`) to be flashed over a single USB-C cable or directly through the Web Flasher.
+* **Architecture & Wiring:**
+    * Route 4 dedicated STM32 GPIO pins directly to the Lattice MachXO2 JTAG port:
+        * **`PD8`** $\rightarrow$ `TCK` (Test Clock)
+        * **`PD9`** $\rightarrow$ `TMS` (Test Mode Select)
+        * **`PD10`** $\rightarrow$ `TDI` (Test Data In)
+        * **`PD11_JTAG`** (or `PF6`) $\rightarrow$ `TDO` (Test Data Out)
+    * The external 6-pin header is retained for backwards compatibility with external debuggers.
+* **Firmware Implementation:**
+    * Integrate an embedded XSVF/SVF player or expose a USB-JTAG bridge (such as CMSIS-DAP or DirtyJTAG) via a secondary USB endpoint.
+    * Users can drag-and-drop a new `.jed` bitstream in the browser or terminal to update the `brainfuck_uP` core instantly.
+
+---
+
+### 2. High-Capacity QSPI / SPI NOR Flash Memory
+* **The Goal:** Expand onboard offline storage from the internal 76 kB STM32 partition to **8 MB – 16 MB** using an inexpensive 8-pin NOR Flash IC (e.g. Winbond `W25Q64` or `W25Q128` in SOIC-8 / WSON-8).
+* **Architecture & Wiring:**
+    * Connected to STM32 high-speed SPI/QSPI peripheral pins (`SCK`, `MOSI`, `MISO`, `CS`).
+    * Proposed pinout: `PD12` (CS), `PD13` (SCK), `PD14` (MISO), `PD15` (MOSI).
+* **Use Cases:**
+    * **Massive Program Library:** Store hundreds of full-length Brainfuck programs, self-interpreters, benchmarks, and operating systems permanently on-board.
+    * **Offline Flasher Mode:** The STM32 can stage programs into the parallel Flash ROM on the fly with zero host PC connected.
+    * **High-Bandwidth Media Streaming:** Store complete 30 fps video animations (e.g., Bad Apple) or audio samples and stream them into the soft-processor in real time.
+
+---
+
+### 3. Vintage Terminal UART with Hardware Flow Control (RTS/CTS)
+* **The Goal:** Provide a dedicated serial interface with hardware handshaking for interfacing with vintage ASCII video terminals (DEC VT100, VT220, Wyse), thermal printers, and retro computers without dropping characters.
+* **Why Hardware Flow Control is Critical:**
+    * Vintage CRT terminals have small input buffers and slow screen-scrolling rates. When scrolling or processing escape sequences, the terminal drops its **CTS (Clear To Send)** line LOW to signal: *"Pause transmission, my screen buffer is full!"*
+    * With dedicated CTS/RTS handshaking, the STM32 catches FPGA output characters into a ring buffer and automatically pauses UART transmission while CTS is deasserted, resuming instantly when the terminal is ready.
+* **Simultaneous USB & UART Operation:**
+    * On the STM32F072, `PA11` and `PA12` are dedicated to USB Full-Speed (`USB_DM` / `USB_DP`).
+    * By assigning `USART1` data to `PA9`/`PA10` and mapping flow control to Port D, USB CDC and the hardware UART operate **simultaneously without pin conflicts**:
+        * **`PA9`**: `USART1_TX` (Transmit Data to Terminal)
+        * **`PA10`**: `USART1_RX` (Receive Data from Keyboard)
+        * **`PD11`**: `USART1_CTS` (Clear To Send — input from Terminal)
+        * **`PD12`**: `USART1_RTS` (Request To Send — output to Terminal)
+* **Bonus — Emergency ROM Bootloader:**
+    * ST's built-in factory ROM bootloader natively listens on **`PA9`/`PA10`** when `BOOT0 = 1`. If USB is unavailable, users can unbrick or flash firmware directly over this header using any standard USB-UART adapter.
+
+---
+
+### Rev 1.2 Pin Budget & Assignment Table
+
+| Subsystem | Signal Name | STM32 Pin | Alternate Function / Role |
+| :--- | :--- | :--- | :--- |
+| **FPGA JTAG** | `TCK` | **`PD8`** | Clock input to MachXO2 JTAG engine |
+| **FPGA JTAG** | `TMS` | **`PD9`** | Mode select input to MachXO2 |
+| **FPGA JTAG** | `TDI` | **`PD10`** | Serial data input to MachXO2 |
+| **FPGA JTAG** | `TDO` | **`PF6`** | Serial data output from MachXO2 |
+| **SPI Flash** | `FLASH_CS` | **`PD13`** | Chip select for W25Q128 Flash |
+| **SPI Flash** | `FLASH_SCK` | **`PD14`** | SPI master clock (up to 18 MHz) |
+| **SPI Flash** | `FLASH_MISO` | **`PD15`** | SPI master in / slave out |
+| **SPI Flash** | `FLASH_MOSI` | **`PF9`** | SPI master out / slave in |
+| **Terminal UART** | `USART1_TX` | **`PA9`** | Transmit data (also ST ROM bootloader TX) |
+| **Terminal UART** | `USART1_RX` | **`PA10`** | Receive data (also ST ROM bootloader RX) |
+| **Terminal UART** | `USART1_CTS` | **`PD11`** | Hardware flow control input (AF0) |
+| **Terminal UART** | `USART1_RTS` | **`PD12`** | Hardware flow control output (AF0) |
+| **USB Interface** | `USB_DM` | **`PA11`** | Dedicated USB-C data minus line |
+| **USB Interface** | `USB_DP` | **`PA12`** | Dedicated USB-C data plus line |

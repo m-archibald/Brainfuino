@@ -6,11 +6,19 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
-$toolchain = "C:\ST\STM32CubeIDE_2.0.0\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.13.3.rel1.win32_1.0.100.202509120712\tools\bin"
-$gcc = "$toolchain\arm-none-eabi-gcc.exe"
-$objcopy = "$toolchain\arm-none-eabi-objcopy.exe"
-$size = "$toolchain\arm-none-eabi-size.exe"
-$programmer = "C:\ST\STM32CubeIDE_2.0.0\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.win32_2.2.300.202508131133\tools\bin\STM32_Programmer_CLI.exe"
+$cmdGcc = Get-Command "arm-none-eabi-gcc" -ErrorAction SilentlyContinue
+if ($cmdGcc) {
+    $gcc = "arm-none-eabi-gcc"
+    $objcopy = "arm-none-eabi-objcopy"
+    $size = "arm-none-eabi-size"
+    $programmer = "STM32_Programmer_CLI"
+} else {
+    $toolchain = "C:\ST\STM32CubeIDE_2.0.0\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.13.3.rel1.win32_1.0.100.202509120712\tools\bin"
+    $gcc = "$toolchain\arm-none-eabi-gcc.exe"
+    $objcopy = "$toolchain\arm-none-eabi-objcopy.exe"
+    $size = "$toolchain\arm-none-eabi-size.exe"
+    $programmer = "C:\ST\STM32CubeIDE_2.0.0\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.win32_2.2.300.202508131133\tools\bin\STM32_Programmer_CLI.exe"
+}
 
 $cFiles = @(
     "Core/Src/main.c",
@@ -97,8 +105,9 @@ $linkArgs = @(
 )
 & $gcc @linkArgs @objs -lm
 
-Write-Host "Generating HEX..."
+Write-Host "Generating HEX & BIN..."
 & $objcopy -O ihex "Debug/BrainfuinoMCU.elf" "Debug/BrainfuinoMCU.hex"
+& $objcopy -O binary "Debug/BrainfuinoMCU.elf" "Debug/BrainfuinoMCU.bin"
 
 Write-Host "Firmware size:"
 & $size "Debug/BrainfuinoMCU.elf"

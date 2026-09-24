@@ -68,6 +68,7 @@ nav:
   - Home: index.md
   - User Guide:
       - Quick Start: user-guide/quick-start.md
+      - Web Serial Terminal: tools/terminal.md
       - Terminal Controls: user-guide/terminal-commands.md
       - Configuration Menu: user-guide/config-menu.md
   - Hardware & Mechanics:

@@ -1,0 +1,145 @@
+name: Nightly Auto-Build & Release
+
+on:
+  push:
+    branches: [ master, main ]
+    paths:
+      - 'companion-STM32-firmware/**'
+      - 'brainfuck_uP-FPGA-softprocessor/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # -------------------------------------------------------------
+  # Job 1: Path Filtering (Detect which codebase changed)
+  # -------------------------------------------------------------
+  filter:
+    runs-on: ubuntu-latest
+    outputs:
+      stm32: ${{ steps.changes.outputs.stm32 }}
+      fpga: ${{ steps.changes.outputs.fpga }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Filter changed paths
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            stm32:
+              - 'companion-STM32-firmware/**'
+            fpga:
+              - 'brainfuck_uP-FPGA-softprocessor/**'
+
+  # -------------------------------------------------------------
+  # Job 2: Build Companion STM32 Firmware (Cortex-M0)
+  # -------------------------------------------------------------
+  build-stm32:
+    needs: filter
+    if: needs.filter.outputs.stm32 == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install ARM GNU Toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi binutils-arm-none-eabi
+
+      - name: Compile STM32 Firmware
+        shell: pwsh
+        run: |
+          cd companion-STM32-firmware
+          ./build.ps1
+
+      - name: Upload STM32 Firmware Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: stm32-firmware
+          path: |
+            companion-STM32-firmware/Debug/BrainfuinoMCU.hex
+            companion-STM32-firmware/Debug/BrainfuinoMCU.bin
+          if-no-files-found: error
+
+  # -------------------------------------------------------------
+  # Job 3: Build FPGA Bitstreams for Both Hardware Revisions
+  # -------------------------------------------------------------
+  build-fpga:
+    needs: filter
+    if: needs.filter.outputs.fpga == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Open-Source CAD Suite (Yosys + NextPNR Trellis)
+        uses: YosysHQ/setup-oss-cad-suite@v3
+        with:
+          version: '2024-03-01'
+
+      - name: Synthesize & Place/Route FPGA Bitstreams (Rev 1.0 & Rev 1.1)
+        run: |
+          cd brainfuck_uP-FPGA-softprocessor
+
+          # 1. Synthesize Verilog processor core once
+          yosys -p "synth_machxo2 -top brainfuck_uP -json brainfuck_uP.json" \
+            brainfuck_uP/source/brainfuck_uP.v brainfuck_uP/source/memory.v
+
+          # 2. Place & Route Rev 1.0 (LCMXO2-640HC-4TG100C)
+          nextpnr-machxo2 --device LCMXO2-640HC-4TG100C --json brainfuck_uP.json \
+            --lpf brainfuck_uP.lpf --textcfg brainfuino_v1.0.config
+          ecppack brainfuino_v1.0.config brainfuino-v1.0-fpga.jed
+
+          # 3. Place & Route Rev 1.1 (LCMXO2-640HC-4TG100C / Rev 1.1 pin constraints)
+          nextpnr-machxo2 --device LCMXO2-640HC-4TG100C --json brainfuck_uP.json \
+            --lpf brainfuck_uP/brainfuck_uP_brainfuck_uP.lpf --textcfg brainfuino_v1.1.config
+          ecppack brainfuino_v1.1.config brainfuino-v1.1-fpga.jed
+
+      - name: Upload FPGA Bitstream Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fpga-bitstreams
+          path: |
+            brainfuck_uP-FPGA-softprocessor/brainfuino-v1.0-fpga.jed
+            brainfuck_uP-FPGA-softprocessor/brainfuino-v1.1-fpga.jed
+          if-no-files-found: error
+
+  # -------------------------------------------------------------
+  # Job 4: Publish / Update Rolling Nightly GitHub Release
+  # -------------------------------------------------------------
+  publish-nightly:
+    needs: [filter, build-stm32, build-fpga]
+    if: always() && (needs.build-stm32.result == 'success' || needs.build-fpga.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Built Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Update Rolling Nightly Pre-Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: "Brainfuino Nightly Auto-Build"
+          body: |
+            Automated continuous integration build generated from commit ${{ github.sha }}.
+            
+            ### Included Assets
+            - **STM32 Companion MCU:** `BrainfuinoMCU.hex` & `BrainfuinoMCU.bin`
+            - **Lattice MachXO2 FPGA (Rev 1.0):** `brainfuino-v1.0-fpga.jed`
+            - **Lattice MachXO2 FPGA (Rev 1.1):** `brainfuino-v1.1-fpga.jed`
+            
+            Flash directly from your browser via the [Brainfuino Web Serial Terminal](https://m-archibald.github.io/Brainfuino/).
+          prerelease: true
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

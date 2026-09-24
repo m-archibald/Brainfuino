@@ -31,16 +31,31 @@ Follow the official **[DirtyJTAG Blue Pill installation guide](https://github.co
 
 ## 2. JTAG Header Wiring
 
-Connect the jumper wires from your DirtyJTAG adapter to the 6-pin JTAG header on the Brainfuino:
+Connect the jumper wires from your programmer directly to the 6-pin JTAG header on the Brainfuino (**Programmer &rarr; Brainfuino**):
 
-| Signal | Brainfuino JTAG Pin | Pi Pico Default Pin | Description |
+### Option A: Raspberry Pi Pico (`pico-dirtyJtag`)
+
+| JTAG Signal | Pico Pin Number | Pico GPIO | Brainfuino JTAG Pin | Description |
+| :--- | :---: | :---: | :---: | :--- |
+| **TCK** | **Pin 24** | GPIO18 | **TCK** | Test Clock |
+| **TMS** | **Pin 25** | GPIO19 | **TMS** | Test Mode Select |
+| **TDI** | **Pin 21** | GPIO16 | **TDI** | Test Data In |
+| **TDO** | **Pin 22** | GPIO17 | **TDO** | Test Data Out |
+| **GND** | **Pin 23 / 28** | GND | **GND** | Common Ground |
+| **3.3V** | **Pin 36** | 3V3 (OUT) | **3.3V / VCC** | Target Logic Supply / Sense |
+
+*(Note: Optional debug UART RX/TX on `pico-dirtyJtag` is GPIO12 / Pin 16 and GPIO13 / Pin 17).*
+
+### Option B: STM32F103 "Blue Pill" (`DirtyJTAG`)
+
+| JTAG Signal | Blue Pill Pin | Brainfuino JTAG Pin | Description |
 | :--- | :---: | :---: | :--- |
-| **TCK** | Pin 1 | GP2 | Test Clock |
-| **TMS** | Pin 2 | GP3 | Test Mode Select |
-| **TDI** | Pin 3 | GP4 | Test Data In |
-| **TDO** | Pin 4 | GP5 | Test Data Out |
-| **GND** | Pin 5 | GND | Common Ground |
-| **3.3V** | Pin 6 | 3V3 | Sense / Power |
+| **TCK** | **PA0** | **TCK** | Test Clock |
+| **TMS** | **PA1** | **TMS** | Test Mode Select |
+| **TDI** | **PA2** | **TDI** | Test Data In |
+| **TDO** | **PA3** | **TDO** | Test Data Out |
+| **GND** | **GND** | **GND** | Common Ground |
+| **3.3V** | **3.3V** | **3.3V / VCC** | Target Logic Supply / Sense |
 
 ---
 

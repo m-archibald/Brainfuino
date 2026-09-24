@@ -256,10 +256,9 @@ The STM32F072's 128 kB internal Flash is cleanly organized into non-overlapping 
 
 | Range | Pages | Size | Purpose |
 | :--- | :---: | :---: | :--- |
-| `0x08000000` – `0x0800B7FF` | 0 – 22 | 46 kB | STM32 Firmware Application Code |
-| `0x0800B800` – `0x0800BFFF` | 23 | 2 kB | Firmware headroom / alignment |
-| `0x0800C000` – `0x0800C7FF` | 24 | 2 kB | **Library Table of Contents (TOC)** (64 slots $\times$ 32 B) |
-| `0x0800C800` – `0x0801F7FF` | 25 – 62 | 76 kB | **Library Program Payload Pool** (Dynamic allocation) |
+| `0x08000000` – `0x08013FFF` | 0 – 39 | 80 kB | **STM32 Firmware Application Code** |
+| `0x08014000` – `0x080147FF` | 40 | 2 kB | **Library Table of Contents (TOC)** (64 slots $\times$ 32 B) |
+| `0x08014800` – `0x0801F7FF` | 41 – 62 | 44 kB | **Library Program Payload Pool** (Dynamic allocation) |
 | `0x0801F800` – `0x0801FFFF` | 63 | 2 kB | **Persistent Hardware Configuration** (Page 63) |
 
 ---

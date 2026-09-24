@@ -18,24 +18,47 @@ EXPECTED_PI_DIGITS = "3.1415926535897932384626433832795028841971"
 
 def auto_detect_port():
     ports = list(list_ports.comports())
+    # 1. Look for ST CDC / Brainfuino USB identifiers
     for p in ports:
         desc = (p.description or "").lower()
         hwid = (p.hwid or "").lower()
-        if "stm" in desc or "0483:5740" in hwid or "brainfuino" in desc:
+        mfg = (p.manufacturer or "").lower()
+        if "0483:5740" in hwid or "brainfuino" in desc or "stm" in desc or "stmicroelectronics" in mfg:
+            print(f"Auto-detected Brainfuino: {p.device} ({p.description})")
             return p.device
-    for p in ports:
-        if "com22" in p.device.lower():
-            return p.device
-    if ports:
+
+    # 2. Fallback: single available port
+    if len(ports) == 1:
+        print(f"Auto-selected available port: {ports[0].device} ({ports[0].description})")
         return ports[0].device
-    return "COM22"
+
+    # 3. If multiple or none, inform user
+    if ports:
+        port_list = ", ".join([f"{p.device} ({p.description})" for p in ports])
+        raise RuntimeError(f"Could not uniquely identify Brainfuino. Available ports: {port_list}.\nPlease specify with --port <PORT>.")
+    else:
+        raise RuntimeError("No serial COM ports detected. Please ensure Brainfuino is connected via USB.")
 
 def flash_and_run(bf_file, port=None, baud=115200, expected_count=5, timeout=600, idle_timeout=180, run_only=False):
     if not port:
         port = auto_detect_port()
 
     print(f"Opening {port} at {baud} baud...")
-    ser = serial.Serial(port, baudrate=baud, timeout=0.1)
+    try:
+        ser = serial.Serial(port, baudrate=baud, timeout=0.1)
+    except serial.SerialException as e:
+        err_msg = str(e)
+        if "PermissionError" in err_msg or "Access is denied" in err_msg:
+            print(f"\n[ERROR] Access denied to {port}!")
+            print("Another application (PuTTY, Tera Term, VS Code Serial Monitor, etc.) currently has this port open.")
+            print("Please close/disconnect the serial terminal and run this command again.\n")
+            sys.exit(1)
+        elif "FileNotFoundError" in err_msg or "cannot find the file" in err_msg:
+            print(f"\n[ERROR] Port {port} not found! Is the Brainfuino plugged in?\n")
+            sys.exit(1)
+        else:
+            raise
+
     time.sleep(0.3)
     ser.reset_input_buffer()
     ser.reset_output_buffer()
@@ -131,7 +154,7 @@ def flash_and_run(bf_file, port=None, baud=115200, expected_count=5, timeout=600
         else:
             if launch_seen and last_rx_tick:
                 digits_only = [c for c in output_chars if c in "0123456789"]
-                if len(digits_only) >= expected_count:
+                if expected_count > 0 and len(digits_only) >= expected_count:
                     time.sleep(1.0)
                     break
                 if (time.time() - last_rx_tick > idle_timeout):
@@ -166,9 +189,9 @@ def flash_and_run(bf_file, port=None, baud=115200, expected_count=5, timeout=600
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Brainfuino Pi Hardware Runner")
-    parser.add_argument("file", nargs="?", default="scripts/pi/pi_5.b", help="Brainfuck file to flash")
-    parser.add_argument("--count", type=int, default=5, help="Expected digit count")
-    parser.add_argument("--port", default="COM22", help="Serial COM port")
+    parser.add_argument("file", nargs="?", default="programs/pi/pi_stream.b", help="Brainfuck file to flash")
+    parser.add_argument("--count", type=int, default=8, help="Expected digit count (0 for continuous streaming)")
+    parser.add_argument("--port", default=None, help="Serial COM port (auto-detected if omitted)")
     parser.add_argument("--timeout", type=int, default=600, help="Total execution timeout in seconds")
     parser.add_argument("--idle-timeout", type=int, default=180, help="Per-digit idle timeout in seconds")
     parser.add_argument("--run-only", action="store_true", help="Reset and run currently flashed program")
