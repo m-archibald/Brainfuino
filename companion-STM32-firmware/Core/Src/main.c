@@ -205,6 +205,9 @@ volatile uint8_t dynamic_lib_requested = 0;
 volatile int8_t  cmd_lib_run_slot = -1;
 volatile int8_t  cmd_lib_dump_slot = -1;
 volatile int8_t  cmd_lib_del_slot = -1;
+volatile uint8_t cmd_lib_add_requested = 0;
+volatile uint8_t cmd_lib_add_verify = 0;
+char cmd_lib_add_name[LIB_NAME_MAX_LEN] = {0};
 volatile uint8_t lib_auto_verify = 0;
 volatile uint8_t cmd_restore_requested = 0;
 
@@ -1586,26 +1589,17 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		uint32_t nlen = 0;
 		while (*p && *p != '\r' && *p != '\n' && nlen < (LIB_NAME_MAX_LEN - 1)){
 			if (*p >= 0x20 && *p <= 0x7E && *p != ';') {
-				lib_name_buf[nlen++] = *p;
+				cmd_lib_add_name[nlen++] = *p;
 			}
 			p++;
 		}
 		if (nlen == 0){
-			strncpy(lib_name_buf, "User_Prog", sizeof(lib_name_buf));
-			nlen = strlen(lib_name_buf);
+			strncpy(cmd_lib_add_name, "User_Prog", sizeof(cmd_lib_add_name));
+			nlen = strlen(cmd_lib_add_name);
 		}
-		lib_name_buf[nlen] = '\0';
-		lib_name_len = (uint8_t)nlen;
-
-		initROMProgramming();
-		eraseROMFast();
-		lib_code_size = 0;
-		lib_raw_rx_size = 0;
-		lib_add_last_rx_tick = HAL_GetTick();
-		lib_auto_verify = 2; // 2 = direct commit without verification test
-		state = STATE_LIB_ADD;
-		lib_add_substate = LIB_ADD_PASTE;
-		CDC_Printf("!LIB:ADD:READY:%s\r\n", lib_name_buf);
+		cmd_lib_add_name[nlen] = '\0';
+		cmd_lib_add_verify = 2; // 2 = direct commit without verification test
+		cmd_lib_add_requested = 1;
 		return 1;
 	}
 
@@ -1615,26 +1609,17 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		uint32_t nlen = 0;
 		while (*p && *p != '\r' && *p != '\n' && nlen < (LIB_NAME_MAX_LEN - 1)){
 			if (*p >= 0x20 && *p <= 0x7E && *p != ';') {
-				lib_name_buf[nlen++] = *p;
+				cmd_lib_add_name[nlen++] = *p;
 			}
 			p++;
 		}
 		if (nlen == 0){
-			strncpy(lib_name_buf, "User_Prog", sizeof(lib_name_buf));
-			nlen = strlen(lib_name_buf);
+			strncpy(cmd_lib_add_name, "User_Prog", sizeof(cmd_lib_add_name));
+			nlen = strlen(cmd_lib_add_name);
 		}
-		lib_name_buf[nlen] = '\0';
-		lib_name_len = (uint8_t)nlen;
-
-		initROMProgramming();
-		eraseROMFast();
-		lib_code_size = 0;
-		lib_raw_rx_size = 0;
-		lib_add_last_rx_tick = HAL_GetTick();
-		lib_auto_verify = 1;
-		state = STATE_LIB_ADD;
-		lib_add_substate = LIB_ADD_PASTE;
-		CDC_Printf("!LIB:ADD:READY:%s\r\n", lib_name_buf);
+		cmd_lib_add_name[nlen] = '\0';
+		cmd_lib_add_verify = 1; // 1 = with 10s verification
+		cmd_lib_add_requested = 1;
 		return 1;
 	}
 
@@ -2397,6 +2382,26 @@ int main(void)
 		  lib_delete_program(s);
 		  CDC_Printf("!LIB:DEL:OK:%u\r\n", (unsigned int)s);
 		  dynamic_lib_requested = 1;
+	  }
+	  if (cmd_lib_add_requested){
+		  cmd_lib_add_requested = 0;
+		  strncpy(lib_name_buf, (const char *)cmd_lib_add_name, sizeof(lib_name_buf) - 1);
+		  lib_name_buf[sizeof(lib_name_buf) - 1] = '\0';
+		  lib_name_len = (uint8_t)strlen(lib_name_buf);
+		  lib_auto_verify = cmd_lib_add_verify;
+
+		  // Abort any pending menu actions
+		  menu_action_pending = -1;
+		  lib_start_add_requested = 0;
+
+		  initROMProgramming();
+		  eraseROMFast();
+		  lib_code_size = 0;
+		  lib_raw_rx_size = 0;
+		  lib_add_last_rx_tick = HAL_GetTick();
+		  state = STATE_LIB_ADD;
+		  lib_add_substate = LIB_ADD_PASTE;
+		  CDC_Printf("!LIB:ADD:READY:%s\r\n", lib_name_buf);
 	  }
 
 	  // Check for restore factory demo request in Thread Mode

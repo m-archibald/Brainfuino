@@ -1334,6 +1334,13 @@
       box-shadow: inset 0 0 0 2px rgba(63, 81, 181, 0.35);
     }
 
+    .term-2d-line {
+      min-height: 1.15em;
+      white-space: pre;
+      font-family: inherit;
+      line-height: inherit;
+    }
+
     /* Terminal Timestamps (Toggleable across all lines) */
     .terminal-timestamp {
       display: inline;
@@ -1423,7 +1430,8 @@
       position: relative;
     }
 
-    #cmd-input {
+    #cmd-input,
+    #verify-cmd-input {
       width: 100%;
       padding: 7px 12px;
       font-size: 0.80rem;
@@ -1436,7 +1444,8 @@
       transition: border-color 0.15s;
     }
 
-    #cmd-input:focus {
+    #cmd-input:focus,
+    #verify-cmd-input:focus {
       border-color: var(--border-focus);
     }
 
@@ -1507,20 +1516,45 @@
       border-radius: 3px;
     }
     [data-theme="dark"] ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+
     /* Write Tab & Program Suite Styles */
+    .sidebar.write-tab-active {
+      overflow-y: hidden;
+    }
+
+    .write-sidebar-pane {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      height: 100%;
+      min-height: 0;
+      padding: 10px 12px;
+      font-size: 0.75rem;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+
+    .sidebar-header-fixed {
+      flex-shrink: 0;
+      margin-bottom: 8px;
+    }
+
     .write-file-dropzone {
-      border: 2px dashed var(--border-main);
-      border-radius: 8px;
-      padding: 14px 10px;
+      border: 1.5px dashed var(--border-main);
+      border-radius: 6px;
+      padding: 8px 12px;
       text-align: center;
       cursor: pointer;
       background: var(--input-bg);
       color: var(--text-muted);
       transition: all 0.2s ease;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
+      gap: 8px;
     }
     .write-file-dropzone:hover, .write-file-dropzone.dragover {
       border-color: var(--accent-indigo);
@@ -1531,7 +1565,8 @@
       display: flex;
       flex-direction: column;
       gap: 3px;
-      max-height: calc(100vh - 380px);
+      flex: 1;
+      min-height: 0;
       overflow-y: auto;
       padding-right: 2px;
       font-family: 'Roboto Mono', Consolas, monospace;
@@ -1595,18 +1630,28 @@
       display: flex;
       align-items: center;
       gap: 5px;
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
     }
     .tree-guide {
       color: var(--text-dim);
       font-size: 0.65rem;
+      flex-shrink: 0;
     }
     .tree-file-name {
       font-size: 0.68rem;
       color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .tree-file-size {
       font-size: 0.62rem;
       color: var(--text-dim);
+      white-space: nowrap;
+      margin-left: 6px;
+      flex-shrink: 0;
     }
 
     /* Code Editor in Write Tab */
@@ -1637,7 +1682,7 @@
       background: var(--input-bg);
       border: 1px solid var(--border-main);
       border-radius: 6px;
-      padding: 10px 12px;
+      padding: 6px 10px;
     }
     .lib-storage-track {
       width: 100%;
@@ -1657,6 +1702,8 @@
       border: 1px solid var(--border-main);
       border-radius: 6px;
       overflow-x: auto;
+      max-height: 190px;
+      overflow-y: auto;
       background: var(--card-bg, #ffffff);
     }
     [data-theme="dark"] .lib-programs-table-wrapper {
@@ -1670,16 +1717,19 @@
     }
     .lib-programs-table th {
       background: var(--bg-sidebar);
-      padding: 8px 12px;
+      padding: 6px 10px;
       font-weight: 600;
       color: var(--text-muted);
       border-bottom: 1px solid var(--border-main);
       text-transform: uppercase;
       font-size: 0.66rem;
       letter-spacing: 0.03em;
+      position: sticky;
+      top: 0;
+      z-index: 2;
     }
     .lib-programs-table td {
-      padding: 9px 12px;
+      padding: 6px 10px;
       border-bottom: 1px solid var(--border-main);
       color: var(--text-main);
       vertical-align: middle;
@@ -1729,103 +1779,145 @@
       border-color: #ef4444;
     }
 
-    /* 10-Second Verification Mini-Terminal Modal */
-    .modal-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(15, 23, 42, 0.75);
-      backdrop-filter: blur(4px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 9999;
-      animation: fadeIn 0.15s ease;
+    /* Write Tab 2-Column Responsive Layout */
+    .write-tab-layout {
+      display: grid;
+      grid-template-columns: minmax(440px, 1.15fr) minmax(380px, 0.85fr);
+      gap: 14px;
+      width: 100%;
+      flex: 1;
+      min-height: 0;
+      box-sizing: border-box;
+      overflow: hidden;
+      padding: 12px 16px;
     }
-    .verify-modal-box {
-      width: 580px;
-      max-width: 92vw;
-      background: var(--bg-card);
-      border: 1px solid var(--border-main);
-      border-radius: 10px;
-      padding: 20px;
-      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+
+    @media (max-width: 1024px) {
+      .write-tab-layout {
+        grid-template-columns: 1fr;
+        overflow-y: auto;
+      }
+    }
+
+    .write-left-column {
       display: flex;
       flex-direction: column;
       gap: 12px;
+      overflow-y: auto;
+      min-height: 0;
+      height: 100%;
+      padding-right: 4px;
     }
-    .verify-modal-header {
+
+    .write-left-column > .flasher-card {
+      flex-shrink: 0;
+    }
+
+    .write-right-column {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      height: 100%;
+    }
+
+    .monitor-card {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      flex: 1;
+      min-height: 0;
+      border: 1px solid var(--border-main);
+      border-radius: 8px;
+      background: var(--bg-card);
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    }
+
+    .monitor-card-body {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      padding: 10px 14px;
+      gap: 8px;
+    }
+
+    .monitor-subbar {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      font-size: 0.70rem;
+      color: var(--text-muted);
+      flex-shrink: 0;
+      padding-bottom: 2px;
     }
-    .verify-modal-title {
-      font-size: 0.95rem;
-      font-weight: 700;
-      color: var(--text-main);
-      letter-spacing: -0.01em;
-    }
+
     .verify-countdown-badge {
       font-family: "Roboto Mono", monospace;
-      font-size: 0.85rem;
+      font-size: 0.76rem;
       font-weight: 700;
-      color: var(--accent-green);
-      background: rgba(22, 163, 74, 0.12);
-      border: 1px solid rgba(22, 163, 74, 0.25);
-      padding: 3px 8px;
-      border-radius: 6px;
+      color: var(--accent-indigo);
+      background: rgba(63, 81, 181, 0.12);
+      border: 1px solid rgba(63, 81, 181, 0.25);
+      padding: 2px 7px;
+      border-radius: 4px;
+      letter-spacing: 0.02em;
     }
-    .verify-modal-sub {
-      font-size: 0.72rem;
-      color: var(--text-muted);
-      line-height: 1.4;
-    }
+
     .verify-progress-track {
       width: 100%;
-      height: 6px;
+      height: 4px;
       background: rgba(148, 163, 184, 0.2);
-      border-radius: 3px;
+      border-radius: 2px;
       overflow: hidden;
+      flex-shrink: 0;
+      transition: opacity 0.2s ease;
     }
+
     .verify-progress-fill {
       height: 100%;
       background: linear-gradient(90deg, #10b981 0%, #3b82f6 100%);
-      border-radius: 3px;
+      border-radius: 2px;
       transition: width 0.1s linear;
     }
+
     .verify-terminal-screen {
-      height: 170px;
-      background: #0f172a;
-      color: #38bdf8;
-      font-family: "Roboto Mono", Consolas, monospace;
-      font-size: 0.76rem;
-      line-height: 1.45;
-      padding: 10px;
+      flex: 1;
+      min-height: 0;
+      height: 100%;
+      padding: 12px 14px;
+      background: var(--bg-terminal);
+      color: var(--terminal-fg);
+      font-family: "Roboto Mono", SFMono-Regular, Consolas, Menlo, monospace;
+      font-size: 0.82rem;
+      line-height: 1.25;
+      letter-spacing: 0;
+      border: 1px solid var(--border-main);
       border-radius: 6px;
-      border: 1px solid #1e293b;
       overflow-y: auto;
       white-space: pre-wrap;
-      word-break: break-all;
+      word-break: break-word;
       outline: none;
+      position: relative;
     }
+
+    .verify-terminal-screen::selection {
+      background: var(--terminal-selection);
+    }
+
     .verify-terminal-screen:focus {
-      border-color: var(--accent-indigo);
-      box-shadow: 0 0 0 1px var(--accent-indigo);
+      border-color: var(--border-focus);
+      box-shadow: inset 0 0 0 1px var(--accent-indigo);
     }
-    .verify-modal-hint {
-      font-size: 0.65rem;
-      color: var(--text-muted);
-      text-align: center;
-      font-style: italic;
-    }
-    .verify-modal-actions {
+
+    .monitor-input-bar {
       display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-      margin-top: 6px;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: scale(0.98); }
-      to { opacity: 1; transform: scale(1); }
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border-main);
+      padding-top: 8px;
+      flex-shrink: 0;
     }
   </style>
 </head>
@@ -2013,53 +2105,22 @@
         </div>
       </div>
 
-      <!-- Tab Content 2 (Write Tab Sidebar): Program Suite Catalog & File Drop -->
-      <div id="tab-content-upload" style="display:none; padding:12px; font-size:0.75rem;">
-        <div class="sidebar-section">
-          <h4>File Loader</h4>
-          <div class="write-file-dropzone" id="write-file-dropzone" onclick="document.getElementById('write-file-input').click()" ondragover="handleWriteDragOver(event)" ondragleave="handleWriteDragLeave(event)" ondrop="handleWriteDrop(event)">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-            <div style="font-weight:600; font-size:0.72rem; color:var(--text-main); margin-top:4px;">Drag & Drop .b / .bf</div>
-            <div style="font-size:0.65rem; color:var(--text-muted); margin-top:2px;">or click to browse file</div>
-            <input type="file" id="write-file-input" accept=".b,.bf,.txt" style="display:none;" onchange="handleWriteFileInput(event)">
-          </div>
-        </div>
-
-        <div class="sidebar-section">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-            <h4 style="margin:0;">GitHub Program Suite</h4>
+      <!-- Tab Content 2 (Write Tab Sidebar): Dedicated Program Suite Catalog -->
+      <div id="tab-content-upload" class="write-sidebar-pane" style="display:none;">
+        <div class="sidebar-header-fixed">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h4 style="margin:0; font-size:0.74rem; font-weight:700; color:var(--text-main); text-transform:uppercase; letter-spacing:0.04em;">Program Suite</h4>
             <button class="tool-btn" style="padding:2px 6px; font-size:0.65rem;" onclick="renderGitHubProgramCatalog()" title="Re-sync program list from GitHub">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
               <span>Sync</span>
             </button>
           </div>
-          <p style="font-size:0.68rem; color:var(--text-muted); line-height:1.4; margin-bottom:8px;">
+          <p style="font-size:0.68rem; color:var(--text-muted); line-height:1.35; margin-top:4px; margin-bottom:0;">
             Official Brainfuino programs. Click to load into editor:
           </p>
-          <div id="github-programs-tree" class="github-programs-tree">
-            <!-- Populated dynamically by renderGitHubProgramCatalog() -->
-          </div>
         </div>
-
-        <div class="sidebar-section">
-          <h4>Editor Utilities</h4>
-          <div style="display:flex; flex-direction:column; gap:6px;">
-            <button class="action-btn" onclick="clearWriteEditor()" style="width:100%; display:flex; align-items:center; justify-content:center; gap:6px;">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-              <span>Clear Editor</span>
-            </button>
-            <button class="action-btn" onclick="pruneEditorComments()" style="width:100%; display:flex; align-items:center; justify-content:center; gap:6px;" title="Strip all non-Brainfuck characters in editor">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-              <span>Strip Non-BF Comments</span>
-            </button>
-          </div>
-        </div>
-
-        <div class="sidebar-section">
-          <h4>Quick Switch</h4>
-          <button class="action-btn" style="width:100%;" onclick="switchTab('terminal')">
-            Return to Terminal
-          </button>
+        <div id="github-programs-tree" class="github-programs-tree">
+          <!-- Populated dynamically by renderGitHubProgramCatalog() -->
         </div>
       </div>
 
@@ -2518,9 +2579,10 @@
           <div class="status-strip-right" id="write-strip-stats">Library: Idle</div>
         </div>
 
-        <!-- Scrollable Workspace Canvas -->
-        <div class="flasher-content-scroll" id="write-content-scroll">
-          <div class="flasher-unified-container">
+        <!-- Split 2-Column Workspace Canvas -->
+        <div class="write-tab-layout" id="write-tab-layout">
+          <!-- LEFT COLUMN: WRITE EDITOR + LIBRARY -->
+          <div class="write-left-column">
             <!-- TOP CARD: PROGRAM WRITE & FLASH -->
             <div class="flasher-card">
               <div class="flasher-card-header">
@@ -2536,17 +2598,35 @@
                 </div>
               </div>
 
-              <div class="flasher-card-body" style="gap:14px;">
-                <div style="display:grid; grid-template-columns: 1fr auto; gap:12px; align-items:center;">
-                  <div>
+              <div class="flasher-card-body" style="gap:10px;">
+                <!-- Title Row & Editor Utilities Toolbar -->
+                <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap;">
+                  <div style="flex:1; min-width:180px;">
                     <label class="flasher-label-prominent" for="write-prog-name">Program Title (for Library slot)</label>
                     <input type="text" id="write-prog-name" class="flasher-input-hero" placeholder="e.g. Mandelbrot" maxlength="15" value="MyProgram" />
                   </div>
-                  <div style="align-self:end;">
+                  <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                     <button class="tool-btn" onclick="loadDefaultLogoToEditor()" title="Load Brainfuino Banner into editor">
-                      Load Demo Code
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                      <span>Load Demo</span>
+                    </button>
+                    <button class="tool-btn" onclick="pruneEditorComments()" title="Strip all non-Brainfuck comment characters">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                      <span>Strip Comments</span>
+                    </button>
+                    <button class="tool-btn" onclick="clearWriteEditor()" title="Clear editor content">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                      <span>Clear</span>
                     </button>
                   </div>
+                </div>
+
+                <!-- Compact In-Box File Loader -->
+                <div class="write-file-dropzone" id="write-file-dropzone" onclick="document.getElementById('write-file-input').click()" ondragover="handleWriteDragOver(event)" ondragleave="handleWriteDragLeave(event)" ondrop="handleWriteDrop(event)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                  <span style="font-weight:600; font-size:0.73rem; color:var(--text-main);">Drop .b / .bf file here or click to browse</span>
+                  <span style="font-size:0.67rem; color:var(--text-muted);">(loads directly into editor)</span>
+                  <input type="file" id="write-file-input" accept=".b,.bf,.txt" style="display:none;" onchange="handleWriteFileInput(event)">
                 </div>
 
                 <div>
@@ -2554,24 +2634,21 @@
                     <label class="flasher-label-prominent" style="margin:0;" for="write-code-area">Source Code (.b / .bf)</label>
                     <div style="font-size:0.68rem; color:var(--text-muted);" id="write-editor-meta">0 chars | 0 lines</div>
                   </div>
-                  <textarea id="write-code-area" class="write-editor-textarea" placeholder="Paste or type Brainfuck source code here, or select an example from the left sidebar..." oninput="updateWriteCodeStats()"></textarea>
+                  <textarea id="write-code-area" class="write-editor-textarea" style="height:105px; min-height:75px; max-height:280px; resize:vertical;" placeholder="Paste or type Brainfuck source code here, drop a file above, or select an example from the left sidebar..." oninput="updateWriteCodeStats()"></textarea>
                 </div>
 
                 <!-- Action Button Row -->
-                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
-                  <button class="tool-btn" onclick="clearWriteEditor()" style="padding:10px 14px;">
-                    <span>Clear</span>
-                  </button>
-                  <button class="btn-primary-action" id="btn-write-run" onclick="executeWriteLiveRun()" style="min-width:140px;">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+                  <button class="btn-primary-action" id="btn-write-run" onclick="executeWriteLiveRun()" style="min-width:130px;" title="Send code and execute immediately on soft-processor">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
                     <span>Write (Live Run)</span>
                   </button>
-                  <button class="btn-primary-action" id="btn-write-lib-test" onclick="executeWriteToLibrary(true)" style="min-width:170px; background:linear-gradient(135deg, #10b981 0%, #059669 100%);">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                  <button class="btn-primary-action" id="btn-write-lib-test" onclick="executeWriteToLibrary(true)" style="min-width:165px; background:linear-gradient(135deg, #10b981 0%, #059669 100%);" title="Flash to library and run 10-second interactive verification before permanent save">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
                     <span>Write to Library (with Test)</span>
                   </button>
-                  <button class="btn-primary-action" id="btn-write-lib-notest" onclick="executeWriteToLibrary(false)" style="min-width:170px; background:linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                  <button class="btn-primary-action" id="btn-write-lib-notest" onclick="executeWriteToLibrary(false)" style="min-width:165px; background:linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);" title="Flash directly to library slot without 10-second verification test">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
                     <span>Write to Library (no Test)</span>
                   </button>
                 </div>
@@ -2588,6 +2665,10 @@
                   <h3 class="settings-card-title">Brainfuino Program Library</h3>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
+                  <button class="tool-btn" id="write-sync-lib-btn" onclick="queryDynamicLibrary()" style="padding:2px 7px; font-size:0.68rem;" title="Query programs from Brainfuino Flash (!LIB*)">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                    <span>Sync</span>
+                  </button>
                   <span class="settings-card-count" id="lib-slots-count">0 / 64 Slots</span>
                   <span class="settings-card-count" id="lib-usage-badge">0 B / 44 kB</span>
                 </div>
@@ -2610,17 +2691,17 @@
                   <table class="lib-programs-table">
                     <thead>
                       <tr>
-                        <th style="width:60px;">Slot</th>
+                        <th style="width:55px;">Slot</th>
                         <th>Program Name</th>
-                        <th style="width:110px;">Size</th>
-                        <th style="width:90px;">Status</th>
-                        <th style="width:230px; text-align:right;">Actions</th>
+                        <th style="width:90px;">Size</th>
+                        <th style="width:80px;">Status</th>
+                        <th style="width:200px; text-align:right;">Actions</th>
                       </tr>
                     </thead>
                     <tbody id="lib-programs-tbody">
                       <tr>
                         <td colspan="5" style="text-align:center; padding:24px; color:var(--text-muted);">
-                          Connect Brainfuino and click "Sync Library" to query programs (!LIB*)...
+                          Connect Brainfuino and click "Sync" to query programs (!LIB*)...
                         </td>
                       </tr>
                     </tbody>
@@ -2628,9 +2709,12 @@
                 </div>
               </div>
             </div>
+          </div>
 
+          <!-- RIGHT COLUMN: EXECUTION & VERIFICATION MONITOR -->
+          <div class="write-right-column">
             <!-- CARD 3: EXECUTION & VERIFICATION MONITOR (PERMANENT) -->
-            <div class="flasher-card" id="verify-monitor-card">
+            <div class="flasher-card monitor-card" id="verify-monitor-card">
               <div class="flasher-card-header">
                 <div class="settings-card-title-group">
                   <span class="settings-card-icon">
@@ -2644,10 +2728,30 @@
                 </div>
               </div>
 
-              <div class="flasher-card-body" style="gap:10px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.70rem; color:var(--text-muted);">
-                  <span id="verify-monitor-sub">Soft-processor execution & interactive test stream:</span>
-                  <span id="verify-monitor-stats" style="font-family:'Roboto Mono', monospace;">0 bytes received</span>
+              <div class="flasher-card-body monitor-card-body">
+                <div class="monitor-subbar">
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span id="verify-monitor-sub">Soft-processor serial stream</span>
+                    <span class="tree-guide">|</span>
+                    <span id="verify-monitor-stats" style="font-family:'Roboto Mono', monospace; font-size:0.68rem; color:var(--text-dim);">0 B received</span>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <label class="toggle-row" style="margin:0; font-size:0.68rem; gap:4px;" title="Automatically scroll to bottom on new output">
+                      <span>Autoscroll</span>
+                      <input type="checkbox" id="verify-autoscroll-chk" checked />
+                    </label>
+                    <button class="tool-btn" onclick="clearVerifyTerminal()" title="Clear monitor output" style="padding:2px 7px; font-size:0.68rem;">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                      <span>Clear</span>
+                    </button>
+                    <button class="tool-btn" id="btn-verify-abort" onclick="abortVerification()" style="border-color:#ef4444; color:#ef4444; display:none; padding:2px 7px; font-size:0.68rem;" title="Abort test, restore default demo, and discard">
+                      <span>Cancel Test</span>
+                    </button>
+                    <button class="btn-primary-action" id="btn-verify-commit" onclick="commitVerificationNow()" style="background:linear-gradient(135deg, #10b981 0%, #059669 100%); display:none; padding:3px 9px; font-size:0.70rem;" title="Commit and permanently save program to library now">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      <span>Save Now</span>
+                    </button>
+                  </div>
                 </div>
 
                 <!-- Progress bar for 10s countdown (shown during active test) -->
@@ -2655,23 +2759,18 @@
                   <div class="verify-progress-fill" id="verify-progress-fill" style="width: 0%;"></div>
                 </div>
 
-                <!-- Mini-Terminal Screen for Soft-Processor Output -->
-                <div id="verify-terminal-screen" class="verify-terminal-screen" tabindex="0">Ready. Output from live runs or verification tests will appear here.</div>
+                <!-- Output Screen (Styled identically to main terminal) -->
+                <div id="verify-terminal-screen" class="verify-terminal-screen" tabindex="0"></div>
 
-                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                  <div class="verify-modal-hint" style="text-align:left;">Interactive Mode: Click monitor above to type input directly to soft-processor</div>
-                  <div class="verify-modal-actions" style="margin-top:0;">
-                    <button class="tool-btn" onclick="clearVerifyTerminal()" title="Clear monitor output">
-                      <span>Clear</span>
-                    </button>
-                    <button class="tool-btn" id="btn-verify-abort" onclick="abortVerification()" style="border-color:#ef4444; color:#ef4444; display:none;" title="Abort test, restore default demo, and discard">
-                      <span>Cancel Test</span>
-                    </button>
-                    <button class="btn-primary-action" id="btn-verify-commit" onclick="commitVerificationNow()" style="background:linear-gradient(135deg, #10b981 0%, #059669 100%); display:none;">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                      <span>Save Now</span>
-                    </button>
+                <!-- Bottom Command Input Bar -->
+                <div class="monitor-input-bar">
+                  <div class="mode-badge" id="verify-mode-badge" onclick="cycleVerifyInputMode()" title="Click to toggle Direct / Line mode" style="font-size:0.65rem; padding:3px 6px;">
+                    Mode: Direct
                   </div>
+                  <div class="input-wrapper">
+                    <input type="text" id="verify-cmd-input" placeholder="Click monitor for direct keys, or type here..." autocomplete="off" style="padding:5px 8px; font-size:0.74rem;" />
+                  </div>
+                  <button class="btn-send" onclick="sendVerifyInputBox()" style="padding:5px 10px; font-size:0.72rem;">Send</button>
                 </div>
               </div>
             </div>
@@ -2828,8 +2927,17 @@
         const btn = document.getElementById(t.btn) || document.getElementById(`tab-btn-${t.id}`) || (t.id === 'settings' ? document.getElementById('tab-btn-controls') : null);
         const content = document.getElementById(t.content) || document.getElementById(`tab-content-${t.id}`) || (t.id === 'settings' ? document.getElementById('tab-content-controls') : null);
         if (btn) btn.classList.toggle('active', t.id === normalized);
-        if (content) content.style.display = (t.id === normalized) ? 'block' : 'none';
+        if (content) {
+          if (t.id === normalized) {
+            content.style.display = (t.id === 'write' ? 'flex' : 'block');
+          } else {
+            content.style.display = 'none';
+          }
+        }
       });
+
+      const sidebarEl = document.querySelector('.sidebar');
+      if (sidebarEl) sidebarEl.classList.toggle('write-tab-active', normalized === 'write');
 
       const viewTerminal = document.getElementById('view-terminal');
       const viewControls = document.getElementById('view-controls');
@@ -3342,6 +3450,10 @@
       if (line.startsWith('!LIB:ADD:READY:')) {
         const name = line.slice(15).trim();
         updateWriteLibStatus(`Brainfuino ready. Streaming code for '${name}'...`, true);
+        if (typeof libAddReadyResolver === 'function') {
+          libAddReadyResolver(true);
+          libAddReadyResolver = null;
+        }
         return;
       }
       if (line.startsWith('!LIB:TEST:START:')) {
@@ -3770,15 +3882,7 @@
       await sendRaw(cmdStr);
     }
 
-    // --- ANSI Parser & Terminal Screen Rendering ---
-    let ansiState = {
-      bold: false,
-      underline: false,
-      fgColor: null,
-    };
-
-    let terminalAtLineStart = true;
-
+    // --- Shared ANSI Parser & Terminal Screen Rendering Engine ---
     function formatTimestamp(timestampMs) {
       const now = timestampMs !== undefined 
         ? timestampMs 
@@ -3800,15 +3904,238 @@
       return span;
     }
 
+    function createStyledSpanWithState(text, ansi) {
+      if (text.includes('\b')) {
+        let clean = [];
+        for (let char of text) {
+          if (char === '\b') {
+            if (clean.length > 0) clean.pop();
+          } else {
+            clean.push(char);
+          }
+        }
+        text = clean.join('');
+      }
+
+      const span = document.createElement('span');
+      let classes = [];
+      if (ansi.bold) classes.push('ansi-bold');
+      if (ansi.underline) classes.push('ansi-underline');
+      if (ansi.fgColor) classes.push(`ansi-${ansi.fgColor}`);
+
+      if (classes.length > 0) span.className = classes.join(' ');
+      span.textContent = text;
+      return span;
+    }
+
+    function appendTextToTerminal(screenEl, rawText, state, options = {}) {
+      if (!screenEl || !rawText) return;
+
+      const autoscroll = options.autoscroll !== undefined ? options.autoscroll : true;
+      const enableTimestamps = options.enableTimestamps || false;
+      const chunkTimestamp = options.chunkTimestamp;
+      const maxLines = options.maxScrollbackLines || 2000;
+
+      // Handle stream defragmentation: prepend leftover partial ANSI sequence from prior chunk
+      if (state.streamBuffer) {
+        rawText = state.streamBuffer + rawText;
+        state.streamBuffer = '';
+      }
+
+      // Buffer any incomplete trailing ANSI sequence (e.g. '\x1b', '\x1b[', '\x1b[1;2')
+      const partialAnsi = /\x1b(\[[0-9;]*)?$/.exec(rawText);
+      if (partialAnsi) {
+        state.streamBuffer = partialAnsi[0];
+        rawText = rawText.slice(0, -state.streamBuffer.length);
+      }
+      if (!rawText) return;
+
+      // Regex matching ANSI escape sequences: \x1b[...m or \x1b[...H / J / K / etc.
+      const ansiRegex = /\x1b\[([0-9;]*)([a-zA-Z])/g;
+      let lastIndex = 0;
+      let match;
+      let fragment = document.createDocumentFragment();
+
+      const appendPlainTextSegments = (text) => {
+        if (!text) return;
+        if (text.includes('\b')) {
+          let clean = [];
+          for (let char of text) {
+            if (char === '\b') {
+              if (clean.length > 0) clean.pop();
+            } else {
+              clean.push(char);
+            }
+          }
+          text = clean.join('');
+        }
+        if (!text) return;
+
+        // In 2D cursor-addressable mode (Bad Apple, Mandelbrot, etc.), overwrite lines in-place without erasing
+        if (state.is2D) {
+          const parts = text.split('\n');
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i].replace(/\r/g, '');
+            if (part.length > 0) {
+              while (state.lineMap.length <= state.cursorRow) {
+                const lineDiv = document.createElement('div');
+                lineDiv.className = 'term-2d-line';
+                screenEl.appendChild(lineDiv);
+                state.lineMap.push({ el: lineDiv, text: '' });
+              }
+              const lineObj = state.lineMap[state.cursorRow];
+              const cur = lineObj.text;
+              const col = state.cursorCol || 0;
+              const before = cur.slice(0, col).padEnd(col, ' ');
+              const after = cur.slice(col + part.length);
+              lineObj.text = before + part + after;
+              lineObj.el.textContent = lineObj.text;
+              state.cursorCol = col + part.length;
+            }
+            if (i < parts.length - 1) {
+              state.cursorRow++;
+              state.cursorCol = 0;
+            }
+          }
+          return;
+        }
+
+        // Split text by newlines so we can place timestamp spans exactly at line starts
+        const parts = text.split('\n');
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i].replace(/\r/g, '');
+          if (enableTimestamps && state.atLineStart && (part.length > 0 || i < parts.length - 1)) {
+            fragment.appendChild(createTimestampSpan(chunkTimestamp));
+            state.atLineStart = false;
+          }
+
+          if (part.length > 0) {
+            fragment.appendChild(createStyledSpanWithState(part, state.ansiState));
+            state.atLineStart = false;
+          }
+
+          if (i < parts.length - 1) {
+            fragment.appendChild(document.createTextNode('\n'));
+            state.atLineStart = true;
+          }
+        }
+      };
+
+      while ((match = ansiRegex.exec(rawText)) !== null) {
+        if (match.index > lastIndex) {
+          const plainText = rawText.substring(lastIndex, match.index);
+          appendPlainTextSegments(plainText);
+        }
+
+        const params = match[1] ? match[1].split(';').map(n => parseInt(n, 10)) : [0];
+        const command = match[2];
+
+        if (command === 'm') {
+          for (let code of params) {
+            if (code === 0) {
+              state.ansiState.bold = false;
+              state.ansiState.underline = false;
+              state.ansiState.fgColor = null;
+            } else if (code === 1) {
+              state.ansiState.bold = true;
+            } else if (code === 4) {
+              state.ansiState.underline = true;
+            } else if (code === 22) {
+              state.ansiState.bold = false;
+            } else if (code === 24) {
+              state.ansiState.underline = false;
+            } else if (code >= 30 && code <= 37) {
+              const colors = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
+              state.ansiState.fgColor = colors[code - 30];
+            } else if (code === 39) {
+              state.ansiState.fgColor = null;
+            } else if (code >= 90 && code <= 97) {
+              const brightColors = ['bright-black', 'bright-red', 'bright-green', 'bright-yellow', 'bright-blue', 'bright-magenta', 'bright-cyan', 'bright-white'];
+              state.ansiState.fgColor = brightColors[code - 90];
+            }
+          }
+        } else if (command === 'J') {
+          // Clear screen: \x1b[2J or \x1b[J
+          screenEl.innerHTML = '';
+          fragment = document.createDocumentFragment();
+          state.totalRenderedLines = 0;
+          state.atLineStart = true;
+          state.cursorRow = 0;
+          state.cursorCol = 0;
+          state.lineMap = [];
+          state.is2D = false;
+        } else if (command === 'H' || command === 'f') {
+          // Cursor Home: \x1b[H or \x1b[row;colH
+          // Move cursor to home without erasing previous content! Overwrite in-place!
+          const r = (params && params[0] > 0) ? params[0] - 1 : 0;
+          const c = (params && params.length > 1 && params[1] > 0) ? params[1] - 1 : 0;
+          state.cursorRow = r;
+          state.cursorCol = c;
+          state.is2D = true;
+          state.lineMap = state.lineMap || [];
+        }
+
+        lastIndex = ansiRegex.lastIndex;
+      }
+
+      if (lastIndex < rawText.length) {
+        const remainingText = rawText.substring(lastIndex);
+        appendPlainTextSegments(remainingText);
+      }
+
+      const newLinesInBatch = (rawText.match(/\n/g) || []).length;
+      state.totalRenderedLines += newLinesInBatch;
+
+      screenEl.appendChild(fragment);
+
+      if (state.totalRenderedLines > maxLines) {
+        while (state.totalRenderedLines > maxLines && screenEl.firstChild) {
+          const first = screenEl.firstChild;
+          const nlInFirst = (first.textContent.match(/\n/g) || []).length;
+          state.totalRenderedLines -= nlInFirst;
+          screenEl.removeChild(first);
+        }
+        if (state.totalRenderedLines < 0) state.totalRenderedLines = 0;
+      }
+
+      while (screenEl.childNodes.length > 3000) {
+        screenEl.removeChild(screenEl.firstChild);
+      }
+
+      if (autoscroll && !state.is2D) {
+        screenEl.scrollTop = screenEl.scrollHeight;
+      }
+    }
+
+    const mainTerminalState = {
+      ansiState: { bold: false, underline: false, fgColor: null },
+      atLineStart: true,
+      totalRenderedLines: 0,
+      streamBuffer: '',
+      is2D: false,
+      cursorRow: 0,
+      cursorCol: 0,
+      lineMap: []
+    };
+
+    const verifyTerminalState = {
+      ansiState: { bold: false, underline: false, fgColor: null },
+      atLineStart: true,
+      totalRenderedLines: 0,
+      streamBuffer: '',
+      is2D: false,
+      cursorRow: 0,
+      cursorCol: 0,
+      lineMap: []
+    };
+
     function appendTerminalText(rawText, chunkTimestamp) {
       if (!rawText) return;
 
       if (isReceivingDump) {
         dumpPayload += rawText;
       }
-      if (isVerifyingModalOpen || currentTab === 'write') {
-        appendVerifyTerminalText(rawText);
-      }
+      appendVerifyTerminalText(rawText);
 
       // Process machine protocol lines (!MENU:, !SET:, !CMD:, !LIB:, !DUMP:)
       machineLineBuffer += rawText;
@@ -3834,150 +4161,45 @@
         }
       }
 
-      // Regex matching ANSI escape sequences: \x1b[...m or \x1b[...H / J / K / etc.
-      const ansiRegex = /\x1b\[([0-9;]*)([a-zA-Z])/g;
-      let lastIndex = 0;
-      let match;
-      const fragment = document.createDocumentFragment();
-
-      const appendPlainTextSegments = (text) => {
-        if (!text) return;
-        // Clean backspaces
-        if (text.includes('\b')) {
-          let clean = [];
-          for (let char of text) {
-            if (char === '\b') {
-              if (clean.length > 0) clean.pop();
-            } else {
-              clean.push(char);
-            }
-          }
-          text = clean.join('');
-        }
-        if (!text) return;
-
-        // Split text by newlines so we can place timestamp spans exactly at line starts
-        const parts = text.split('\n');
-        for (let i = 0; i < parts.length; i++) {
-          const part = parts[i].replace(/\r/g, '');
-          if (terminalAtLineStart && (part.length > 0 || i < parts.length - 1)) {
-            fragment.appendChild(createTimestampSpan(chunkTimestamp));
-            terminalAtLineStart = false;
-          }
-
-          if (part.length > 0) {
-            fragment.appendChild(createStyledSpan(part));
-          }
-
-          if (i < parts.length - 1) {
-            fragment.appendChild(document.createTextNode('\n'));
-            terminalAtLineStart = true;
-          }
-        }
-      };
-
-      while ((match = ansiRegex.exec(rawText)) !== null) {
-        // Output preceding text before this escape code
-        if (match.index > lastIndex) {
-          const plainText = rawText.substring(lastIndex, match.index);
-          appendPlainTextSegments(plainText);
-        }
-
-        const params = match[1] ? match[1].split(';').map(n => parseInt(n, 10)) : [0];
-        const command = match[2];
-
-        if (command === 'm') {
-          // Color & Graphic rendition
-          for (let code of params) {
-            if (code === 0) {
-              ansiState.bold = false;
-              ansiState.underline = false;
-              ansiState.fgColor = null;
-            } else if (code === 1) {
-              ansiState.bold = true;
-            } else if (code === 4) {
-              ansiState.underline = true;
-            } else if (code === 22) {
-              ansiState.bold = false;
-            } else if (code === 24) {
-              ansiState.underline = false;
-            } else if (code >= 30 && code <= 37) {
-              const colors = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
-              ansiState.fgColor = colors[code - 30];
-            } else if (code === 39) {
-              ansiState.fgColor = null;
-            } else if (code >= 90 && code <= 97) {
-              const brightColors = ['bright-black', 'bright-red', 'bright-green', 'bright-yellow', 'bright-blue', 'bright-magenta', 'bright-cyan', 'bright-white'];
-              ansiState.fgColor = brightColors[code - 90];
-            }
-          }
-        } else if (command === '2J') {
-          // Clear entire screen
-          terminalScreen.innerHTML = '';
-          rawLogBuffer = '';
-          totalRenderedLines = 0;
-          terminalAtLineStart = true;
-        }
-
-        lastIndex = ansiRegex.lastIndex;
-      }
-
-      // Append any remaining text after the last match
-      if (lastIndex < rawText.length) {
-        const remainingText = rawText.substring(lastIndex);
-        appendPlainTextSegments(remainingText);
-      }
-
-      // Count newlines in this batch
-      const newLinesInBatch = (rawText.match(/\n/g) || []).length;
-      totalRenderedLines += newLinesInBatch;
-
-      terminalScreen.appendChild(fragment);
-
-      // Prune oldest lines from the top if exceeding maxScrollbackLines
-      if (totalRenderedLines > maxScrollbackLines) {
-        while (totalRenderedLines > maxScrollbackLines && terminalScreen.firstChild) {
-          const first = terminalScreen.firstChild;
-          const nlInFirst = (first.textContent.match(/\n/g) || []).length;
-          totalRenderedLines -= nlInFirst;
-          terminalScreen.removeChild(first);
-        }
-        if (totalRenderedLines < 0) totalRenderedLines = 0;
-      }
-
-      // Safety cap on total child nodes (max 3,000 DOM elements) to guarantee smooth 60 FPS
-      while (terminalScreen.childNodes.length > 3000) {
-        terminalScreen.removeChild(terminalScreen.firstChild);
-      }
-
-      if (autoscrollChk.checked) {
-        terminalScreen.scrollTop = terminalScreen.scrollHeight;
-      }
+      appendTextToTerminal(terminalScreen, rawText, mainTerminalState, {
+        autoscroll: autoscrollChk ? autoscrollChk.checked : true,
+        enableTimestamps: timestampsChk ? timestampsChk.checked : false,
+        chunkTimestamp: chunkTimestamp,
+        maxScrollbackLines: maxScrollbackLines
+      });
     }
 
-    function createStyledSpan(text) {
-      // Process backspaces (\b)
-      if (text.includes('\b')) {
-        let clean = [];
-        for (let char of text) {
-          if (char === '\b') {
-            if (clean.length > 0) clean.pop();
-          } else {
-            clean.push(char);
-          }
-        }
-        text = clean.join('');
-      }
+    function appendVerifyTerminalText(rawText) {
+      const screen = document.getElementById('verify-terminal-screen');
+      if (!screen || !rawText) return;
 
-      const span = document.createElement('span');
-      let classes = [];
-      if (ansiState.bold) classes.push('ansi-bold');
-      if (ansiState.underline) classes.push('ansi-underline');
-      if (ansiState.fgColor) classes.push(`ansi-${ansiState.fgColor}`);
+      verifyBytesReceived += rawText.length;
+      const stats = document.getElementById('verify-monitor-stats');
+      if (stats) stats.textContent = `${formatBytes(verifyBytesReceived)} received`;
 
-      if (classes.length > 0) span.className = classes.join(' ');
-      span.textContent = text;
-      return span;
+      const autoscrollEl = document.getElementById('verify-autoscroll-chk');
+      const shouldAutoscroll = autoscrollEl ? autoscrollEl.checked : true;
+
+      appendTextToTerminal(screen, rawText, verifyTerminalState, {
+        autoscroll: shouldAutoscroll,
+        enableTimestamps: false,
+        maxScrollbackLines: 2000
+      });
+    }
+
+    function clearTerminal() {
+      terminalScreen.innerHTML = '';
+      pendingStreamChunks = [];
+      mainTerminalState.totalRenderedLines = 0;
+      mainTerminalState.atLineStart = true;
+      mainTerminalState.ansiState = { bold: false, underline: false, fgColor: null };
+      mainTerminalState.is2D = false;
+      mainTerminalState.lineMap = [];
+      mainTerminalState.cursorRow = 0;
+      mainTerminalState.cursorCol = 0;
+      rxBytes = 0;
+      txBytes = 0;
+      updateStats();
     }
 
     function updateStats() {
@@ -3988,17 +4210,6 @@
       if (bytes < 1024) return `${bytes} B`;
       if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} kB`;
       return `${(bytes / 1048576).toFixed(2)} MB`;
-    }
-
-    // --- Toolbar Actions ---
-    function clearTerminal() {
-      terminalScreen.innerHTML = '';
-      pendingStreamChunks = [];
-      totalRenderedLines = 0;
-      terminalAtLineStart = true;
-      rxBytes = 0;
-      txBytes = 0;
-      updateStats();
     }
 
     function saveLog() {
@@ -5379,6 +5590,7 @@
     let isReceivingDump = false;
     let dumpPayload = '';
     let dumpName = '';
+    let libAddReadyResolver = null;
 
     const GITHUB_PROGRAMS_SUITE = [
       {
@@ -5747,7 +5959,19 @@
       }
       sendCmd(`!LIB:RUN:${slot}\r\n`);
       updateWriteLibStatus(`Launching slot ${slot} on soft-processor...`, true);
-      switchTab('terminal');
+      const badge = document.getElementById('verify-countdown-badge');
+      if (badge) {
+        badge.textContent = `SLOT ${slot + 1} RUNNING`;
+        badge.style.color = '#38bdf8';
+      }
+      const dot = document.getElementById('verify-status-dot');
+      if (dot) {
+        dot.className = 'status-strip-dot active';
+      }
+      clearVerifyTerminal();
+      appendVerifyTerminalText(`--- Launching Library Slot ${slot + 1} on Soft-Processor ---\r\n`);
+      const vScreen = document.getElementById('verify-terminal-screen');
+      if (vScreen) vScreen.focus();
     }
 
     function dumpLibrarySlot(slot) {
@@ -5784,6 +6008,17 @@
 
       const code = area.value;
       updateWriteLibStatus('Sending code to Brainfuino RAM/ROM (Live Run)...', true);
+      const badge = document.getElementById('verify-countdown-badge');
+      if (badge) {
+        badge.textContent = 'LIVE RUNNING';
+        badge.style.color = '#38bdf8';
+      }
+      const dot = document.getElementById('verify-status-dot');
+      if (dot) {
+        dot.className = 'status-strip-dot active';
+      }
+      clearVerifyTerminal();
+      appendVerifyTerminalText(`--- Live Run: Writing and executing on Soft-Processor (${code.length} bytes) ---\r\n`);
 
       // Pulse soft reset and stream code payload
       await sendCmd('!RST\r\n');
@@ -5799,7 +6034,8 @@
       await writer.write(enc.encode('\r\n'));
 
       updateWriteLibStatus('Program written! Running live on Brainfuino.', false);
-      switchTab('terminal');
+      const vScreen = document.getElementById('verify-terminal-screen');
+      if (vScreen) vScreen.focus();
     }
 
     async function executeWriteToLibrary(withTest = true) {
@@ -5818,45 +6054,125 @@
       progName = progName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 15);
       const code = area.value;
 
+      updateWriteLibStatus(`Initiating Library write for '${progName}'...`, true);
+
+      // Cleanly exit or abort any active text menu on the device
+      await sendCmd('\x1b');
+      await new Promise(r => setTimeout(r, 60));
+
+      let directReady = false;
+      const readyPromise = new Promise(resolve => {
+        libAddReadyResolver = resolve;
+      });
+
       if (withTest) {
-        updateWriteLibStatus(`Initiating Library write with 10s test for '${progName}'...`, true);
         await sendCmd(`!LIB:ADD:${progName}\r\n`);
       } else {
-        updateWriteLibStatus(`Initiating direct Library write (no test) for '${progName}'...`, true);
         await sendCmd(`!LIB:ADD_NOVERIFY:${progName}\r\n`);
       }
-      await new Promise(r => setTimeout(r, 120));
 
-      // Stream payload
-      const enc = new TextEncoder();
-      const chunkSize = 128;
-      for (let i = 0; i < code.length; i += chunkSize) {
-        const chunk = code.slice(i, i + chunkSize);
-        await writer.write(enc.encode(chunk));
-        await new Promise(r => setTimeout(r, 4));
+      // Wait up to 500ms for direct !LIB:ADD:READY handshake
+      try {
+        directReady = await Promise.race([
+          readyPromise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 500))
+        ]);
+      } catch (e) {
+        directReady = false;
       }
-      await writer.write(enc.encode('\r\n'));
+      libAddReadyResolver = null;
 
-      if (withTest) {
-        updateWriteLibStatus('Code uploaded. Testing on Brainfuino before save...', true);
+      if (directReady) {
+        // Modern firmware direct write protocol
+        updateWriteLibStatus(`Streaming code payload (${code.length} B)...`, true);
+        const enc = new TextEncoder();
+        const chunkSize = 128;
+        for (let i = 0; i < code.length; i += chunkSize) {
+          const chunk = code.slice(i, i + chunkSize);
+          await writer.write(enc.encode(chunk));
+          await new Promise(r => setTimeout(r, 4));
+        }
+        await writer.write(enc.encode('\r\n'));
+
+        if (withTest) {
+          updateWriteLibStatus('Code uploaded. Testing on Brainfuino before save...', true);
+        } else {
+          updateWriteLibStatus('Code uploaded. Saving directly to Library...', true);
+        }
       } else {
-        updateWriteLibStatus('Code uploaded. Saving directly to Library...', true);
-        // Fallback for firmware compatibility: commit immediately
-        setTimeout(() => {
-          sendCmd('!COMMIT\r\n');
-        }, 300);
+        // Older firmware fallback:
+        // Hardware did not respond to !LIB:ADD:READY.
+        // It may be in the interactive menu or awaiting program name.
+        updateWriteLibStatus(`Direct handshake timed out. Using interactive menu fallback for '${progName}'...`, true);
+
+        // Explicitly supply the program name so it is NEVER populated from comments in the code!
+        await sendCmd(`${progName}\r\n`);
+        await new Promise(r => setTimeout(r, 350));
+
+        // Stream code payload
+        updateWriteLibStatus(`Streaming code payload (${code.length} B)...`, true);
+        const enc = new TextEncoder();
+        const chunkSize = 128;
+        for (let i = 0; i < code.length; i += chunkSize) {
+          const chunk = code.slice(i, i + chunkSize);
+          await writer.write(enc.encode(chunk));
+          await new Promise(r => setTimeout(r, 4));
+        }
+        await writer.write(enc.encode('\r\n'));
+        await new Promise(r => setTimeout(r, 300));
+
+        // Answer verification prompt: 'y' for test, 'n' for direct
+        await sendCmd(withTest ? 'y\r\n' : 'n\r\n');
+        updateWriteLibStatus(withTest ? 'Uploaded. Running verification test...' : 'Uploaded. Saving to Library...', true);
       }
     }
 
-    // --- Execution & Verification Monitor (Permanent Card below Library) ---
+    // --- Execution & Verification Monitor (Permanent Card in Right Column) ---
     let verifyBytesReceived = 0;
+    let verifyInputMode = 'direct';
+
+    function setVerifyInputMode(mode) {
+      verifyInputMode = mode;
+      const badge = document.getElementById('verify-mode-badge');
+      const input = document.getElementById('verify-cmd-input');
+      const screen = document.getElementById('verify-terminal-screen');
+      if (mode === 'direct') {
+        if (badge) badge.textContent = 'Mode: Direct';
+        if (input) input.placeholder = 'Click monitor for direct keys, or type here...';
+        if (screen) screen.focus();
+      } else {
+        if (badge) badge.textContent = 'Mode: Line';
+        if (input) {
+          input.placeholder = 'Type input line and press Enter...';
+          input.focus();
+        }
+      }
+    }
+
+    function cycleVerifyInputMode() {
+      setVerifyInputMode(verifyInputMode === 'direct' ? 'line' : 'direct');
+    }
+
+    function sendVerifyInputBox() {
+      const input = document.getElementById('verify-cmd-input');
+      if (!input || !port) return;
+      const text = input.value;
+      if (!text) return;
+      sendRaw(text + '\r\n');
+      input.value = '';
+    }
 
     function clearVerifyTerminal() {
       const screen = document.getElementById('verify-terminal-screen');
       const stats = document.getElementById('verify-monitor-stats');
-      if (screen) screen.textContent = 'Ready. Output from live runs or verification tests will appear here.\n';
+      if (screen) {
+        screen.innerHTML = '';
+      }
+      verifyTerminalState.totalRenderedLines = 0;
+      verifyTerminalState.atLineStart = true;
+      verifyTerminalState.ansiState = { bold: false, underline: false, fgColor: null };
       verifyBytesReceived = 0;
-      if (stats) stats.textContent = '0 bytes received';
+      if (stats) stats.textContent = '0 B received';
     }
 
     function startVerificationSession(seconds = 10) {
@@ -5868,7 +6184,6 @@
       const screen = document.getElementById('verify-terminal-screen');
       const btnAbort = document.getElementById('btn-verify-abort');
       const btnCommit = document.getElementById('btn-verify-commit');
-      const stats = document.getElementById('verify-monitor-stats');
 
       if (dot) {
         dot.className = 'status-strip-dot active';
@@ -5877,12 +6192,10 @@
       if (track) track.style.opacity = '1';
       if (btnAbort) btnAbort.style.display = 'inline-flex';
       if (btnCommit) btnCommit.style.display = 'inline-flex';
-      if (screen) {
-        screen.textContent = '--- Testing on Brainfuino: Soft-processor running (10s auto-save) ---\n';
-        screen.focus();
-      }
-      verifyBytesReceived = 0;
-      if (stats) stats.textContent = '0 bytes received';
+      
+      clearVerifyTerminal();
+      appendVerifyTerminalText('--- Testing on Brainfuino: Soft-processor running (10s auto-save) ---\r\n');
+      if (screen) screen.focus();
 
       verifyRemainingMs = seconds * 1000;
       const totalMs = seconds * 1000;
@@ -5937,14 +6250,14 @@
           badge.style.color = '#10b981';
         }
         updateWriteLibStatus(`Verification complete! Saved to Library Slot ${slot + 1}.`, false);
-        appendVerifyTerminalText(`\n[SUCCESS: Program saved to Library Slot ${slot + 1}]\n`);
+        appendVerifyTerminalText(`\r\n[SUCCESS: Program saved to Library Slot ${slot + 1}]\r\n`);
       } else {
         if (badge) {
           badge.textContent = 'CANCELLED';
           badge.style.color = '#ef4444';
         }
         updateWriteLibStatus('Verification aborted. Default demo restored.', false);
-        appendVerifyTerminalText('\n[CANCELLED: Program discarded, demo restored]\n');
+        appendVerifyTerminalText('\r\n[CANCELLED: Program discarded, demo restored]\r\n');
       }
     }
 
@@ -5959,36 +6272,55 @@
       closeVerificationSession(false);
     }
 
-    function appendVerifyTerminalText(text) {
-      const screen = document.getElementById('verify-terminal-screen');
-      if (!screen) return;
-      screen.textContent += text;
-      screen.scrollTop = screen.scrollHeight;
-    }
-
-    // Attach key listener for verification modal interactive soft-processor input
+    // Attach listeners for verification monitor and interactive soft-processor input
     document.addEventListener('DOMContentLoaded', () => {
       const vScreen = document.getElementById('verify-terminal-screen');
       if (vScreen) {
-        vScreen.addEventListener('keydown', (e) => {
-          if (!isVerifyingModalOpen) return;
-          if (e.key === 'Escape') {
-            abortVerification();
+        vScreen.addEventListener('keydown', async (e) => {
+          if (!port) return;
+          if (isVerifyingModalOpen) {
+            if (e.key === 'Escape') {
+              abortVerification();
+              return;
+            }
+            if (e.key === 'Enter' && e.ctrlKey) {
+              commitVerificationNow();
+              return;
+            }
+          }
+          if (verifyInputMode !== 'direct') return;
+
+          // Allow clipboard shortcuts
+          if ((e.ctrlKey || e.metaKey) && window.getSelection().toString().length > 0) {
             return;
           }
-          if (e.key === 'Enter' && e.ctrlKey) {
-            commitVerificationNow();
-            return;
+
+          e.preventDefault();
+          let key = e.key;
+          let toSend = '';
+
+          if (key === 'Enter') toSend = '\r';
+          else if (key === 'Backspace') toSend = '\b';
+          else if (key === 'Delete') toSend = '\x1b[3~';
+          else if (key === 'Tab') toSend = '\t';
+          else if (key === 'Escape') toSend = '\x1b';
+          else if (key === 'ArrowUp') toSend = '\x1b[A';
+          else if (key === 'ArrowDown') toSend = '\x1b[B';
+          else if (key === 'ArrowRight') toSend = '\x1b[C';
+          else if (key === 'ArrowLeft') toSend = '\x1b[D';
+          else if (key.length === 1) toSend = key;
+
+          if (toSend) {
+            await sendRaw(toSend);
           }
-          if (e.key.length === 1) {
-            sendSerialByte(e.key);
-            e.preventDefault();
-          } else if (e.key === 'Enter') {
-            sendSerialByte('\r');
-            e.preventDefault();
-          } else if (e.key === 'Backspace') {
-            sendSerialByte('\b');
-            e.preventDefault();
+        });
+      }
+
+      const vInput = document.getElementById('verify-cmd-input');
+      if (vInput) {
+        vInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            sendVerifyInputBox();
           }
         });
       }
