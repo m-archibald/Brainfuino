@@ -11,6 +11,7 @@ let reader: any = null;
 let writer: any = null;
 let readableStreamClosed: Promise<void> | null = null;
 let keepReading = false;
+let manualDisconnect = false;
 let callbacks: SerialCallbacks = {};
 
 export function setSerialCallbacks(cb: SerialCallbacks): void {
@@ -29,6 +30,21 @@ export function getWriter(): any {
   return writer;
 }
 
+export function setManualDisconnect(val: boolean): void {
+  manualDisconnect = val;
+}
+
+export function isAutoConnectEnabled(): boolean {
+  try {
+    const chk = document.getElementById('autoconnect-chk') as HTMLInputElement | null;
+    if (chk) return chk.checked;
+    const saved = localStorage.getItem('bf_auto_reconnect');
+    return saved === null || saved === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
 export async function openExistingPort(selectedPort: any): Promise<void> {
   if (!selectedPort) return;
   port = selectedPort;
@@ -38,7 +54,7 @@ export async function openExistingPort(selectedPort: any): Promise<void> {
     keepReading = true;
 
     try {
-      const autoconnectChk = document.getElementById('autoconnect-chk') as HTMLInputElement;
+      const autoconnectChk = document.getElementById('autoconnect-chk') as HTMLInputElement | null;
       if (autoconnectChk && autoconnectChk.checked) {
         localStorage.setItem('bf_auto_reconnect', '1');
       }
@@ -64,6 +80,7 @@ export async function connectPort(): Promise<void> {
     alert('Web Serial is not supported on this browser. Please use Chrome, Edge, or Brave with Web Serial enabled.');
     return;
   }
+  manualDisconnect = false;
 
   try {
     const selectedPort = await (navigator as any).serial.requestPort({});
@@ -76,14 +93,29 @@ export async function connectPort(): Promise<void> {
   }
 }
 
-export async function disconnectPort(): Promise<void> {
-  try {
-    const autoconnectChk = document.getElementById('autoconnect-chk') as HTMLInputElement;
-    if (!autoconnectChk || !autoconnectChk.checked) {
-      localStorage.removeItem('bf_auto_reconnect');
-    }
-  } catch (e) {}
+export async function handleDeviceUnplugged(): Promise<void> {
+  keepReading = false;
+  if (reader) {
+    try { await reader.cancel(); } catch (e) {}
+    reader = null;
+  }
+  if (readableStreamClosed) {
+    try { await readableStreamClosed.catch(() => {}); } catch (e) {}
+    readableStreamClosed = null;
+  }
+  if (writer) {
+    try { writer.releaseLock(); } catch (e) {}
+    writer = null;
+  }
+  if (port) {
+    try { await port.close(); } catch (e) {}
+    port = null;
+  }
+  if (callbacks.onConnectionChange) callbacks.onConnectionChange(false);
+}
 
+export async function disconnectPort(): Promise<void> {
+  manualDisconnect = true;
   keepReading = false;
 
   // 1. Cancel active reader to terminate read loop
@@ -156,27 +188,59 @@ export async function sendCmd(cmdStr: string): Promise<void> {
   await sendRaw(cmdStr);
 }
 
-export async function autoReconnectSerial(): Promise<void> {
+export async function attemptAutoConnect(specificPort: any = null): Promise<void> {
   if (!('serial' in navigator)) return;
+  if (specificPort) {
+    manualDisconnect = false;
+  }
+  if (!isAutoConnectEnabled() || port || manualDisconnect) return;
+
   try {
-    if (localStorage.getItem('bf_auto_reconnect') !== '1') return;
-    const ports = await (navigator as any).serial.getPorts();
-    if (ports && ports.length > 0) {
-      await openExistingPort(ports[0]);
+    let target = specificPort;
+    if (!target) {
+      const ports = await (navigator as any).serial.getPorts();
+      if (!ports || ports.length === 0) return;
+      target = ports.find((p: any) => {
+        const info = p.getInfo ? p.getInfo() : {};
+        return (info.usbVendorId === 0x0483 && info.usbProductId === 0x5740) ||
+               (info.usbVendorId === 1155 && info.usbProductId === 22336);
+      }) || ports[0];
+    }
+
+    if (target) {
+      postSystemMessage('Brainfuino detected. Auto-connecting...', 'info', 2500);
+      await openExistingPort(target);
     }
   } catch (err) {
-    console.warn('Auto-reconnect notice:', err);
+    console.warn('Auto-connect attempt notice:', err);
   }
 }
 
+export async function autoReconnectSerial(): Promise<void> {
+  await attemptAutoConnect();
+}
+
+export function initSerialHotplugListeners(): void {
+  if (!('serial' in navigator)) return;
+
+  (navigator as any).serial.addEventListener('connect', async (event: any) => {
+    manualDisconnect = false;
+    postSystemMessage('USB Serial device plugged in', 'info', 2500);
+    if (isAutoConnectEnabled() && !port) {
+      await attemptAutoConnect(event.target);
+    }
+  });
+
+  (navigator as any).serial.addEventListener('disconnect', async (event: any) => {
+    if (port && event.target === port) {
+      postSystemMessage('Brainfuino unplugged via USB', 'warn', 3500);
+      await handleDeviceUnplugged();
+    }
+  });
+}
+
 export function initGlobalDisconnectListener(): void {
-  if ('serial' in navigator) {
-    (navigator as any).serial.addEventListener('disconnect', (event: any) => {
-      if (port && event.target === port) {
-        disconnectPort();
-      }
-    });
-  }
+  initSerialHotplugListeners();
 }
 
 async function readSerialLoop(): Promise<void> {
@@ -196,7 +260,8 @@ async function readSerialLoop(): Promise<void> {
     }
   } catch (err: any) {
     if (keepReading) {
-      postSystemMessage(`Serial connection lost: ${err.message}`, 'error', 6000);
+      postSystemMessage(`Serial connection lost: ${err.message}`, 'error', 4000);
+      await handleDeviceUnplugged();
     }
   } finally {
     if (reader) {
@@ -207,4 +272,3 @@ async function readSerialLoop(): Promise<void> {
     try { await readableStreamClosed.catch(() => {}); } catch (e) {}
   }
 }
-

@@ -167,6 +167,21 @@
       box-shadow: 0 0 6px var(--accent-green);
     }
 
+    .status-pill.waiting {
+      background: rgba(245, 158, 11, 0.12);
+      color: #f59e0b;
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+    .status-pill.waiting .status-dot {
+      background: #f59e0b;
+      box-shadow: 0 0 6px #f59e0b;
+      animation: pulse-dot 1.2s infinite ease-in-out;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 0.4; transform: scale(0.85); }
+      50% { opacity: 1; transform: scale(1.15); }
+    }
+
     /* Sidebar Navigation Tabs */
     .sidebar-tabs {
       padding: 8px 10px;

@@ -53,13 +53,26 @@
       });
     }
 
+    let manualDisconnect = false;
+
+    function isAutoConnectEnabled() {
+      return !!(autoconnectChk && autoconnectChk.checked);
+    }
+
     if (autoconnectChk) {
       const savedAutoConnect = localStorage.getItem('bf_auto_reconnect');
-      autoconnectChk.checked = (savedAutoConnect === '1');
+      autoconnectChk.checked = (savedAutoConnect === null || savedAutoConnect === '1');
+      if (savedAutoConnect === null) {
+        try { localStorage.setItem('bf_auto_reconnect', '1'); } catch (e) {}
+      }
       autoconnectChk.addEventListener('change', () => {
         localStorage.setItem('bf_auto_reconnect', autoconnectChk.checked ? '1' : '0');
+        manualDisconnect = false;
         if (autoconnectChk.checked && !port) {
-          autoReconnectSerial();
+          updateConnectionUI(false);
+          attemptAutoConnect();
+        } else if (!autoconnectChk.checked && !port) {
+          updateConnectionUI(false);
         }
       });
     }
@@ -447,6 +460,7 @@
         alert('Web Serial is not supported on this browser. Please use Chrome, Edge, or Brave with Web Serial enabled.');
         return;
       }
+      manualDisconnect = false;
 
       try {
         // No filter specified so user sees all available COM ports
@@ -461,9 +475,7 @@
     }
 
     async function disconnectPort() {
-      if (!autoconnectChk || !autoconnectChk.checked) {
-        try { localStorage.removeItem('bf_auto_reconnect'); } catch (e) {}
-      }
+      manualDisconnect = true;
       keepReading = false;
 
       // 1. Cancel active reader to terminate read loop
@@ -508,22 +520,82 @@
       postSystemMessage('Disconnected from Brainfuino', 'info');
     }
 
-    async function autoReconnectSerial() {
+    async function handleDeviceUnplugged() {
+      keepReading = false;
+      if (reader) {
+        try { await reader.cancel(); } catch (e) {}
+        reader = null;
+      }
+      if (readableStreamClosed) {
+        try { await readableStreamClosed.catch(() => {}); } catch (e) {}
+        readableStreamClosed = null;
+      }
+      if (writer) {
+        try { writer.releaseLock(); } catch (e) {}
+        writer = null;
+      }
+      if (port) {
+        try { await port.close(); } catch (e) {}
+        port = null;
+      }
+      updateConnectionUI(false);
+    }
+
+    async function attemptAutoConnect(specificPort = null) {
       if (!('serial' in navigator)) return;
-      if (localStorage.getItem('bf_auto_reconnect') !== '1') return;
+      if (specificPort) {
+        manualDisconnect = false;
+      }
+      if (!isAutoConnectEnabled() || port || manualDisconnect) return;
+
       try {
-        const ports = await navigator.serial.getPorts();
-        if (ports && ports.length > 0) {
-          await openExistingPort(ports[0]);
+        let target = specificPort;
+        if (!target) {
+          const ports = await navigator.serial.getPorts();
+          if (!ports || ports.length === 0) {
+            updateConnectionUI(false);
+            return;
+          }
+          // Betaflight style: search for STM32 USB CDC device (VID 0x0483, PID 0x5740)
+          target = ports.find(p => {
+            const info = p.getInfo ? p.getInfo() : {};
+            return (info.usbVendorId === 0x0483 && info.usbProductId === 0x5740) ||
+                   (info.usbVendorId === 1155 && info.usbProductId === 22336);
+          }) || ports[0];
+        }
+
+        if (target) {
+          postSystemMessage('Brainfuino detected. Auto-connecting...', 'info', 2500);
+          await openExistingPort(target);
         }
       } catch (err) {
-        console.warn('Auto-reconnect error:', err);
+        console.warn('Auto-connect attempt notice:', err);
+        updateConnectionUI(false);
       }
+    }
+
+    function initSerialHotplugListeners() {
+      if (!('serial' in navigator)) return;
+
+      navigator.serial.addEventListener('connect', async (event) => {
+        manualDisconnect = false;
+        postSystemMessage('USB serial device plugged in', 'info', 2500);
+        if (isAutoConnectEnabled() && !port) {
+          await attemptAutoConnect(event.target);
+        }
+      });
+
+      navigator.serial.addEventListener('disconnect', async (event) => {
+        if (port && event.target === port) {
+          postSystemMessage('Brainfuino unplugged via USB', 'warn', 3500);
+          await handleDeviceUnplugged();
+        }
+      });
     }
 
     function updateConnectionUI(connected) {
       if (connected) {
-        statusPill.classList.add('connected');
+        statusPill.className = 'status-pill connected';
         statusText.textContent = 'Connected';
         connectBtn.classList.add('connected');
         connectBtnLabel.textContent = 'Disconnect';
@@ -534,10 +606,16 @@
           if (port && writer) queryClockSpeed();
         }, 400);
       } else {
-        statusPill.classList.remove('connected');
-        statusText.textContent = 'Disconnected';
         connectBtn.classList.remove('connected');
         connectBtnLabel.textContent = 'Connect Brainfuino';
+
+        if (isAutoConnectEnabled() && !manualDisconnect) {
+          statusPill.className = 'status-pill waiting';
+          statusText.textContent = 'Auto-Connect: Waiting...';
+        } else {
+          statusPill.className = 'status-pill';
+          statusText.textContent = 'Disconnected';
+        }
       }
       if (typeof updateFlasherDeviceStatus === 'function') {
         updateFlasherDeviceStatus();
@@ -1185,7 +1263,8 @@
         }
       } catch (err) {
         if (keepReading) {
-          postSystemMessage(`Serial connection lost: ${err.message}`, 'error', 6000);
+          postSystemMessage(`Serial connection lost: ${err.message}`, 'error', 4000);
+          await handleDeviceUnplugged();
         }
       } finally {
         if (reader) {
@@ -4059,18 +4138,13 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
       }
     });
 
-    // Global USB Serial disconnect listener (hardware cable pull / MCU reset)
-    if ('serial' in navigator) {
-      navigator.serial.addEventListener('disconnect', (event) => {
-        if (port && event.target === port) {
-          disconnectPort();
-        }
-      });
-    }
-
-    // Initialize routing from URL hash and auto-reconnect serial if previously active
+    // Initialize routing from URL hash, serial hotplug listeners, and auto-connect
     initRouteFromHash();
-    autoReconnectSerial();
+    initSerialHotplugListeners();
+    if (isAutoConnectEnabled()) {
+      updateConnectionUI(false);
+      attemptAutoConnect();
+    }
     setTimeout(() => postSystemMessage('Web Terminal ready', 'info', 3500), 200);
 
 function setMaxScrollbackLines(val: any) {
@@ -4096,6 +4170,9 @@ Object.assign(window, {
   deleteLibrarySlot,
   fetchDynamicMenu,
   toggleTheme,
+  attemptAutoConnect,
+  isAutoConnectEnabled,
+  handleDeviceUnplugged,
   saveLog,
   clearTerminal,
   toggleMessageHistory,
