@@ -4,11 +4,11 @@ The **Brainfuino Web Serial Terminal** allows you to connect directly to your Br
 
 <div class="grid cards" markdown="1">
 
--   [:octicons-link-external-16: **Open Dedicated Fullscreen Terminal**](web-terminal.html){ .md-button .md-button--primary target="_blank" }
+-   [:octicons-link-external-16: **Launch Web Terminal**](../web-terminal.html){ .md-button .md-button--primary target="_blank" }
 
     ---
 
-    Launches the full-screen terminal interface with sidebar controls, quick speed toggles, and log downloading.
+    Launches the full-screen terminal interface with sidebar controls, speed stepping, Brainfuck code writing, firmware flashing, and hardware configuration.
 
 -   [:octicons-terminal-16: **CLI Runner**](../user-guide/quick-start.md)
 
@@ -17,14 +17,6 @@ The **Brainfuino Web Serial Terminal** allows you to connect directly to your Br
     Prefer a command-line terminal? Use `python run_program.py` from your local terminal.
 
 </div>
-
----
-
-## Live Embedded Terminal
-
-You can interact with your board right here inside the documentation:
-
-<iframe src="../web-terminal.html" style="width: 100%; height: 750px; border: 1px solid var(--md-default-fg-color--lightest); border-radius: 12px; background: #ffffff;" allow="serial"></iframe>
 
 ---
 
@@ -43,10 +35,12 @@ You can interact with your board right here inside the documentation:
 ## Features & Shortcuts
 
 - **Universal Port Picker:** Click **Connect Brainfuino** to pick any available COM port.
-- **Direct Keystroke Streaming:** Click inside the terminal to stream keystrokes directly to the FPGA (supports arrow keys, Backspace, Enter, and hotkeys).
+- **Direct Keystroke Streaming:** Click inside the terminal to stream keystrokes directly to the FPGA (supports arrow keys, Backspace, Enter, PageUp/PageDown, and hotkeys).
+- **Drag & Drop / Write Code File:** Drop a `.b` / `.bf` file directly onto the terminal or click **Write Code File** to stream code to Brainfuino ROM and execute immediately.
 - **Line Mode:** Type commands into the bottom bar and press `Enter` to send with configurable line endings (`LF`, `CR`, `CRLF`).
 - **Hardware Quick Actions:**
     - `!RST`: Reset the FPGA soft-processor.
     - `!MENU`: Open the interactive VT100 configuration menu.
-    - `1`–`7`: Dynamically switch clock speeds on the fly (500 kHz to 12 MHz).
+    - `!DUMP`: Stream current program ROM to the console.
+    - `PageUp` / `PageDown` or `!clk+` / `!clk-`: Step clock speed up or down dynamically.
 - **Save Log:** Download the entire session output as a timestamped `.txt` file with one click.

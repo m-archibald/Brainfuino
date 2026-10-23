@@ -100,4 +100,8 @@ companion-STM32-firmware/Debug/build/
 # Bad Apple media intermediates
 scripts/bad_apple/frames/
 scripts/bad_apple/*.mp4
+
+
+# Developer / internal notes
+dev-docs/
 

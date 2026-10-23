@@ -6,7 +6,7 @@
   <title>Brainfuino Web Serial Terminal</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root {
       /* Default Light Mode Palette - Tailored to Material MkDocs Theme */
@@ -1334,6 +1334,13 @@
       box-shadow: inset 0 0 0 2px rgba(63, 81, 181, 0.35);
     }
 
+    .term-2d-line {
+      min-height: 1.15em;
+      white-space: pre;
+      font-family: inherit;
+      line-height: inherit;
+    }
+
     /* Terminal Timestamps (Toggleable across all lines) */
     .terminal-timestamp {
       display: inline;
@@ -1367,25 +1374,7 @@
     }
 
     .direct-mode-hint {
-      position: absolute;
-      bottom: 54px;
-      right: 18px;
-      background: rgba(15, 23, 42, 0.85);
-      color: #ffffff;
-      padding: 4px 10px;
-      border-radius: 5px;
-      font-size: 0.68rem;
-      font-family: Roboto, sans-serif;
-      pointer-events: none;
-      backdrop-filter: blur(4px);
-      opacity: 0;
-      transition: opacity 0.2s;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-      z-index: 10;
-    }
-
-    #terminal-screen.focused-direct + .direct-mode-hint {
-      opacity: 1;
+      display: none !important;
     }
 
     /* Bottom Input Bar */
@@ -1477,6 +1466,14 @@
     .ansi-bright-white   { color: #0f172a; }
     .ansi-bold { font-weight: 700; }
     .ansi-underline { text-decoration: underline; }
+    .ansi-inverse {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+    [data-theme="dark"] .ansi-inverse {
+      background: #334155;
+      color: #f8fafc;
+    }
 
     /* ANSI Overrides for Dark Mode */
     [data-theme="dark"] .ansi-black   { color: #64748b; }
@@ -1495,6 +1492,245 @@
     [data-theme="dark"] .ansi-bright-magenta { color: #e879f9; }
     [data-theme="dark"] .ansi-bright-cyan    { color: #22d3ee; }
     [data-theme="dark"] .ansi-bright-white   { color: #ffffff; }
+
+
+        /* --- QGC-Style Toast Notification & History Drawer --- */
+    #qgc-toast-container {
+      position: fixed;
+      bottom: 60px;
+      right: 20px;
+      z-index: 999999;
+      display: flex;
+      flex-direction: column-reverse;
+      gap: 8px;
+      pointer-events: none;
+      max-width: 440px;
+      width: calc(100vw - 44px);
+    }
+
+    @keyframes qgcToastFadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .qgc-toast {
+      pointer-events: auto;
+      cursor: pointer;
+      background: #0f172a;
+      color: #f8fafc;
+      border-radius: 4px;
+      padding: 9px 13px;
+      font-family: "Roboto Mono", SFMono-Regular, Consolas, monospace;
+      font-size: 0.75rem;
+      line-height: 1.45;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-left: 4px solid var(--toast-accent, #38bdf8);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      opacity: 1;
+      animation: qgcToastFadeIn 0.22s ease;
+      transition: opacity 0.28s ease, transform 0.28s ease;
+      user-select: none;
+    }
+
+    .qgc-toast.fade-out {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+
+    .qgc-toast-time {
+      color: #64748b;
+      font-size: 0.68rem;
+      letter-spacing: 0.02em;
+      flex-shrink: 0;
+    }
+
+    .qgc-toast-text {
+      flex: 1;
+      word-break: break-word;
+    }
+
+    .qgc-toast-hint {
+      color: #64748b;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      padding: 1px 4px;
+      border-radius: 3px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      flex-shrink: 0;
+      opacity: 0.7;
+    }
+
+    .qgc-toast:hover .qgc-toast-hint {
+      opacity: 1;
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .qgc-toast-info    { --toast-accent: #38bdf8; }
+    .qgc-toast-success { --toast-accent: #22c55e; }
+    .qgc-toast-warn    { --toast-accent: #f59e0b; }
+    .qgc-toast-error   { --toast-accent: #ef4444; }
+
+    [data-theme="light"] .qgc-toast {
+      background: #ffffff;
+      color: #0f172a;
+      border-color: rgba(0, 0, 0, 0.15);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+    }
+    [data-theme="light"] .qgc-toast-time {
+      color: #64748b;
+    }
+    [data-theme="light"] .qgc-toast-hint {
+      color: #64748b;
+      border-color: rgba(0, 0, 0, 0.18);
+    }
+
+    /* QGC Message History Popover / Drawer */
+    #qgc-history-panel {
+      position: fixed;
+      bottom: 60px;
+      right: 20px;
+      width: 480px;
+      max-width: calc(100vw - 44px);
+      height: 330px;
+      background: rgba(15, 23, 42, 0.98);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 6px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+      z-index: 1000000;
+      display: none;
+      flex-direction: column;
+      font-family: "Roboto Mono", SFMono-Regular, monospace;
+      font-size: 0.73rem;
+      backdrop-filter: blur(14px);
+    }
+
+    #qgc-history-panel.open {
+      display: flex;
+    }
+
+    .qgc-history-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.25);
+    }
+
+    .qgc-history-title {
+      font-weight: 700;
+      font-size: 0.72rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: #f8fafc;
+    }
+
+    .qgc-history-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .qgc-btn-xs {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: #94a3b8;
+      font-family: inherit;
+      font-size: 0.67rem;
+      padding: 2px 7px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .qgc-btn-xs:hover {
+      border-color: rgba(255, 255, 255, 0.35);
+      color: #f8fafc;
+    }
+
+    .qgc-history-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .qgc-history-empty {
+      color: #64748b;
+      padding: 24px 0;
+      text-align: center;
+      font-style: italic;
+    }
+
+    .qgc-history-row {
+      display: flex;
+      gap: 8px;
+      line-height: 1.45;
+      padding: 3px 6px;
+      border-radius: 3px;
+      border-left: 2.5px solid transparent;
+    }
+    .qgc-history-row:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .qgc-history-row.level-info    { border-left-color: #38bdf8; }
+    .qgc-history-row.level-success { border-left-color: #22c55e; }
+    .qgc-history-row.level-warn    { border-left-color: #f59e0b; }
+    .qgc-history-row.level-error   { border-left-color: #ef4444; }
+
+    .qgc-h-time {
+      color: #64748b;
+      font-size: 0.68rem;
+      flex-shrink: 0;
+    }
+
+    .qgc-h-level {
+      font-weight: 600;
+      font-size: 0.66rem;
+      flex-shrink: 0;
+      width: 44px;
+    }
+    .level-info .qgc-h-level    { color: #38bdf8; }
+    .level-success .qgc-h-level { color: #22c55e; }
+    .level-warn .qgc-h-level    { color: #f59e0b; }
+    .level-error .qgc-h-level   { color: #ef4444; }
+
+    .qgc-h-text {
+      flex: 1;
+      word-break: break-word;
+      color: #f8fafc;
+    }
+
+    [data-theme="light"] #qgc-history-panel {
+      background: rgba(255, 255, 255, 0.98);
+      border-color: rgba(0, 0, 0, 0.14);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+    }
+    [data-theme="light"] .qgc-history-header {
+      background: rgba(0, 0, 0, 0.03);
+      border-bottom-color: rgba(0, 0, 0, 0.08);
+    }
+    [data-theme="light"] .qgc-history-title {
+      color: #0f172a;
+    }
+    [data-theme="light"] .qgc-btn-xs {
+      border-color: rgba(0, 0, 0, 0.15);
+      color: #475569;
+    }
+    [data-theme="light"] .qgc-btn-xs:hover {
+      border-color: rgba(0, 0, 0, 0.35);
+      color: #0f172a;
+    }
+    [data-theme="light"] .qgc-history-row:hover {
+      background: rgba(0, 0, 0, 0.03);
+    }
+    [data-theme="light"] .qgc-h-text {
+      color: #0f172a;
+    }
 
     /* Minimal Scrollbars */
     ::-webkit-scrollbar {
@@ -2183,6 +2419,9 @@
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
               Clear
             </button>
+                        <button class="tool-btn" onclick="toggleMessageHistory()" id="btn-msg-history" title="View system message history">
+              <span id="msg-history-label">Messages (0)</span>
+            </button>
             <button class="tool-btn" onclick="toggleFullscreen()" title="Toggle fullscreen view">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
             </button>
@@ -2191,7 +2430,7 @@
 
         <!-- Output Screen -->
         <div id="terminal-screen" tabindex="0"></div>
-        <div class="direct-mode-hint">Direct Keystroke Mode Active (Type anywhere)</div>
+        
 
         <!-- Bottom Command Input Bar -->
         <div class="input-bar">
@@ -2773,11 +3012,29 @@
     </main>
   </div>
 
+  <!-- QGC-Style Toast Notification Container -->
+  <div id="qgc-toast-container"></div>
+
+  <!-- QGC-Style System Message History Drawer -->
+  <div id="qgc-history-panel" role="dialog" aria-label="System Message History">
+    <div class="qgc-history-header">
+      <span class="qgc-history-title">SYSTEM MESSAGES</span>
+      <div class="qgc-history-actions">
+        <button class="qgc-btn-xs" onclick="clearMessageHistory()">Clear</button>
+        <button class="qgc-btn-xs" onclick="toggleMessageHistory(false)" title="Close history panel">✕</button>
+      </div>
+    </div>
+    <div class="qgc-history-body" id="qgc-history-list">
+      <div class="qgc-history-empty" id="qgc-history-empty">No messages recorded in session</div>
+    </div>
+  </div>
+
   <script>
     // --- State Variables ---
     let port = null;
     let reader = null;
     let writer = null;
+    let readableStreamClosed = null;
     let keepReading = false;
     let rxBytes = 0;
     let txBytes = 0;
@@ -2987,7 +3244,7 @@
     window.addEventListener('hashchange', initRouteFromHash);
 
     // --- Input Mode Management ---
-    function setInputMode(mode) {
+    function setInputMode(mode, notify = false) {
       inputMode = mode;
       inputModeSelect.value = mode;
       if (mode === 'direct') {
@@ -3000,10 +3257,13 @@
         cmdInput.focus();
       }
       updateFocusIndicator();
+      if (notify) {
+        postSystemMessage(mode === "direct" ? "Input mode: Direct keystrokes" : "Input mode: Line buffered", "info", 2000);
+      }
     }
 
     function cycleInputMode() {
-      setInputMode(inputMode === 'direct' ? 'line' : 'direct');
+      setInputMode(inputMode === 'direct' ? 'line' : 'direct', true);
     }
 
     function updateFocusIndicator() {
@@ -3017,6 +3277,9 @@
       if (inputMode === 'direct') updateFocusIndicator();
     });
     terminalScreen.addEventListener('blur', updateFocusIndicator);
+    terminalScreen.addEventListener('click', () => {
+      if (inputMode === 'direct') terminalScreen.focus();
+    });
 
     // --- Direct Keystroke Forwarding ---
     terminalScreen.addEventListener('keydown', async (e) => {
@@ -3028,6 +3291,7 @@
       }
 
       e.preventDefault();
+      e.stopPropagation();
       let key = e.key;
       let toSend = '';
 
@@ -3040,6 +3304,17 @@
       else if (key === 'ArrowDown') toSend = '\x1b[B';
       else if (key === 'ArrowRight') toSend = '\x1b[C';
       else if (key === 'ArrowLeft') toSend = '\x1b[D';
+      else if (key === 'PageUp') {
+        if (e.repeat) return;
+        toSend = '\x1b[5~';
+      }
+      else if (key === 'PageDown') {
+        if (e.repeat) return;
+        toSend = '\x1b[6~';
+      }
+      else if (key === 'Home') toSend = '\x1b[H';
+      else if (key === 'End') toSend = '\x1b[F';
+      else if (key === 'Insert') toSend = '\x1b[2~';
       else if (key.length === 1) toSend = key;
 
       if (toSend) {
@@ -3101,18 +3376,12 @@
         writer = port.writable.getWriter();
         keepReading = true;
         if (autoconnectChk && autoconnectChk.checked) {
-          localStorage.setItem('bf_auto_reconnect', '1');
+          try { localStorage.setItem('bf_auto_reconnect', '1'); } catch (e) {}
         }
 
         updateConnectionUI(true);
+        postSystemMessage('Connected to Brainfuino (115200 baud)', 'success');
         readSerialLoop();
-
-        // Handle physical cable disconnects
-        navigator.serial.addEventListener('disconnect', (event) => {
-          if (event.target === port) {
-            disconnectPort();
-          }
-        });
 
         // If on settings tab, query dynamic menu
         if (currentTab === 'settings') {
@@ -3122,6 +3391,7 @@
         console.warn('Failed to open serial port:', err);
         port = null;
         updateConnectionUI(false);
+        postSystemMessage(`Failed to open serial port: ${err.message || err}`, 'error', 5000);
       }
     }
 
@@ -3145,20 +3415,50 @@
 
     async function disconnectPort() {
       if (!autoconnectChk || !autoconnectChk.checked) {
-        localStorage.removeItem('bf_auto_reconnect');
+        try { localStorage.removeItem('bf_auto_reconnect'); } catch (e) {}
       }
       keepReading = false;
+
+      // 1. Cancel active reader to terminate read loop
       if (reader) {
-        try { await reader.cancel(); } catch (e) {}
+        try {
+          await reader.cancel();
+        } catch (e) {
+          console.warn('reader.cancel notice:', e);
+        }
+        reader = null;
       }
+
+      // 2. Await piped stream closure so port.readable unlock completes
+      if (readableStreamClosed) {
+        try {
+          await readableStreamClosed.catch(() => {});
+        } catch (e) {}
+        readableStreamClosed = null;
+      }
+
+      // 3. Release writable stream lock
       if (writer) {
-        try { writer.releaseLock(); } catch (e) {}
+        try {
+          writer.releaseLock();
+        } catch (e) {
+          console.warn('writer releaseLock notice:', e);
+        }
+        writer = null;
       }
+
+      // 4. Safely close physical serial port
       if (port) {
-        try { await port.close(); } catch (e) {}
+        try {
+          await port.close();
+        } catch (e) {
+          console.warn('port.close notice:', e);
+        }
         port = null;
       }
+
       updateConnectionUI(false);
+      postSystemMessage('Disconnected from Brainfuino', 'info');
     }
 
     async function autoReconnectSerial() {
@@ -3213,6 +3513,7 @@
         const valEl = document.getElementById('clock-speed-val');
         if (valEl) {
           valEl.textContent = CLOCK_FREQUENCIES[currentClkIdx];
+        postSystemMessage(`FPGA Clock: ${CLOCK_FREQUENCIES[currentClkIdx]}`, 'info');
         }
         const dynClkSelect = document.getElementById('dyn-item-10');
         if (dynClkSelect && parseInt(dynClkSelect.value, 10) !== idx) {
@@ -3804,8 +4105,9 @@
 
     // --- Serial Read Loop & ANSI Rendering ---
     async function readSerialLoop() {
+      if (!port || !port.readable) return;
       const textDecoder = new TextDecoderStream();
-      const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+      readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
       reader = textDecoder.readable.getReader();
 
       try {
@@ -3832,10 +4134,15 @@
         }
       } catch (err) {
         if (keepReading) {
-          appendTerminalText(`\n[Serial Connection Lost: ${err.message}]\n`);
+          postSystemMessage(`Serial connection lost: ${err.message}`, 'error', 6000);
         }
       } finally {
-        reader.releaseLock();
+        if (reader) {
+          try { reader.releaseLock(); } catch (e) {}
+        }
+      }
+      if (readableStreamClosed) {
+        try { await readableStreamClosed.catch(() => {}); } catch (e) {}
       }
     }
 
@@ -3914,14 +4221,20 @@
       let classes = [];
       if (ansi.bold) classes.push('ansi-bold');
       if (ansi.underline) classes.push('ansi-underline');
-      if (ansi.fgColor) classes.push(`ansi-${ansi.fgColor}`);
+      if (ansi.inverse) classes.push('ansi-inverse');
+      if (ansi.fgColor) {
+        if (ansi.fgColor.startsWith('rgb(') || ansi.fgColor.startsWith('#')) {
+          span.style.color = ansi.fgColor;
+        } else {
+          classes.push(`ansi-${ansi.fgColor}`);
+        }
+      }
 
       if (classes.length > 0) span.className = classes.join(' ');
       span.textContent = text;
       return span;
     }
-
-    function appendTextToTerminal(screenEl, rawText, state, options = {}) {
+function appendTextToTerminal(screenEl, rawText, state, options = {}) {
       if (!screenEl || !rawText) return;
 
       const autoscroll = options.autoscroll !== undefined ? options.autoscroll : true;
@@ -3929,11 +4242,25 @@
       const chunkTimestamp = options.chunkTimestamp;
       const maxLines = options.maxScrollbackLines || 2000;
 
+      // Handle stream defragmentation: prepend leftover partial ANSI sequence from prior chunk
+      if (state.streamBuffer) {
+        rawText = state.streamBuffer + rawText;
+        state.streamBuffer = '';
+      }
+
+      // Buffer any incomplete trailing ANSI sequence (e.g. '\x1b', '\x1b[', '\x1b[1;2')
+      const partialAnsi = /\x1b(\[[0-9;]*)?$/.exec(rawText);
+      if (partialAnsi) {
+        state.streamBuffer = partialAnsi[0];
+        rawText = rawText.slice(0, -state.streamBuffer.length);
+      }
+      if (!rawText) return;
+
       // Regex matching ANSI escape sequences: \x1b[...m or \x1b[...H / J / K / etc.
       const ansiRegex = /\x1b\[([0-9;]*)([a-zA-Z])/g;
       let lastIndex = 0;
       let match;
-      const fragment = document.createDocumentFragment();
+      let fragment = document.createDocumentFragment();
 
       const appendPlainTextSegments = (text) => {
         if (!text) return;
@@ -3950,21 +4277,86 @@
         }
         if (!text) return;
 
+        // In 2D cursor-addressable mode (Bad Apple, Mandelbrot, Menu, etc.), overwrite lines in-place preserving styles
+        if (state.is2D) {
+          const parts = text.split('\n');
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i].replace(/\r/g, '');
+            if (part.length > 0) {
+              while (state.lineMap.length <= state.cursorRow) {
+                const lineDiv = document.createElement('div');
+                lineDiv.className = 'term-2d-line';
+                screenEl.appendChild(lineDiv);
+                state.lineMap.push({ el: lineDiv, cells: [] });
+              }
+              const lineObj = state.lineMap[state.cursorRow];
+              if (!lineObj.cells) lineObj.cells = [];
+              const col = state.cursorCol || 0;
+              while (lineObj.cells.length < col) {
+                lineObj.cells.push({ char: ' ', style: { bold: false, underline: false, inverse: false, fgColor: null } });
+              }
+              for (let ci = 0; ci < part.length; ci++) {
+                lineObj.cells[col + ci] = { char: part[ci], style: { ...state.ansiState } };
+              }
+              state.cursorCol = col + part.length;
+
+              // Render styled spans for this line
+              lineObj.el.innerHTML = '';
+              let curKey = null;
+              let curText = '';
+              let activeStyle = null;
+              for (let ci = 0; ci < lineObj.cells.length; ci++) {
+                const cell = lineObj.cells[ci] || { char: ' ', style: { bold: false, underline: false, inverse: false, fgColor: null } };
+                const s = cell.style;
+                const k = (s.bold ? 'B' : '') + (s.underline ? 'U' : '') + (s.inverse ? 'I' : '') + ':' + (s.fgColor || '');
+                if (k !== curKey) {
+                  if (curText.length > 0) {
+                    lineObj.el.appendChild(createStyledSpanWithState(curText, activeStyle));
+                    curText = '';
+                  }
+                  curKey = k;
+                  activeStyle = { ...s };
+                }
+                curText += cell.char;
+              }
+              if (curText.length > 0) {
+                lineObj.el.appendChild(createStyledSpanWithState(curText, activeStyle));
+              }
+            }
+            if (i < parts.length - 1) {
+              state.cursorRow++;
+              state.cursorCol = 0;
+            }
+          }
+          return;
+        }
+
         // Split text by newlines so we can place timestamp spans exactly at line starts
         const parts = text.split('\n');
         for (let i = 0; i < parts.length; i++) {
           const part = parts[i].replace(/\r/g, '');
-          if (enableTimestamps && state.atLineStart && (part.length > 0 || i < parts.length - 1)) {
-            fragment.appendChild(createTimestampSpan(chunkTimestamp));
-            state.atLineStart = false;
-          }
-
           if (part.length > 0) {
-            fragment.appendChild(createStyledSpanWithState(part, state.ansiState));
-            state.atLineStart = false;
+            if (state.isCapturingOverlay && state.overlaySpan) {
+              state.overlaySpan.appendChild(createStyledSpanWithState(part, state.ansiState));
+            } else {
+              if (state.overlaySpan && state.overlaySpan.parentNode) {
+                state.overlaySpan.parentNode.removeChild(state.overlaySpan);
+                state.overlaySpan = null;
+              }
+              if (enableTimestamps && state.atLineStart) {
+                fragment.appendChild(createTimestampSpan(chunkTimestamp));
+                state.atLineStart = false;
+              }
+              fragment.appendChild(createStyledSpanWithState(part, state.ansiState));
+              state.atLineStart = false;
+            }
           }
 
           if (i < parts.length - 1) {
+            if (state.overlaySpan && state.overlaySpan.parentNode) {
+              state.overlaySpan.parentNode.removeChild(state.overlaySpan);
+              state.overlaySpan = null;
+            }
             fragment.appendChild(document.createTextNode('\n'));
             state.atLineStart = true;
           }
@@ -3981,19 +4373,43 @@
         const command = match[2];
 
         if (command === 'm') {
-          for (let code of params) {
+          for (let pi = 0; pi < params.length; pi++) {
+            let code = params[pi];
             if (code === 0) {
               state.ansiState.bold = false;
               state.ansiState.underline = false;
+              state.ansiState.inverse = false;
               state.ansiState.fgColor = null;
             } else if (code === 1) {
               state.ansiState.bold = true;
             } else if (code === 4) {
               state.ansiState.underline = true;
+            } else if (code === 7) {
+              state.ansiState.inverse = true;
             } else if (code === 22) {
               state.ansiState.bold = false;
             } else if (code === 24) {
               state.ansiState.underline = false;
+            } else if (code === 27) {
+              state.ansiState.inverse = false;
+            } else if (code === 38) {
+              if (params[pi + 1] === 5 && pi + 2 < params.length) {
+                const colorIdx = params[pi + 2];
+                pi += 2;
+                if (colorIdx >= 16 && colorIdx <= 231) {
+                  const cube = [0, 95, 135, 175, 215, 255];
+                  const r = cube[Math.floor((colorIdx - 16) / 36)];
+                  const g = cube[Math.floor(((colorIdx - 16) % 36) / 6)];
+                  const b = cube[(colorIdx - 16) % 6];
+                  state.ansiState.fgColor = `rgb(${r},${g},${b})`;
+                } else if (colorIdx >= 232 && colorIdx <= 255) {
+                  const gray = 8 + (colorIdx - 232) * 10;
+                  state.ansiState.fgColor = `rgb(${gray},${gray},${gray})`;
+                } else if (colorIdx >= 0 && colorIdx < 16) {
+                  const colors = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white', 'bright-black', 'bright-red', 'bright-green', 'bright-yellow', 'bright-blue', 'bright-magenta', 'bright-cyan', 'bright-white'];
+                  state.ansiState.fgColor = colors[colorIdx];
+                }
+              }
             } else if (code >= 30 && code <= 37) {
               const colors = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
               state.ansiState.fgColor = colors[code - 30];
@@ -4004,10 +4420,103 @@
               state.ansiState.fgColor = brightColors[code - 90];
             }
           }
-        } else if (command === '2J') {
+        } else if (command === 'J') {
+          // Clear screen: \x1b[2J or \x1b[J
           screenEl.innerHTML = '';
+          fragment = document.createDocumentFragment();
           state.totalRenderedLines = 0;
           state.atLineStart = true;
+          state.cursorRow = 0;
+          state.cursorCol = 0;
+          state.lineMap = [];
+          state.is2D = false;
+        } else if (command === 'H' || command === 'f') {
+          // Cursor Home: \x1b[H or \x1b[row;colH
+          // Move cursor to home without erasing previous content! Overwrite in-place!
+          const r = (params && params[0] > 0) ? params[0] - 1 : 0;
+          const c = (params && params.length > 1 && params[1] > 0) ? params[1] - 1 : 0;
+          state.cursorRow = r;
+          state.cursorCol = c;
+          state.is2D = true;
+          state.lineMap = state.lineMap || [];
+        } else if (command === 's') {
+          // Save Cursor Position (ANSI SCP: \x1b[s)
+          if (state.is2D) {
+            state.savedRow = state.cursorRow;
+            state.savedCol = state.cursorCol;
+          } else {
+            if (fragment.hasChildNodes()) {
+              screenEl.appendChild(fragment);
+              fragment = document.createDocumentFragment();
+            }
+            if (state.overlaySpan && state.overlaySpan.parentNode) {
+              state.overlaySpan.innerHTML = '';
+            } else {
+              state.overlaySpan = document.createElement('span');
+              state.overlaySpan.className = 'ansi-overlay-badge';
+              screenEl.appendChild(state.overlaySpan);
+            }
+            state.isCapturingOverlay = true;
+          }
+        } else if (command === 'u') {
+          // Restore Cursor Position (ANSI RCP: \x1b[u)
+          if (state.is2D) {
+            state.cursorRow = (state.savedRow !== undefined) ? state.savedRow : 0;
+            state.cursorCol = (state.savedCol !== undefined) ? state.savedCol : 0;
+          } else {
+            state.isCapturingOverlay = false;
+          }
+        } else if (command === 'K') {
+          // Erase in Line (ANSI EL: \x1b[K)
+          if (state.is2D) {
+            if (state.lineMap && state.lineMap[state.cursorRow]) {
+              const lineObj = state.lineMap[state.cursorRow];
+              if (lineObj.cells) {
+                lineObj.cells.length = state.cursorCol;
+                lineObj.el.innerHTML = '';
+                let curKey = null, curText = '', activeStyle = null;
+                for (let ci = 0; ci < lineObj.cells.length; ci++) {
+                  const cell = lineObj.cells[ci] || { char: ' ', style: { bold: false, underline: false, inverse: false, fgColor: null } };
+                  const s = cell.style;
+                  const k = (s.bold ? 'B' : '') + (s.underline ? 'U' : '') + (s.inverse ? 'I' : '') + ':' + (s.fgColor || '');
+                  if (k !== curKey) {
+                    if (curText.length > 0) {
+                      lineObj.el.appendChild(createStyledSpanWithState(curText, activeStyle));
+                      curText = '';
+                    }
+                    curKey = k;
+                    activeStyle = { ...s };
+                  }
+                  curText += cell.char;
+                }
+                if (curText.length > 0) {
+                  lineObj.el.appendChild(createStyledSpanWithState(curText, activeStyle));
+                }
+              }
+            }
+          } else {
+            if (state.overlaySpan && state.overlaySpan.parentNode) {
+              state.overlaySpan.parentNode.removeChild(state.overlaySpan);
+              state.overlaySpan = null;
+            }
+            state.isCapturingOverlay = false;
+          }
+        } else if (command === 'A') {
+          const n = (params && params[0] > 0) ? params[0] : 1;
+          state.cursorRow = Math.max(0, state.cursorRow - n);
+          state.is2D = true;
+        } else if (command === 'B') {
+          const n = (params && params[0] > 0) ? params[0] : 1;
+          state.cursorRow += n;
+          state.is2D = true;
+        } else if (command === 'C') {
+          const n = (params && params[0] > 0) ? params[0] : 1;
+          state.cursorCol += n;
+          state.is2D = true;
+        } else if (command === 'D') {
+          const n = (params && params[0] > 0) ? params[0] : 1;
+          state.cursorCol = Math.max(0, state.cursorCol - n);
+          state.is2D = true;
         }
 
         lastIndex = ansiRegex.lastIndex;
@@ -4037,21 +4546,31 @@
         screenEl.removeChild(screenEl.firstChild);
       }
 
-      if (autoscroll) {
+      if (autoscroll && !state.is2D) {
         screenEl.scrollTop = screenEl.scrollHeight;
       }
     }
 
     const mainTerminalState = {
-      ansiState: { bold: false, underline: false, fgColor: null },
+      ansiState: { bold: false, underline: false, inverse: false, fgColor: null },
       atLineStart: true,
-      totalRenderedLines: 0
+      totalRenderedLines: 0,
+      streamBuffer: '',
+      is2D: false,
+      cursorRow: 0,
+      cursorCol: 0,
+      lineMap: []
     };
 
     const verifyTerminalState = {
-      ansiState: { bold: false, underline: false, fgColor: null },
+      ansiState: { bold: false, underline: false, inverse: false, fgColor: null },
       atLineStart: true,
-      totalRenderedLines: 0
+      totalRenderedLines: 0,
+      streamBuffer: '',
+      is2D: false,
+      cursorRow: 0,
+      cursorCol: 0,
+      lineMap: []
     };
 
     function appendTerminalText(rawText, chunkTimestamp) {
@@ -4113,11 +4632,20 @@
     }
 
     function clearTerminal() {
+      postSystemMessage('Terminal screen cleared', 'info', 2000);
       terminalScreen.innerHTML = '';
       pendingStreamChunks = [];
       mainTerminalState.totalRenderedLines = 0;
       mainTerminalState.atLineStart = true;
       mainTerminalState.ansiState = { bold: false, underline: false, fgColor: null };
+      mainTerminalState.is2D = false;
+      mainTerminalState.lineMap = [];
+      mainTerminalState.cursorRow = 0;
+      mainTerminalState.cursorCol = 0;
+      mainTerminalState.savedRow = 0;
+      mainTerminalState.savedCol = 0;
+      mainTerminalState.isCapturingOverlay = false;
+      mainTerminalState.overlaySpan = null;
       rxBytes = 0;
       txBytes = 0;
       updateStats();
@@ -4134,6 +4662,7 @@
     }
 
     function saveLog() {
+      postSystemMessage('Session log downloaded', 'info', 2500);
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const filename = `brainfuino-log-${timestamp}.txt`;
       const blob = new Blob([rawLogBuffer || terminalScreen.innerText], { type: 'text/plain;charset=utf-8' });
@@ -4689,11 +5218,7 @@
           await new Promise(r => setTimeout(r, 350));
 
           // Close active Web Serial connection so the USB COM interface is released
-          keepReading = false;
-          if (reader) { try { await reader.cancel(); } catch(e){} reader = null; }
-          if (writer) { try { await writer.close(); } catch(e){} writer = null; }
-          if (port) { try { await port.close(); } catch(e){} port = null; }
-          updateConnectionUI(false);
+          await disconnectPort();
           updateFlasherDeviceStatus();
 
           flasherLog('[SERIAL] Web Serial port closed. Brainfuino is now entering ST DFU Bootloader.');
@@ -6247,9 +6772,167 @@
       }
     });
 
+    // --- QGC-Style Notification & Message History System ---
+    const qgcMessageHistory = [];
+    const QGC_MAX_HISTORY = 150;
+    const QGC_MAX_VISIBLE_TOASTS = 3;
+
+    function postSystemMessage(text, level = 'info', durationMs = 4000) {
+      if (!text) return;
+      const now = new Date();
+      const timeStr = now.toTimeString().split(' ')[0]; // HH:MM:SS
+      const item = { time: timeStr, text, level, id: Date.now() + Math.random() };
+
+      qgcMessageHistory.push(item);
+      if (qgcMessageHistory.length > QGC_MAX_HISTORY) {
+        qgcMessageHistory.shift();
+      }
+      updateQgcHistoryUI();
+
+      // Display fading toast
+      showQgcToast(item, durationMs);
+    }
+
+    function showQgcToast(item, durationMs) {
+      const container = document.getElementById('qgc-toast-container');
+      if (!container) return;
+
+      while (container.children.length >= QGC_MAX_VISIBLE_TOASTS) {
+        container.removeChild(container.firstChild);
+      }
+
+      const toast = document.createElement('div');
+      toast.className = `qgc-toast qgc-toast-${item.level}`;
+      toast.setAttribute('role', 'alert');
+      toast.onclick = () => {
+        toggleMessageHistory(true);
+      };
+
+      const timeEl = document.createElement('span');
+      timeEl.className = 'qgc-toast-time';
+      timeEl.textContent = item.time;
+
+      const textEl = document.createElement('span');
+      textEl.className = 'qgc-toast-text';
+      textEl.textContent = item.text;
+
+      const hintEl = document.createElement('span');
+      hintEl.className = 'qgc-toast-hint';
+      hintEl.textContent = 'LOG';
+      hintEl.title = 'Click to open message log';
+
+      toast.appendChild(timeEl);
+      toast.appendChild(textEl);
+      toast.appendChild(hintEl);
+      container.appendChild(toast);
+
+      let timeoutId = null;
+      const startTimer = (dur) => {
+        timeoutId = setTimeout(() => {
+          toast.classList.add('fade-out');
+          setTimeout(() => {
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+          }, 300);
+        }, dur);
+      };
+
+      toast.addEventListener('mouseenter', () => {
+        if (timeoutId) clearTimeout(timeoutId);
+      });
+      toast.addEventListener('mouseleave', () => {
+        startTimer(2000);
+      });
+
+      startTimer(durationMs);
+    }
+
+    function updateQgcHistoryUI() {
+      const label = document.getElementById('msg-history-label');
+      if (label) {
+        label.textContent = `Messages (${qgcMessageHistory.length})`;
+      }
+
+      const list = document.getElementById('qgc-history-list');
+      const empty = document.getElementById('qgc-history-empty');
+      if (!list) return;
+
+      if (qgcMessageHistory.length === 0) {
+        if (empty) empty.style.display = 'block';
+        return;
+      }
+      if (empty) empty.style.display = 'none';
+
+      list.innerHTML = '';
+      for (let i = 0; i < qgcMessageHistory.length; i++) {
+        const item = qgcMessageHistory[i];
+        const row = document.createElement('div');
+        row.className = `qgc-history-row level-${item.level}`;
+
+        const tSpan = document.createElement('span');
+        tSpan.className = 'qgc-h-time';
+        tSpan.textContent = item.time;
+
+        const lSpan = document.createElement('span');
+        lSpan.className = 'qgc-h-level';
+        lSpan.textContent = `[${item.level.toUpperCase()}]`;
+
+        const mSpan = document.createElement('span');
+        mSpan.className = 'qgc-h-text';
+        mSpan.textContent = item.text;
+
+        row.appendChild(tSpan);
+        row.appendChild(lSpan);
+        row.appendChild(mSpan);
+        list.appendChild(row);
+      }
+      list.scrollTop = list.scrollHeight;
+    }
+
+    function toggleMessageHistory(forceOpen) {
+      const panel = document.getElementById('qgc-history-panel');
+      if (!panel) return;
+      if (forceOpen === true) {
+        panel.classList.add('open');
+      } else if (forceOpen === false) {
+        panel.classList.remove('open');
+      } else {
+        panel.classList.toggle('open');
+      }
+    }
+
+    function clearMessageHistory() {
+      qgcMessageHistory.length = 0;
+      updateQgcHistoryUI();
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        toggleMessageHistory(false);
+      }
+    });
+    document.addEventListener('mousedown', (e) => {
+      const panel = document.getElementById('qgc-history-panel');
+      const btn = document.getElementById('btn-msg-history');
+      if (panel && panel.classList.contains('open')) {
+        if (!panel.contains(e.target) && (!btn || !btn.contains(e.target)) && !e.target.closest('.qgc-toast')) {
+          panel.classList.remove('open');
+        }
+      }
+    });
+
+    // Global USB Serial disconnect listener (hardware cable pull / MCU reset)
+    if ('serial' in navigator) {
+      navigator.serial.addEventListener('disconnect', (event) => {
+        if (port && event.target === port) {
+          disconnectPort();
+        }
+      });
+    }
+
     // Initialize routing from URL hash and auto-reconnect serial if previously active
     initRouteFromHash();
     autoReconnectSerial();
+    setTimeout(() => postSystemMessage('Web Terminal ready', 'info', 3500), 200);
   </script>
 </body>
 </html>

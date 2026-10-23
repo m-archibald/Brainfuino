@@ -14,7 +14,7 @@ def find_brainfuino_port():
             return p.device
     return "COM32"
 
-def flash_and_play(bf_file, port=None, clock_idx=None):
+def flash_and_play(bf_file, port=None, clock_idx=None, watch_seconds=None):
     if not os.path.exists(bf_file):
         print(f"Error: File '{bf_file}' not found")
         return
@@ -90,9 +90,13 @@ def flash_and_play(bf_file, port=None, clock_idx=None):
     print(">>> BAD APPLE IS NOW PLAYING LIVE ON BRAINFUINO! <<<")
     print("=" * 65 + "\n")
 
-    # Read and display live frames from FPGA until interrupted
+    # Read and display live frames from FPGA until interrupted or timeout
     try:
+        t_start = time.time()
         while True:
+            if watch_seconds is not None and (time.time() - t_start) >= watch_seconds:
+                print(f"\n\n[Live display finished ({watch_seconds:.1f}s elapsed). Serial port closed.]")
+                break
             chunk = ser.read(ser.in_waiting or 1).decode('utf-8', errors='replace')
             if chunk:
                 sys.stdout.write(chunk)
@@ -108,6 +112,7 @@ if __name__ == "__main__":
     parser.add_argument("file", nargs="?", default="scripts/bad_apple/bad_apple_100pct_4fps.b", help="Path to Brainfuck .b file")
     parser.add_argument("--port", default=None, help="Serial COM port (default: auto-detect STM32 or COM32)")
     parser.add_argument("--clock-idx", type=int, default=None, help="FPGA Clock speed index (0..24), e.g. 8 for 5 kHz")
+    parser.add_argument("--watch-seconds", type=float, default=None, help="Seconds to watch live playback before closing port (default: stream indefinitely)")
 
     args = parser.parse_args()
-    flash_and_play(args.file, port=args.port, clock_idx=args.clock_idx)
+    flash_and_play(args.file, port=args.port, clock_idx=args.clock_idx, watch_seconds=args.watch_seconds)

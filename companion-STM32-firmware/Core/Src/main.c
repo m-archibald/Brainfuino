@@ -48,6 +48,7 @@
 #define MENU_PAGE_MAIN      0
 #define MENU_PAGE_SETTINGS  1
 #define MENU_PAGE_LIBRARY   2
+#define MENU_PAGE_CONFIRM_EXIT 3
 
 #define LIB_ADD_NAME            0
 #define LIB_ADD_PASTE_PROMPT    1
@@ -176,6 +177,7 @@ uint8_t  menu_page = MENU_PAGE_MAIN;
 int8_t   menu_cursor = 0;
 volatile uint8_t menu_needs_render = 0;
 volatile uint8_t menu_exit_requested = 0;
+volatile uint8_t menu_exit_save_choice = 0;
 volatile int8_t  menu_action_pending = -1;
 volatile int8_t  menu_action_dir = 1; // +1 = Right/Enter/Space, -1 = Left
 
@@ -274,7 +276,8 @@ const char *get_freq_name(uint8_t f);
 void speed_step_up(void);
 void speed_step_down(void);
 void menu_enter(void);
-void menu_exit(void);
+void menu_exit(uint8_t save);
+void menu_render_confirm_exit(void);
 void menu_render(void);
 void menu_execute_action(uint8_t item, int8_t dir);
 void led_update_pulse(uint32_t period_ms);
@@ -411,6 +414,80 @@ void set_freq(uint8_t idx){
 
 #define SPEED_BADGE_WIDTH 18
 static volatile uint8_t speed_overlay_remaining = 0;
+
+#define MCU_COLOR_COUNT 18
+
+typedef struct {
+	const char *name;
+	const char *ansi;
+} MCUColorDef;
+
+static const MCUColorDef mcu_colors[MCU_COLOR_COUNT] = {
+	{ "NONE",           "" },                 // 0: Terminal default
+	{ "RED",            "\x1b[31m" },         // 1: Red
+	{ "HI-RED",         "\x1b[91m" },         // 2: Bright Red
+	{ "ORANGE",         "\x1b[38;5;208m" },   // 3: Orange
+	{ "YELLOW",         "\x1b[33m" },         // 4: Yellow
+	{ "HI-YEL",         "\x1b[93m" },         // 5: Bright Yellow
+	{ "LIME",           "\x1b[38;5;118m" },   // 6: Lime Green
+	{ "GREEN",          "\x1b[32m" },         // 7: Green
+	{ "HI-GRN",         "\x1b[92m" },         // 8: Bright Green
+	{ "CYAN",           "\x1b[36m" },         // 9: Cyan
+	{ "HI-CYAN",        "\x1b[96m" },         // 10: Bright Cyan
+	{ "BLUE",           "\x1b[34m" },         // 11: Blue
+	{ "HI-BLUE",        "\x1b[94m" },         // 12: Bright Blue
+	{ "VIOLET",         "\x1b[38;5;129m" },   // 13: Violet
+	{ "MAGENTA",        "\x1b[35m" },         // 14: Magenta
+	{ "HI-MAG",         "\x1b[95m" },         // 15: Bright Magenta
+	{ "GRAY",           "\x1b[90m" },         // 16: Gray / Dim
+	{ "CUSTOM",         "" }                  // 17: Custom 6x6x6 RGB cube
+};
+
+uint8_t cfg_mcu_color_idx = 0;  // Default: NONE (0)
+uint8_t cfg_mcu_custom_r  = 5;  // 0 - 5
+uint8_t cfg_mcu_custom_g  = 2;  // 0 - 5
+uint8_t cfg_mcu_custom_b  = 0;  // 0 - 5
+
+const char *get_mcu_color_ansi(uint8_t idx, char *buf, size_t buflen){
+	if (idx == 0){
+		buf[0] = '\0';
+		return buf;
+	}
+	if (idx >= 1 && idx <= 16){
+		strncpy(buf, mcu_colors[idx].ansi, buflen - 1);
+		buf[buflen - 1] = '\0';
+		return buf;
+	}
+	// Custom RGB 6x6x6 cube (idx == 17)
+	uint8_t r = (cfg_mcu_custom_r <= 5) ? cfg_mcu_custom_r : 5;
+	uint8_t g = (cfg_mcu_custom_g <= 5) ? cfg_mcu_custom_g : 0;
+	uint8_t b = (cfg_mcu_custom_b <= 5) ? cfg_mcu_custom_b : 0;
+	uint8_t cube_idx = 16 + (36 * r) + (6 * g) + b;
+	snprintf(buf, buflen, "\x1b[38;5;%um", (unsigned int)cube_idx);
+	return buf;
+}
+
+void CDC_Print_MCU(const char *str){
+	char color_buf[20];
+	get_mcu_color_ansi(cfg_mcu_color_idx, color_buf, sizeof(color_buf));
+	if (color_buf[0] != '\0'){
+		CDC_Print(color_buf);
+		CDC_Print(str);
+		CDC_Print("\x1b[0m");
+	} else {
+		CDC_Print(str);
+	}
+}
+
+void CDC_Printf_MCU(const char *format, ...){
+	char msg[256];
+	va_list args;
+	va_start(args, format);
+	vsnprintf(msg, sizeof(msg), format, args);
+	va_end(args);
+	CDC_Print_MCU(msg);
+}
+
 void print_speed_badge(void);
 
 const char *get_freq_name(uint8_t idx){
@@ -481,9 +558,12 @@ void CDC_Printf(const char *format, ...){
 void print_speed_badge(void){
 	char inner[24];
 	char badge[32];
+	char color_ansi[20];
+	get_mcu_color_ansi(cfg_mcu_color_idx, color_ansi, sizeof(color_ansi));
+	const char *col = (color_ansi[0] != '\0') ? color_ansi : "\x1b[2m";
 	snprintf(inner, sizeof(inner), "[Clock: %s]", get_freq_name(freq));
 	snprintf(badge, sizeof(badge), "%-18s", inner);
-	CDC_Printf("\x1b[s\x1b[2m%s\x1b[0m\x1b[u", badge);
+	CDC_Printf("\x1b[s%s%s\x1b[0m\x1b[u", col, badge);
 	speed_overlay_remaining = SPEED_BADGE_WIDTH;
 }
 
@@ -838,7 +918,7 @@ void lib_delete_program(uint8_t slot){
 void lib_load_and_run(uint8_t slot){
 	if (slot == 0){
 		flashDefaultLogoProgram();
-		menu_exit();
+		menu_exit(settings_dirty);
 		return;
 	}
 	if (slot >= MAX_LIB_SLOTS || lib_toc[slot].status != 0x01) return;
@@ -847,7 +927,7 @@ void lib_load_and_run(uint8_t slot){
 	const uint8_t *src = (const uint8_t *)(LIBRARY_POOL_ADDR + lib_toc[slot].flash_offset);
 
 	flashBufferToROM(src, size, (const char *)lib_toc[slot].name, cfg_append_endless_loop, cfg_auto_reset_after_pgm);
-	menu_exit();
+	menu_exit(settings_dirty);
 }
 
 void lib_dump_program(uint8_t slot){
@@ -882,7 +962,7 @@ void lib_start_add_program(void){
 	memset(lib_name_buf, 0, sizeof(lib_name_buf));
 	lib_add_substate = LIB_ADD_NAME;
 	state = STATE_LIB_ADD;
-	CDC_Print("\x1b[2J\x1b[H\r\n");
+	CDC_Print("\x1b[2J\r\n");
 	CDC_Print("+-------------------------------------------------+\r\n");
 	CDC_Print("|            ADD PROGRAM TO LIBRARY               |\r\n");
 	CDC_Print("+-------------------------------------------------+\r\n");
@@ -893,7 +973,8 @@ static uint8_t get_menu_item_count(void){
 	if (menu_page == MENU_PAGE_MAIN){
 		return 6;
 	} else if (menu_page == MENU_PAGE_SETTINGS){
-		return cfg_manual_step_enabled ? 13 : 11;
+		uint8_t custom_extra = (cfg_mcu_color_idx == 17) ? 3 : 0;
+		return 11 + custom_extra + (cfg_manual_step_enabled ? 2 : 0);
 	} else if (menu_page == MENU_PAGE_LIBRARY){
 		lib_refresh_display_list();
 		return lib_display_count + 2;
@@ -923,150 +1004,186 @@ static const char *get_step_key_name(uint8_t k){
 }
 
 void menu_render_main(void){
-	CDC_Print("+-------------------------------------------------+\r\n");
-	CDC_Print("|          BRAINFUINO CONFIGURATION MENU          |\r\n");
-	CDC_Print("+-------------------------------------------------+\r\n");
-	CDC_Print("|  Use [Up/Down] & [Enter], or type [1-5, 0]      |\r\n");
-	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
+	CDC_Print("|          BRAINFUINO CONFIGURATION MENU           |\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
+	CDC_Print("|    Use [Up/Down] & [Enter], or type [1-5, 0]     |\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
 
 	const char *labels[6] = {
-		"1. Program Library       -->",
-		"2. Hardware Settings     -->",
-		"3. Reboot to USB DFU        ",
-		"4. Restore Factory Demo     ",
-		"5. Save & Exit              ",
-		"0. Exit without Saving      "
+		"1. Program Library       --> ",
+		"2. Hardware Settings     --> ",
+		"3. Reboot to USB DFU         ",
+		"4. Restore Factory Demo      ",
+		"5. Save & Exit               ",
+		"0. Exit without Saving       "
 	};
 	const char *vals[6] = {
-		"[  OPEN  ]",
-		"[  OPEN  ]",
-		"[ REBOOT ]",
-		"[ RESTORE]",
-		"[  EXIT  ]",
-		"[ CANCEL ]"
+		"[   OPEN   ]",
+		"[   OPEN   ]",
+		"[  REBOOT  ]",
+		"[ RESTORE  ]",
+		"[   EXIT   ]",
+		"[  CANCEL  ]"
 	};
 
 	if (menu_cursor >= 6) menu_cursor = 5;
 
+	char color_buf[24];
+	get_mcu_color_ansi(cfg_mcu_color_idx, color_buf, sizeof(color_buf));
+
 	for (int i = 0; i < 6; i++){
 		if (i == menu_cursor){
-			CDC_Printf("| \x1b[7m> %-28s %-10s <\x1b[0m |\r\n", labels[i], vals[i]);
+			if (color_buf[0] != '\0'){
+				CDC_Printf("| \x1b[1m> %s : %s <\x1b[22m%s |\r\n", labels[i], vals[i], color_buf);
+			} else {
+				CDC_Printf("| \x1b[1m> %s : %s <\x1b[22m |\r\n", labels[i], vals[i]);
+			}
 		} else {
-			CDC_Printf("|   %-28s %-10s   |\r\n", labels[i], vals[i]);
+			CDC_Printf("|   %s : %s   |\r\n", labels[i], vals[i]);
 		}
 	}
 
-	CDC_Print("+-------------------------------------------------+\r\n");
-	CDC_Print("|  Hardware: STM32F072 | Parallel ROM: 256 kB     |\r\n");
-	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
+	CDC_Print("|    Hardware: STM32F072 | Parallel ROM: 256 kB    |\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
 	CDC_Print("Select option or use arrows + Enter: ");
 }
 
 void menu_render_settings(void){
-	CDC_Print("+-------------------------------------------------+\r\n");
-	CDC_Print("|          BRAINFUINO HARDWARE SETTINGS           |\r\n");
-	CDC_Print("+-------------------------------------------------+\r\n");
-	CDC_Print("|  Use [Up/Down], [Left/Right], or [Enter]        |\r\n");
-	CDC_Print("+-------------------------------------------------+\r\n");
+	char color_buf[24];
+	get_mcu_color_ansi(cfg_mcu_color_idx, color_buf, sizeof(color_buf));
+	CDC_Print("+--------------------------------------------------+\r\n");
+	CDC_Print("|           BRAINFUINO HARDWARE SETTINGS           |\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
+	CDC_Print("|     Use [Up/Down], [Left/Right], or [Enter]      |\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
 
-	uint8_t count = cfg_manual_step_enabled ? 13 : 11;
+	uint8_t is_custom = (cfg_mcu_color_idx == 17);
+	uint8_t custom_extra = is_custom ? 3 : 0;
+	uint8_t count = 11 + custom_extra + (cfg_manual_step_enabled ? 2 : 0);
 	if (menu_cursor >= count) menu_cursor = count - 1;
 
 	for (int i = 0; i < count; i++){
-		char val_str[16];
+		char val_str[64];
 		const char *label = "";
-		switch(i){
-			case 0:
-				label = "1. Auto-Program on Paste  ";
-				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_prog_run_mode ? "ENABLED" : "DISABLED");
-				break;
-			case 1:
-				label = "2. Paste Upload Threshold ";
-				snprintf(val_str, sizeof(val_str), "[   %2lu B   ]", (unsigned long)cfg_auto_prog_min_bytes);
-				break;
-			case 2:
-				label = "3. Auto-Reset after Flash ";
-				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_reset_after_pgm ? "ENABLED" : "DISABLED");
-				break;
-			case 3:
-				label = "4. Append Endless Loop    ";
-				snprintf(val_str, sizeof(val_str), "[  %-6s  ]", cfg_append_endless_loop ? "[-]+[]" : "NONE");
-				break;
-			case 4:
-				label = "5. FPGA Clock Frequency   ";
-				snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_freq_name(freq));
-				break;
-			case 5:
-				label = "6. Prune non-BF on Paste  ";
-				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_prune_on_paste ? "ENABLED" : "DISABLED");
-				break;
-			case 6:
-				label = "7. Prune non-BF in Library";
-				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_prune_in_library ? "ENABLED" : "DISABLED");
-				break;
-			case 7:
-				label = "8. Serial Input CR -> LF  ";
-				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_cr_to_lf ? "ENABLED" : "DISABLED");
-				break;
-			case 8:
-				label = "9. Run Mode Speed Hotkeys ";
-				{
-					const char *hname = "NONE";
-					if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PGUP_PGDN) hname = "PgUp/Dn";
-					else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_UP_DOWN) hname = "Up/Down";
-					else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PLUS_MINUS) hname = "+ / -";
-					snprintf(val_str, sizeof(val_str), "[ %-8s ]", hname);
-				}
-				break;
-			case 9:
-				label = "A. Manual Stepping Mode   ";
+
+		if (i <= 8){
+			switch(i){
+				case 0:
+					label = "1. Auto-Program on Paste     ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_prog_run_mode ? "ENABLED" : "DISABLED");
+					break;
+				case 1:
+					label = "2. Paste Upload Threshold    ";
+					snprintf(val_str, sizeof(val_str), "[   %2lu B   ]", (unsigned long)cfg_auto_prog_min_bytes);
+					break;
+				case 2:
+					label = "3. Auto-Reset after Flash    ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_reset_after_pgm ? "ENABLED" : "DISABLED");
+					break;
+				case 3:
+					label = "4. Append Endless Loop       ";
+					snprintf(val_str, sizeof(val_str), "[  %-6s  ]", cfg_append_endless_loop ? "[-]+[]" : "NONE");
+					break;
+				case 4:
+					label = "5. FPGA Clock Frequency      ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_freq_name(freq));
+					break;
+				case 5:
+					label = "6. Prune non-BF on Paste     ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_prune_on_paste ? "ENABLED" : "DISABLED");
+					break;
+				case 6:
+					label = "7. Prune non-BF in Library   ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_prune_in_library ? "ENABLED" : "DISABLED");
+					break;
+				case 7:
+					label = "8. Serial Input CR -> LF     ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_cr_to_lf ? "ENABLED" : "DISABLED");
+					break;
+				case 8:
+					label = "9. Run Mode Speed Hotkeys    ";
+					{
+						const char *hname = "NONE";
+						if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PGUP_PGDN) hname = "PgUp/Dn";
+						else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_UP_DOWN) hname = "Up/Down";
+						else if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PLUS_MINUS) hname = "+ / -";
+						snprintf(val_str, sizeof(val_str), "[ %-8s ]", hname);
+					}
+					break;
+			}
+		}
+		else if (i == 9){
+			label = "C. Companion MCU Output Color";
+			snprintf(val_str, sizeof(val_str), "[ %-8.8s ]", mcu_colors[cfg_mcu_color_idx].name);
+		}
+		else if (is_custom && i >= 10 && i <= 12){
+			if (i == 10){
+				label = "   |-- Red   (R: 0-5)        ";
+				snprintf(val_str, sizeof(val_str), "[   %d / 5  ]", (int)cfg_mcu_custom_r);
+			} else if (i == 11){
+				label = "   |-- Green (G: 0-5)        ";
+				snprintf(val_str, sizeof(val_str), "[   %d / 5  ]", (int)cfg_mcu_custom_g);
+			} else if (i == 12){
+				label = "   +-- Blue  (B: 0-5)        ";
+				snprintf(val_str, sizeof(val_str), "[   %d / 5  ]", (int)cfg_mcu_custom_b);
+			}
+		}
+		else {
+			int rem_idx = i - (9 + custom_extra);
+			if (rem_idx == 1){
+				label = "A. Manual Stepping Mode      ";
 				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_manual_step_enabled ? "ENABLED" : "DISABLED");
-				break;
-			case 10:
+			} else if (rem_idx == 2){
 				if (cfg_manual_step_enabled){
-					label = "T. Step Advance Ticks     ";
+					label = "T. Step Advance Ticks        ";
 					snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_step_ticks_name(cfg_manual_step_ticks));
 				} else {
-					label = "0. Back to Main Menu      ";
+					label = "0. Back to Main Menu         ";
 					snprintf(val_str, sizeof(val_str), "[   BACK   ]");
 				}
-				break;
-			case 11:
-				label = "C. Step Trigger Key       ";
+			} else if (rem_idx == 3){
+				label = "K. Step Trigger Key          ";
 				snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_step_key_name(cfg_manual_step_key));
-				break;
-			case 12:
-				label = "0. Back to Main Menu      ";
+			} else if (rem_idx == 4){
+				label = "0. Back to Main Menu         ";
 				snprintf(val_str, sizeof(val_str), "[   BACK   ]");
-				break;
+			}
 		}
 
 		if (i == menu_cursor){
-			CDC_Printf("| \x1b[7m> %s : %-12s <\x1b[0m |\r\n", label, val_str);
+			if (color_buf[0] != '\0'){
+				CDC_Printf("| \x1b[1m> %s : %s <\x1b[22m%s |\r\n", label, val_str, color_buf);
+			} else {
+				CDC_Printf("| \x1b[1m> %s : %s <\x1b[22m |\r\n", label, val_str);
+			}
 		} else {
-			CDC_Printf("|   %s : %-12s   |\r\n", label, val_str);
+			CDC_Printf("|   %s : %s   |\r\n", label, val_str);
 		}
 	}
 
-	CDC_Print("+-------------------------------------------------+\r\n");
-	CDC_Print("|  Hardware: STM32F072 | Parallel ROM: 256 kB     |\r\n");
-	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
+	CDC_Print("|    Hardware: STM32F072 | Parallel ROM: 256 kB    |\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
 	CDC_Print("Select option or use arrows + Enter: ");
 }
 
 void menu_render_library(void){
+	char color_buf[24];
+	get_mcu_color_ansi(cfg_mcu_color_idx, color_buf, sizeof(color_buf));
 	lib_refresh_display_list();
 	uint8_t count = lib_display_count + 2;
 	if (menu_cursor >= count) menu_cursor = count - 1;
 
-	CDC_Print("+-------------------------------------------------+\r\n");
-	CDC_Print("|            BRAINFUINO PROGRAM LIBRARY           |\r\n");
-	CDC_Print("+-------------------------------------------------+\r\n");
-	CDC_Print("| [Enter/E] Run [A] Add [D/Del] Del [B/0] Back    |\r\n");
-	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
+	CDC_Print("|            BRAINFUINO PROGRAM LIBRARY            |\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
+	CDC_Print("|   [Enter/E] Run [A] Add [D/Del] Del [B/0] Back   |\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
 
 	for (int i = 0; i < count; i++){
-		char line_buf[80];
+		char line_buf[100];
 		if (i < lib_display_count){
 			uint8_t slot = lib_display_slots[i];
 			const char *pname = (slot == 0) ? "Brainfuino Demo" : (const char *)lib_toc[slot].name;
@@ -1079,46 +1196,84 @@ void menu_render_library(void){
 			}
 
 			if (i == menu_cursor){
-				snprintf(line_buf, sizeof(line_buf), "| \x1b[7m> %02d. %-28s  [%7s] <\x1b[0m |", i, pname, size_str);
+				if (color_buf[0] != '\0'){
+					snprintf(line_buf, sizeof(line_buf), "| \x1b[1m> %02d. %-26.26s  [ %8.8s ] <\x1b[22m%s |", i, pname, size_str, color_buf);
+				} else {
+					snprintf(line_buf, sizeof(line_buf), "| \x1b[1m> %02d. %-26.26s  [ %8.8s ] <\x1b[22m |", i, pname, size_str);
+				}
 			} else {
-				snprintf(line_buf, sizeof(line_buf), "|   %02d. %-28s  [%7s]   |", i, pname, size_str);
+				snprintf(line_buf, sizeof(line_buf), "|   %02d. %-26.26s  [ %8.8s ]   |", i, pname, size_str);
 			}
 		}
 		else if (i == lib_display_count){
 			if (i == menu_cursor){
-				snprintf(line_buf, sizeof(line_buf), "| \x1b[7m> [ + Add New Program ]                       <\x1b[0m |");
+				if (color_buf[0] != '\0'){
+					snprintf(line_buf, sizeof(line_buf), "| \x1b[1m> [ + Add New Program ]                        <\x1b[22m%s |", color_buf);
+				} else {
+					snprintf(line_buf, sizeof(line_buf), "| \x1b[1m> [ + Add New Program ]                        <\x1b[22m |");
+				}
 			} else {
-				snprintf(line_buf, sizeof(line_buf), "|   [ + Add New Program ]                         |");
+				snprintf(line_buf, sizeof(line_buf), "|   [ + Add New Program ]                          |");
 			}
 		}
 		else {
 			if (i == menu_cursor){
-				snprintf(line_buf, sizeof(line_buf), "| \x1b[7m> 0. Back to Main Menu           [   BACK   ] <\x1b[0m |");
+				if (color_buf[0] != '\0'){
+					snprintf(line_buf, sizeof(line_buf), "| \x1b[1m> 0. Back to Main Menu            [   BACK   ] <\x1b[22m%s |", color_buf);
+				} else {
+					snprintf(line_buf, sizeof(line_buf), "| \x1b[1m> 0. Back to Main Menu            [   BACK   ] <\x1b[22m |");
+				}
 			} else {
-				snprintf(line_buf, sizeof(line_buf), "|   0. Back to Main Menu             [   BACK   ] |");
+				snprintf(line_buf, sizeof(line_buf), "|   0. Back to Main Menu            [   BACK   ]   |");
 			}
 		}
 		CDC_Printf("%s\r\n", line_buf);
 	}
 
-	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
 	uint32_t used_bytes = lib_get_total_used_bytes();
 	uint32_t used_kb = used_bytes / 1024;
 	uint32_t used_frac = (used_bytes % 1024) * 10 / 1024;
-	CDC_Printf("|  Library: %2d / 63 Programs | Used: %2lu.%1lu / 76 kB |\r\n",
+	CDC_Printf("|   Library: %2d / 63 Progs | Used: %2lu.%1lu / 76 kB    |\r\n",
 	           lib_display_count - 1, (unsigned long)used_kb, (unsigned long)used_frac);
-	CDC_Print("+-------------------------------------------------+\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
 	CDC_Print("Select program [Enter/E=Run, D/Del=Delete, B=Back, A=Add]: ");
 }
 
+void menu_render_confirm_exit(void){
+	CDC_Print("+--------------------------------------------------+\r\n");
+	CDC_Print("|              UNSAVED CONFIGURATION               |\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
+	CDC_Print("|  You have unsaved changes in settings.           |\r\n");
+	CDC_Print("|                                                  |\r\n");
+	CDC_Print("|  [Y]   Save changes and Exit                     |\r\n");
+	CDC_Print("|  [N]   Discard changes and Exit                  |\r\n");
+	CDC_Print("|  [ESC] Cancel (Stay in Menu)                     |\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
+	CDC_Print("Save settings before exit? [y/n/ESC]: ");
+}
+
 void menu_render(void){
-	CDC_Print("\x1b[2J\x1b[H\r\n");
+	char color_buf[24];
+	get_mcu_color_ansi(cfg_mcu_color_idx, color_buf, sizeof(color_buf));
+
+	CDC_Print("\x1b[2J\r\n");
+	if (color_buf[0] != '\0'){
+		CDC_Print(color_buf);
+	}
+
 	if (menu_page == MENU_PAGE_MAIN){
 		menu_render_main();
 	} else if (menu_page == MENU_PAGE_SETTINGS){
 		menu_render_settings();
 	} else if (menu_page == MENU_PAGE_LIBRARY){
 		menu_render_library();
+	} else if (menu_page == MENU_PAGE_CONFIRM_EXIT){
+		menu_render_confirm_exit();
+	}
+
+	if (color_buf[0] != '\0'){
+		CDC_Print("\x1b[0m");
 	}
 }
 
@@ -1143,70 +1298,95 @@ void menu_execute_action(uint8_t item, int8_t dir){
 				flashDefaultLogoProgram();
 				break;
 			case 4:
-				settings_save();
-				menu_exit();
+				menu_exit(1);
 				break;
 			case 5:
-				settings_load();
-				menu_exit();
+				menu_exit(0);
 				break;
 			default:
 				break;
 		}
 	}
 	else if (menu_page == MENU_PAGE_SETTINGS){
-		switch(item){
-			case 0:
-				cfg_auto_prog_run_mode = !cfg_auto_prog_run_mode;
-				break;
-			case 1:
-				if (dir > 0){
-					if (cfg_auto_prog_min_bytes == 4) cfg_auto_prog_min_bytes = 8;
-					else if (cfg_auto_prog_min_bytes == 8) cfg_auto_prog_min_bytes = 16;
-					else if (cfg_auto_prog_min_bytes == 16) cfg_auto_prog_min_bytes = 32;
-					else if (cfg_auto_prog_min_bytes == 32) cfg_auto_prog_min_bytes = 64;
-					else cfg_auto_prog_min_bytes = 4;
-				} else {
-					if (cfg_auto_prog_min_bytes == 64) cfg_auto_prog_min_bytes = 32;
-					else if (cfg_auto_prog_min_bytes == 32) cfg_auto_prog_min_bytes = 16;
-					else if (cfg_auto_prog_min_bytes == 16) cfg_auto_prog_min_bytes = 8;
-					else if (cfg_auto_prog_min_bytes == 8) cfg_auto_prog_min_bytes = 4;
-					else cfg_auto_prog_min_bytes = 64;
-				}
-				break;
-			case 2:
-				cfg_auto_reset_after_pgm = !cfg_auto_reset_after_pgm;
-				break;
-			case 3:
-				cfg_append_endless_loop = !cfg_append_endless_loop;
-				break;
-			case 4:
-				if (dir > 0){
-					set_freq((freq + 1) % FREQ_COUNT);
-				} else {
-					set_freq((freq + FREQ_COUNT - 1) % FREQ_COUNT);
-				}
-				break;
-			case 5:
-				cfg_prune_on_paste = !cfg_prune_on_paste;
-				break;
-			case 6:
-				cfg_prune_in_library = !cfg_prune_in_library;
-				break;
-			case 7:
-				cfg_cr_to_lf = !cfg_cr_to_lf;
-				break;
-			case 8:
-				if (dir > 0){
-					cfg_speed_hotkey_mode = (cfg_speed_hotkey_mode + 1) % 4;
-				} else {
-					cfg_speed_hotkey_mode = (cfg_speed_hotkey_mode + 3) % 4;
-				}
-				break;
-			case 9:
+		settings_dirty = 1;
+		uint8_t is_custom = (cfg_mcu_color_idx == 17);
+		uint8_t custom_extra = is_custom ? 3 : 0;
+
+		if (item <= 8){
+			switch(item){
+				case 0:
+					cfg_auto_prog_run_mode = !cfg_auto_prog_run_mode;
+					break;
+				case 1:
+					if (dir > 0){
+						if (cfg_auto_prog_min_bytes == 4) cfg_auto_prog_min_bytes = 8;
+						else if (cfg_auto_prog_min_bytes == 8) cfg_auto_prog_min_bytes = 16;
+						else if (cfg_auto_prog_min_bytes == 16) cfg_auto_prog_min_bytes = 32;
+						else if (cfg_auto_prog_min_bytes == 32) cfg_auto_prog_min_bytes = 64;
+						else cfg_auto_prog_min_bytes = 4;
+					} else {
+						if (cfg_auto_prog_min_bytes == 64) cfg_auto_prog_min_bytes = 32;
+						else if (cfg_auto_prog_min_bytes == 32) cfg_auto_prog_min_bytes = 16;
+						else if (cfg_auto_prog_min_bytes == 16) cfg_auto_prog_min_bytes = 8;
+						else if (cfg_auto_prog_min_bytes == 8) cfg_auto_prog_min_bytes = 4;
+						else cfg_auto_prog_min_bytes = 64;
+					}
+					break;
+				case 2:
+					cfg_auto_reset_after_pgm = !cfg_auto_reset_after_pgm;
+					break;
+				case 3:
+					cfg_append_endless_loop = !cfg_append_endless_loop;
+					break;
+				case 4:
+					if (dir > 0){
+						set_freq((freq + 1) % FREQ_COUNT);
+					} else {
+						set_freq((freq + FREQ_COUNT - 1) % FREQ_COUNT);
+					}
+					break;
+				case 5:
+					cfg_prune_on_paste = !cfg_prune_on_paste;
+					break;
+				case 6:
+					cfg_prune_in_library = !cfg_prune_in_library;
+					break;
+				case 7:
+					cfg_cr_to_lf = !cfg_cr_to_lf;
+					break;
+				case 8:
+					if (dir > 0){
+						cfg_speed_hotkey_mode = (cfg_speed_hotkey_mode + 1) % 4;
+					} else {
+						cfg_speed_hotkey_mode = (cfg_speed_hotkey_mode + 3) % 4;
+					}
+					break;
+			}
+		}
+		else if (item == 9){
+			if (dir > 0){
+				cfg_mcu_color_idx = (cfg_mcu_color_idx + 1) % MCU_COLOR_COUNT;
+			} else {
+				cfg_mcu_color_idx = (cfg_mcu_color_idx + MCU_COLOR_COUNT - 1) % MCU_COLOR_COUNT;
+			}
+		}
+		else if (is_custom && item >= 10 && item <= 12){
+			if (item == 10){
+				if (dir > 0) cfg_mcu_custom_r = (cfg_mcu_custom_r + 1) % 6;
+				else cfg_mcu_custom_r = (cfg_mcu_custom_r + 5) % 6;
+			} else if (item == 11){
+				if (dir > 0) cfg_mcu_custom_g = (cfg_mcu_custom_g + 1) % 6;
+				else cfg_mcu_custom_g = (cfg_mcu_custom_g + 5) % 6;
+			} else if (item == 12){
+				if (dir > 0) cfg_mcu_custom_b = (cfg_mcu_custom_b + 1) % 6;
+				else cfg_mcu_custom_b = (cfg_mcu_custom_b + 5) % 6;
+			}
+		}
+		else {
+			int rem_idx = item - (9 + custom_extra);
+			if (rem_idx == 1){
 				cfg_manual_step_enabled = !cfg_manual_step_enabled;
-				break;
-			case 10:
+			} else if (rem_idx == 2){
 				if (cfg_manual_step_enabled){
 					if (dir > 0){
 						cfg_manual_step_ticks = (cfg_manual_step_ticks + 1) % 6;
@@ -1218,21 +1398,17 @@ void menu_execute_action(uint8_t item, int8_t dir){
 					menu_cursor = 1;
 					menu_needs_render = 1;
 				}
-				break;
-			case 11:
+			} else if (rem_idx == 3){
 				if (dir > 0){
 					cfg_manual_step_key = (cfg_manual_step_key + 1) % 3;
 				} else {
 					cfg_manual_step_key = (cfg_manual_step_key + 2) % 3;
 				}
-				break;
-			case 12:
+			} else if (rem_idx == 4){
 				menu_page = MENU_PAGE_MAIN;
 				menu_cursor = 1;
 				menu_needs_render = 1;
-				break;
-			default:
-				break;
+			}
 		}
 	}
 	else if (menu_page == MENU_PAGE_LIBRARY){
@@ -1268,7 +1444,10 @@ typedef struct {
 	uint8_t  prune_on_paste;
 	uint8_t  prune_in_library;
 	uint8_t  cr_to_lf;
-	uint8_t  reserved;
+	uint8_t  mcu_color_idx;
+	uint8_t  mcu_custom_r;
+	uint8_t  mcu_custom_g;
+	uint8_t  mcu_custom_b;
 	uint32_t auto_prog_min_bytes;
 	uint32_t checksum;
 } PersistentSettings;
@@ -1279,7 +1458,9 @@ static uint32_t calc_settings_checksum(const PersistentSettings *s){
 	       (uint32_t)s->speed_hotkey_mode + (uint32_t)s->manual_step_enabled +
 	       (uint32_t)s->manual_step_ticks + (uint32_t)s->manual_step_key +
 	       (uint32_t)s->prune_on_paste + (uint32_t)s->prune_in_library +
-	       (uint32_t)s->cr_to_lf + s->auto_prog_min_bytes;
+	       (uint32_t)s->cr_to_lf + (uint32_t)s->mcu_color_idx +
+	       (uint32_t)s->mcu_custom_r + (uint32_t)s->mcu_custom_g +
+	       (uint32_t)s->mcu_custom_b + s->auto_prog_min_bytes;
 }
 
 void settings_load(void){
@@ -1298,6 +1479,11 @@ void settings_load(void){
 		cfg_prune_on_paste = flash_cfg->prune_on_paste ? 1 : 0;
 		cfg_prune_in_library = flash_cfg->prune_in_library ? 1 : 0;
 		cfg_cr_to_lf = flash_cfg->cr_to_lf ? 1 : 0;
+		if (flash_cfg->mcu_color_idx < MCU_COLOR_COUNT) cfg_mcu_color_idx = flash_cfg->mcu_color_idx;
+		else cfg_mcu_color_idx = 0;
+		cfg_mcu_custom_r = (flash_cfg->mcu_custom_r <= 5) ? flash_cfg->mcu_custom_r : 5;
+		cfg_mcu_custom_g = (flash_cfg->mcu_custom_g <= 5) ? flash_cfg->mcu_custom_g : 2;
+		cfg_mcu_custom_b = (flash_cfg->mcu_custom_b <= 5) ? flash_cfg->mcu_custom_b : 0;
 
 		if (flash_cfg->auto_prog_min_bytes >= 4 && flash_cfg->auto_prog_min_bytes <= 64){
 			cfg_auto_prog_min_bytes = flash_cfg->auto_prog_min_bytes;
@@ -1316,6 +1502,10 @@ void settings_load(void){
 		cfg_prune_on_paste = 0;
 		cfg_prune_in_library = 1;
 		cfg_cr_to_lf = 1;
+		cfg_mcu_color_idx = 0;
+		cfg_mcu_custom_r = 5;
+		cfg_mcu_custom_g = 2;
+		cfg_mcu_custom_b = 0;
 		cfg_auto_prog_min_bytes = 16;
 	}
 }
@@ -1335,6 +1525,10 @@ void settings_save(void){
 	new_cfg.prune_on_paste = cfg_prune_on_paste;
 	new_cfg.prune_in_library = cfg_prune_in_library;
 	new_cfg.cr_to_lf = cfg_cr_to_lf;
+	new_cfg.mcu_color_idx = cfg_mcu_color_idx;
+	new_cfg.mcu_custom_r = cfg_mcu_custom_r;
+	new_cfg.mcu_custom_g = cfg_mcu_custom_g;
+	new_cfg.mcu_custom_b = cfg_mcu_custom_b;
 	new_cfg.auto_prog_min_bytes = cfg_auto_prog_min_bytes;
 	new_cfg.checksum = calc_settings_checksum(&new_cfg);
 
@@ -1363,6 +1557,7 @@ void settings_save(void){
 }
 
 void menu_enter(void){
+	settings_dirty = 0;
 	state = STATE_CONFIG;
 	menu_page = MENU_PAGE_MAIN;
 	menu_cursor = 0;
@@ -1373,15 +1568,29 @@ void menu_enter(void){
 	HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
 }
 
-void menu_exit(void){
-	settings_save();
+void menu_exit(uint8_t save){
+	if (save){
+		settings_save();
+		settings_dirty = 0;
+	} else {
+		settings_load();
+		settings_dirty = 0;
+	}
+
+	// Clear screen and home cursor so menu is cleanly wiped from terminal
+	CDC_Print("\x1b[2J\r\n");
+
 	state = STATE_RUN;
 	manual_step_ticks_pending = 0;
 	HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 	LED_GPIO_Port->BRR = LED_Pin;
-	CDC_Printf("\r\n\x1b[0m[Config Saved] Resuming Brainfuino (Clock: %s)...\r\n", get_freq_name(freq));
+	if (save){
+		CDC_Printf_MCU("[Config Saved] Resuming Brainfuino (Clock: %s)...\r\n", get_freq_name(freq));
+	} else {
+		CDC_Printf_MCU("[Config Exited] Resuming Brainfuino (Clock: %s)...\r\n", get_freq_name(freq));
+	}
 	if (cfg_manual_step_enabled){
-		CDC_Printf("[Manual Step Mode Active: Press %s to step %s]\r\n",
+		CDC_Printf_MCU("[Manual Step Mode Active: Press %s to step %s]\r\n",
 		           get_step_key_name(cfg_manual_step_key), get_step_ticks_name(cfg_manual_step_ticks));
 	}
 	initROMNormal();
@@ -1398,7 +1607,7 @@ void menu_exit(void){
 }
 
 void menu_export_dynamic_schema(void){
-	CDC_Print("!MENU:START:13\r\n");
+	CDC_Print("!MENU:START:17\r\n");
 	// Folders (Category groupings)
 	CDC_Print("0;FOLDER;0;Execution & Clock\r\n");
 	CDC_Print("1;FOLDER;0;Auto-Programming\r\n");
@@ -1458,6 +1667,16 @@ void menu_export_dynamic_schema(void){
 	CDC_Print("30;COMMAND;3;Reboot to USB DFU\r\n");
 	CDC_Print("31;COMMAND;3;Restore Factory Demo\r\n");
 	CDC_Print("32;COMMAND;3;Soft Reset FPGA\r\n");
+
+	// Folder 4: Display & Terminal
+	CDC_Print("4;FOLDER;0;Display & Terminal\r\n");
+	CDC_Printf("22;SELECT;4;Companion MCU Output Color;%u;", (unsigned int)cfg_mcu_color_idx);
+	for (uint8_t i = 0; i < MCU_COLOR_COUNT; i++){
+		CDC_Printf("%s%s", mcu_colors[i].name, (i + 1 < MCU_COLOR_COUNT) ? ";" : "\r\n");
+	}
+	CDC_Printf("23;SELECT;4;Custom Red (0-5);%u;0;1;2;3;4;5\r\n", (unsigned int)cfg_mcu_custom_r);
+	CDC_Printf("24;SELECT;4;Custom Green (0-5);%u;0;1;2;3;4;5\r\n", (unsigned int)cfg_mcu_custom_g);
+	CDC_Printf("25;SELECT;4;Custom Blue (0-5);%u;0;1;2;3;4;5\r\n", (unsigned int)cfg_mcu_custom_b);
 
 	CDC_Print("!MENU:END\r\n");
 }
@@ -1529,8 +1748,8 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		return 1;
 	}
 
-	// Program ROM Dump (!DUMP, !ROM:DUMP, or !)
-	if (is_cmd_ci(buff, len, "!DUMP") || is_cmd_ci(buff, len, "!ROM:DUMP") || is_cmd_ci(buff, len, "!")){
+	// Program ROM Dump (only !DUMP)
+	if (is_cmd_ci(buff, len, "!DUMP")){
 		code_dump = 1;
 		return 1;
 	}
@@ -1675,6 +1894,18 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				case 15:
 					cfg_append_endless_loop = val ? 1 : 0;
 					break;
+				case 22:
+					cfg_mcu_color_idx = (uint8_t)(val % MCU_COLOR_COUNT);
+					break;
+				case 23:
+					cfg_mcu_custom_r = (uint8_t)(val % 6);
+					break;
+				case 24:
+					cfg_mcu_custom_g = (uint8_t)(val % 6);
+					break;
+				case 25:
+					cfg_mcu_custom_b = (uint8_t)(val % 6);
+					break;
 				case 16:
 					cfg_prune_on_paste = val ? 1 : 0;
 					break;
@@ -1779,7 +2010,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			prog_rx_count = flen;
 			prog_total_received = flen;
 
-			CDC_Print("\r\n=== AUTO-PROGRAM MODE ===\r\nUploading Brainfuck code...\r\n");
+			CDC_Print_MCU("\r\n=== AUTO-PROGRAM MODE ===\r\nUploading Brainfuck code...\r\n");
 			return 1;
 		}
 
@@ -1933,10 +2164,42 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				menu_cursor = 0;
 				menu_needs_render = 1;
 				return 1;
+			} else if (menu_page == MENU_PAGE_CONFIRM_EXIT){
+				menu_page = MENU_PAGE_MAIN;
+				menu_cursor = 0;
+				menu_needs_render = 1;
+				return 1;
 			} else {
-				menu_exit_requested = 1;
+				if (settings_dirty){
+					menu_page = MENU_PAGE_CONFIRM_EXIT;
+					menu_needs_render = 1;
+				} else {
+					menu_exit_requested = 1;
+					menu_exit_save_choice = 0;
+				}
 				return 1;
 			}
+		}
+
+		// Confirm exit page key handler
+		if (menu_page == MENU_PAGE_CONFIRM_EXIT){
+			if (buff[idx] == 'y' || buff[idx] == 'Y' || buff[idx] == '\r' || buff[idx] == '\n'){
+				menu_exit_requested = 1;
+				menu_exit_save_choice = 1;
+				return 1;
+			}
+			else if (buff[idx] == 'n' || buff[idx] == 'N'){
+				menu_exit_requested = 1;
+				menu_exit_save_choice = 0;
+				return 1;
+			}
+			else if (buff[idx] == 0x1B || buff[idx] == 'c' || buff[idx] == 'C' || buff[idx] == 0x08 || buff[idx] == 0x7F){
+				menu_page = MENU_PAGE_MAIN;
+				menu_cursor = 0;
+				menu_needs_render = 1;
+				return 1;
+			}
+			return 1;
 		}
 
 		// 2. Direct numbered / letter shortcuts
@@ -1963,21 +2226,28 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				menu_action_dir = 1;
 				return 1;
 			}
-			if (buff[idx] == 'a' || buff[idx] == 'A'){
+			if (buff[idx] == 'c' || buff[idx] == 'C'){
 				menu_cursor = 9;
 				menu_action_pending = 9;
 				menu_action_dir = 1;
 				return 1;
 			}
-			if (cfg_manual_step_enabled && (buff[idx] == 't' || buff[idx] == 'T')){
-				menu_cursor = 10;
-				menu_action_pending = 10;
+			uint8_t c_extra = (cfg_mcu_color_idx == 17) ? 3 : 0;
+			if (buff[idx] == 'a' || buff[idx] == 'A'){
+				menu_cursor = 10 + c_extra;
+				menu_action_pending = menu_cursor;
 				menu_action_dir = 1;
 				return 1;
 			}
-			if (cfg_manual_step_enabled && (buff[idx] == 'c' || buff[idx] == 'C' || buff[idx] == 'k' || buff[idx] == 'K')){
-				menu_cursor = 11;
-				menu_action_pending = 11;
+			if (cfg_manual_step_enabled && (buff[idx] == 't' || buff[idx] == 'T')){
+				menu_cursor = 11 + c_extra;
+				menu_action_pending = menu_cursor;
+				menu_action_dir = 1;
+				return 1;
+			}
+			if (cfg_manual_step_enabled && (buff[idx] == 'k' || buff[idx] == 'K')){
+				menu_cursor = 12 + c_extra;
+				menu_action_pending = menu_cursor;
 				menu_action_dir = 1;
 				return 1;
 			}
@@ -2431,7 +2701,7 @@ int main(void)
 		  serial_inbox_tail = 0;
 		  serial_input = 0;
 		  set_freq(freq);
-		  CDC_Printf("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
+		  CDC_Printf_MCU("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
 		  if (cfg_manual_step_enabled){
 			  CDC_Printf("[Manual Step Mode Active: Press %s to step %s]\r\n",
 			             get_step_key_name(cfg_manual_step_key), get_step_ticks_name(cfg_manual_step_ticks));
@@ -2492,7 +2762,7 @@ int main(void)
 				  // Short tap (< 1s)
 				  if (state == STATE_CONFIG){
 					  // In Config Menu: short press exits menu and resumes program
-					  menu_exit();
+					  menu_exit(settings_dirty);
 				  }
 				  else if (state == STATE_PROGRAM){
 					  // In Program Mode: short press exits Program Mode and runs the program
@@ -2524,7 +2794,7 @@ int main(void)
 					  serial_inbox_tail = 0;
 					  serial_input = 0;
 					  set_freq(freq);
-					  CDC_Printf("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
+					  CDC_Printf_MCU("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
 					  if (cfg_manual_step_enabled){
 						  CDC_Printf("[Manual Step Mode Active: Press %s to step %s]\r\n",
 						             get_step_key_name(cfg_manual_step_key), get_step_ticks_name(cfg_manual_step_ticks));
@@ -2574,7 +2844,7 @@ int main(void)
 	  if (state == STATE_CONFIG){
 		  if (menu_exit_requested){
 			  menu_exit_requested = 0;
-			  menu_exit();
+			  menu_exit(menu_exit_save_choice);
 		  }
 		  else if (lib_start_add_requested){
 			  lib_start_add_requested = 0;
@@ -2868,7 +3138,7 @@ int main(void)
 				  CDC_Printf("\r\nFinished! Wrote %lu bytes total.\r\n", written);
 
 				  if (cfg_auto_reset_after_pgm){
-					  CDC_Print("Auto-launching program...\r\n");
+					  CDC_Print_MCU("Auto-launching program...\r\n");
 					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 					  initROMNormal();
 					  wait(1000);
@@ -3043,27 +3313,24 @@ int main(void)
 	  }
 	  __enable_irq();
 
-	  // dump the code
+	  // dump the code (streamed in 64-byte chunks to eliminate stack overflow)
 	  if(code_dump){
-		  uint32_t i,j;
-		  const uint32_t N = 5000;
-		  uint8_t code_str[N];
-
 		  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
 		  HAL_Delay(10);
 
-		  for(i = 0; i < N; i++){
-			  code_str[i] = readROM(i);
-			  if (code_str[i] == 0xFF) break;
+		  uint8_t dump_chunk[64];
+		  uint32_t dump_len = 0;
+		  for(uint32_t addr = 0; addr < FLASH_CAPACITY; addr++){
+			  uint8_t b = readROM(addr);
+			  if (b == 0xFF) break;
+			  dump_chunk[dump_len++] = b;
+			  if (dump_len == sizeof(dump_chunk)){
+				  CDC_Write(dump_chunk, dump_len);
+				  dump_len = 0;
+			  }
 		  }
-
-		  for(j = 0; (i-j) >= 60; j+=60){
-			  while(TxBusy()){};
-			  CDC_Transmit_FS(code_str+j, 60);
-		  }
-		  if(j<i){
-			  while(TxBusy()){};
-			  CDC_Transmit_FS(code_str+j, i-j);
+		  if (dump_len > 0){
+			  CDC_Write(dump_chunk, dump_len);
 		  }
 
 		  if(state==STATE_RUN){
@@ -3857,7 +4124,7 @@ uint8_t flashBufferToROM(const uint8_t *code, uint32_t len, const char *title, u
 	CDC_Print("Finished! Program written successfully.\r\n");
 
 	if (auto_launch){
-		CDC_Print("Auto-launching program...\r\n");
+		CDC_Print_MCU("Auto-launching program...\r\n");
 		HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 		initROMNormal();
 		wait(1000);
