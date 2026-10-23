@@ -1,3 +1,5 @@
+    import { mapDirectKey } from './terminal/hotkeys';
+
     // --- State Variables ---
     let port = null;
     let reader = null;
@@ -251,44 +253,119 @@
       if (inputMode === 'direct') terminalScreen.focus();
     });
 
-    // --- Direct Keystroke Forwarding ---
+    // PuTTY-style click-to-focus anywhere in the terminal view container
+    const viewTerminal = document.getElementById('view-terminal');
+    if (viewTerminal) {
+      viewTerminal.addEventListener('click', (e) => {
+        if (inputMode === 'direct') {
+          const target = e.target as HTMLElement;
+          if (!target.closest('button, select, input, a, textarea')) {
+            terminalScreen.focus();
+          }
+        }
+      });
+    }
+
+    // PuTTY-style selection: automatic copy to clipboard on mouse release
+    terminalScreen.addEventListener('mouseup', () => {
+      if (inputMode !== 'direct') return;
+      const sel = window.getSelection ? window.getSelection()?.toString() : '';
+      if (sel && sel.length > 0 && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(sel).catch(() => {});
+      }
+    });
+
+    // PuTTY-style right-click paste
+    terminalScreen.addEventListener('contextmenu', async (e: MouseEvent) => {
+      if (inputMode === 'direct') {
+        const sel = window.getSelection ? window.getSelection()?.toString() : '';
+        if (!sel || sel.length === 0) {
+          if (navigator.clipboard && navigator.clipboard.readText) {
+            try {
+              const text = await navigator.clipboard.readText();
+              if (text) {
+                e.preventDefault();
+                await sendRaw(text);
+              }
+            } catch {
+              // Browser permission denied or not supported; allow default context menu
+            }
+          }
+        }
+      }
+    });
+
+    // --- Direct Keystroke Forwarding (PuTTY 1-to-1) ---
     terminalScreen.addEventListener('keydown', async (e) => {
       if (!port || inputMode !== 'direct') return;
 
-      // Allow Ctrl+C / Ctrl+V clipboard operations if text is selected
-      if ((e.ctrlKey || e.metaKey) && window.getSelection().toString().length > 0) {
+      const toSend = mapDirectKey(e);
+      if (toSend !== null) {
+        e.preventDefault();
+        e.stopPropagation();
+        await sendRaw(toSend);
+      }
+    });
+
+    // Direct mode paste forwarding
+    terminalScreen.addEventListener('paste', async (e: ClipboardEvent) => {
+      if (!port || inputMode !== 'direct') return;
+      const text = e.clipboardData?.getData('text');
+      if (text) {
+        e.preventDefault();
+        e.stopPropagation();
+        await sendRaw(text);
+      }
+    });
+
+    // Global direct keyboard pass-through when on Terminal view
+    window.addEventListener('keydown', async (e) => {
+      if (!port || inputMode !== 'direct') return;
+      if (e.target === terminalScreen) return;
+
+      const vTerm = document.getElementById('view-terminal');
+      if (!vTerm || !vTerm.classList.contains('active')) return;
+
+      const activeTag = document.activeElement?.tagName?.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select' || (document.activeElement as HTMLElement)?.isContentEditable) {
         return;
       }
 
-      e.preventDefault();
-      e.stopPropagation();
-      let key = e.key;
-      let toSend = '';
-
-      if (key === 'Enter') toSend = '\r';
-      else if (key === 'Backspace') toSend = '\b';
-      else if (key === 'Delete') toSend = '\x1b[3~';
-      else if (key === 'Tab') toSend = '\t';
-      else if (key === 'Escape') toSend = '\x1b';
-      else if (key === 'ArrowUp') toSend = '\x1b[A';
-      else if (key === 'ArrowDown') toSend = '\x1b[B';
-      else if (key === 'ArrowRight') toSend = '\x1b[C';
-      else if (key === 'ArrowLeft') toSend = '\x1b[D';
-      else if (key === 'PageUp') {
-        if (e.repeat) return;
-        toSend = '\x1b[5~';
+      if (isVerifyingModalOpen || document.querySelector('.modal.open, .dialog.open')) {
+        return;
       }
-      else if (key === 'PageDown') {
-        if (e.repeat) return;
-        toSend = '\x1b[6~';
-      }
-      else if (key === 'Home') toSend = '\x1b[H';
-      else if (key === 'End') toSend = '\x1b[F';
-      else if (key === 'Insert') toSend = '\x1b[2~';
-      else if (key.length === 1) toSend = key;
 
-      if (toSend) {
+      const toSend = mapDirectKey(e);
+      if (toSend !== null) {
+        e.preventDefault();
+        e.stopPropagation();
+        terminalScreen.focus();
         await sendRaw(toSend);
+      }
+    });
+
+    window.addEventListener('paste', async (e: ClipboardEvent) => {
+      if (!port || inputMode !== 'direct') return;
+      if (e.target === terminalScreen) return;
+
+      const vTerm = document.getElementById('view-terminal');
+      if (!vTerm || !vTerm.classList.contains('active')) return;
+
+      const activeTag = document.activeElement?.tagName?.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select' || (document.activeElement as HTMLElement)?.isContentEditable) {
+        return;
+      }
+
+      if (isVerifyingModalOpen || document.querySelector('.modal.open, .dialog.open')) {
+        return;
+      }
+
+      const text = e.clipboardData?.getData('text');
+      if (text) {
+        e.preventDefault();
+        e.stopPropagation();
+        terminalScreen.focus();
+        await sendRaw(text);
       }
     });
 
@@ -3710,28 +3787,21 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
           }
           if (verifyInputMode !== 'direct') return;
 
-          // Allow clipboard shortcuts
-          if ((e.ctrlKey || e.metaKey) && window.getSelection().toString().length > 0) {
-            return;
-          }
-
-          e.preventDefault();
-          let key = e.key;
-          let toSend = '';
-
-          if (key === 'Enter') toSend = '\r';
-          else if (key === 'Backspace') toSend = '\b';
-          else if (key === 'Delete') toSend = '\x1b[3~';
-          else if (key === 'Tab') toSend = '\t';
-          else if (key === 'Escape') toSend = '\x1b';
-          else if (key === 'ArrowUp') toSend = '\x1b[A';
-          else if (key === 'ArrowDown') toSend = '\x1b[B';
-          else if (key === 'ArrowRight') toSend = '\x1b[C';
-          else if (key === 'ArrowLeft') toSend = '\x1b[D';
-          else if (key.length === 1) toSend = key;
-
-          if (toSend) {
+          const toSend = mapDirectKey(e);
+          if (toSend !== null) {
+            e.preventDefault();
+            e.stopPropagation();
             await sendRaw(toSend);
+          }
+        });
+
+        vScreen.addEventListener('paste', async (e: ClipboardEvent) => {
+          if (!port || verifyInputMode !== 'direct') return;
+          const text = e.clipboardData?.getData('text');
+          if (text) {
+            e.preventDefault();
+            e.stopPropagation();
+            await sendRaw(text);
           }
         });
       }
