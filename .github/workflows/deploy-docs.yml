@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'documentation/**'
+      - 'tools/web-terminal/**'
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 
@@ -29,6 +30,17 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Web Terminal Single-File App
+        run: |
+          cd tools/web-terminal
+          npm ci
+          npm run build
 
       - name: Set up Python
         uses: actions/setup-python@v5

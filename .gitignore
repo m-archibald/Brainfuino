@@ -104,4 +104,8 @@ scripts/bad_apple/*.mp4
 
 # Developer / internal notes
 dev-docs/
-
+
+# Node / Web Terminal
+node_modules/
+tools/web-terminal/dist/
+*.monolith.html

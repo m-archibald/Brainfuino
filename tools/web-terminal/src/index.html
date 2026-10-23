@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Brainfuino Web Serial Terminal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles/main.css">
+</head>
+<body>
+
+  <!-- Compatibility Alert Banner -->
+  <div id="compat-banner">
+    <span id="compat-msg"></span>
+    <button onclick="document.getElementById('compat-banner').style.display='none'" style="background:transparent;border:none;color:inherit;cursor:pointer;font-size:1rem;">✕</button>
+  </div>
+
+  <div class="app-container">
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+      <div class="brand-header">
+        <div class="brand-title">
+          Brainfuino <span class="brand-tag">[-]+.</span>
+        </div>
+        <div class="status-pill" id="status-pill">
+          <span class="status-dot"></span>
+          <span id="status-text">Disconnected</span>
+        </div>
+      </div>
+
+      <!-- Global Connection Panel -->
+      <div class="connection-panel" style="padding: 10px 14px 6px;">
+        <button class="btn-connect" id="connect-btn" onclick="toggleConnect()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+          <span id="connect-btn-label">Connect Brainfuino</span>
+        </button>
+      </div>
+
+      <!-- Navigation Tabs (Sidebar Layout, zero emojis) -->
+      <div class="sidebar-tabs">
+        <button class="nav-tab active" id="tab-btn-terminal" onclick="switchTab('terminal')">
+          <div class="nav-tab-left">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+            <span>Terminal</span>
+          </div>
+        </button>
+        <button class="nav-tab" id="tab-btn-upload" onclick="switchTab('upload')">
+          <div class="nav-tab-left">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+            <span>Write</span>
+          </div>
+        </button>
+        <button class="nav-tab" id="tab-btn-settings" onclick="switchTab('settings')">
+          <div class="nav-tab-left">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
+            <span>Settings</span>
+          </div>
+        </button>
+        <button class="nav-tab" id="tab-btn-flash" onclick="switchTab('flashing')">
+          <div class="nav-tab-left">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <span>Flash</span>
+          </div>
+        </button>
+      </div>
+
+      <!-- Tab Content 1: Serial Terminal Controls -->
+      <div id="tab-content-terminal">
+
+        <div class="sidebar-section">
+          <h4>Terminal Settings</h4>
+          <label class="toggle-row">
+            <span>Autoscroll</span>
+            <input type="checkbox" id="autoscroll-chk" checked />
+          </label>
+          <label class="toggle-row">
+            <span>Timestamps</span>
+            <input type="checkbox" id="timestamps-chk" />
+          </label>
+          <label class="toggle-row">
+            <span>Auto-connect</span>
+            <input type="checkbox" id="autoconnect-chk" />
+          </label>
+          <div class="form-group">
+            <label for="line-ending">Line Ending:</label>
+            <select id="line-ending">
+              <option value="\n" selected>LF (\n)</option>
+              <option value="\r">CR (\r)</option>
+              <option value="\r\n">CRLF (\r\n)</option>
+              <option value="">None</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="input-mode-select">Input Mode:</label>
+            <select id="input-mode-select" onchange="setInputMode(this.value)">
+              <option value="direct" selected>Direct (Keystrokes)</option>
+              <option value="line">Line Send (Enter)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="max-scrollback">Scrollback Limit:</label>
+            <select id="max-scrollback" onchange="setMaxScrollbackLines(this.value)">
+              <option value="500">500 lines</option>
+              <option value="1000">1,000 lines</option>
+              <option value="2000" selected>2,000 lines (Fast)</option>
+              <option value="5000">5,000 lines</option>
+              <option value="10000">10,000 lines</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <h4>Hardware Shortcuts</h4>
+          <div class="btn-group">
+            <button class="action-btn" onclick="sendCmd('!RST\r\n')" title="Reset FPGA soft-processor">!RST</button>
+            <button class="action-btn" onclick="sendCmd('!MENU\r\n')" title="Open Interactive Menu">!MENU</button>
+            <button class="action-btn" onclick="sendCmd('!DUMP\r\n')" title="Dump Program ROM (!DUMP)">!DUMP</button>
+          </div>
+
+          <h4 style="margin-top:10px;">FPGA Clock Frequency</h4>
+          <div class="clock-control-panel">
+            <div class="clock-display-row">
+              <span class="clock-value-badge" id="clock-speed-val">500 kHz</span>
+              <button class="clock-query-btn" onclick="queryClockSpeed()" title="Query current frequency (!clk)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Query</span>
+              </button>
+            </div>
+            <div class="clock-btn-row">
+              <button class="clock-step-btn" onclick="stepClockDown()" title="Decrease frequency (!clk-)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <span>Down (!clk-)</span>
+              </button>
+              <button class="clock-step-btn" onclick="stepClockUp()" title="Increase frequency (!clk+)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <span>Up (!clk+)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Content 2: Flashing Quick Controls -->
+      <div id="tab-content-flash" style="display:none; padding:12px; font-size:0.75rem;">
+        <div class="sidebar-section">
+          <h4>Flashing Actions</h4>
+          <p style="font-size:0.70rem; color:var(--text-muted); line-height:1.4; margin-bottom:10px;">
+            In-circuit firmware and bitstream management from GitHub releases.
+          </p>
+          <button class="action-btn" style="width:100%; margin-bottom:6px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="triggerDfuReboot()" title="Send !DFU! software reboot to Brainfuino">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <span>Reboot to DFU (!DFU!)</span>
+          </button>
+          <button class="action-btn" style="width:100%; margin-bottom:6px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="fetchGitHubReleases(true)" title="Check GitHub for newer releases">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            <span>Sync Releases</span>
+          </button>
+        </div>
+
+        <div class="sidebar-section">
+          <h4>Release Info</h4>
+          <div class="meta-row">
+            <span class="meta-label">Selected:</span>
+            <span class="meta-val" id="sidebar-release-tag">v1.0</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">Target:</span>
+            <span class="meta-val" id="sidebar-target-name">STM32 MCU</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">Status:</span>
+            <span class="meta-val" id="sidebar-dfu-status">Idle</span>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <h4>Hardware DFU Entry</h4>
+          <p style="font-size:0.68rem; color:var(--text-muted); line-height:1.45;">
+            1. Unplug USB-C cable<br>
+            2. Place jumper on BOOT0 pins<br>
+            3. Plug in USB-C cable<br>
+            4. Remove jumper after flashing
+          </p>
+        </div>
+
+        <div class="sidebar-section">
+          <h4>Quick Switch</h4>
+          <button class="action-btn" style="width:100%;" onclick="switchTab('terminal')">
+            Return to Terminal
+          </button>
+        </div>
+      </div>
+
+      <!-- Tab Content 2 (Write Tab Sidebar): Dedicated Program Suite Catalog -->
+      <div id="tab-content-upload" class="write-sidebar-pane" style="display:none;">
+        <div class="sidebar-header-fixed">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h4 style="margin:0; font-size:0.74rem; font-weight:700; color:var(--text-main); text-transform:uppercase; letter-spacing:0.04em;">Program Suite</h4>
+            <button class="tool-btn" style="padding:2px 6px; font-size:0.65rem;" onclick="renderGitHubProgramCatalog()" title="Re-sync program list from GitHub">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              <span>Sync</span>
+            </button>
+          </div>
+          <p style="font-size:0.68rem; color:var(--text-muted); line-height:1.35; margin-top:4px; margin-bottom:0;">
+            Official Brainfuino programs. Click to load into editor:
+          </p>
+        </div>
+        <div id="github-programs-tree" class="github-programs-tree">
+          <!-- Populated dynamically by renderGitHubProgramCatalog() -->
+        </div>
+      </div>
+
+      <!-- Tab Content 4: Settings -->
+      <div id="tab-content-settings" style="display:none; padding:12px; font-size:0.75rem;">
+        <div class="sidebar-section">
+          <h4>Settings</h4>
+          <p style="font-size:0.70rem; color:var(--text-muted); line-height:1.4; margin-bottom:10px;">
+            Hardware settings are rendered dynamically in the main view from Brainfuino schema.
+          </p>
+          <button class="action-btn" style="width:100%; margin-bottom:6px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="fetchDynamicMenu()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            <span>Sync Settings</span>
+          </button>
+        </div>
+
+        <div class="sidebar-section" id="sidebar-categories-section" style="display:none;">
+          <h4>Categories</h4>
+          <div id="sidebar-categories-nav" class="sidebar-categories-list"></div>
+        </div>
+
+        <div class="sidebar-section">
+          <h4>Schema Metadata</h4>
+          <div class="meta-row">
+            <span class="meta-label">Protocol:</span>
+            <span class="meta-val">Machine v1.0</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">Parameters:</span>
+            <span class="meta-val" id="meta-param-count">0</span>
+          </div>
+          <div class="meta-row">
+            <span class="meta-label">Status:</span>
+            <span class="meta-val" id="meta-sync-state">Idle</span>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <h4>Quick Switch</h4>
+          <button class="action-btn" style="width:100%;" onclick="switchTab('terminal')">
+            Return to Terminal
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Right Main Panel: White Terminal Area & Rendered Settings Page -->
+    <main class="terminal-container" id="main-viewport">
+      <!-- VIEW 1: SERIAL TERMINAL CONSOLE -->
+      <div id="view-terminal" class="main-viewport-view">
+        <div class="terminal-header">
+          <div class="terminal-title">
+            <span>TERMINAL CONSOLE</span>
+            <span class="direct-pill" id="direct-pill">DIRECT KEYS</span>
+            <span class="terminal-stats" id="terminal-stats">RX: 0 B | TX: 0 B</span>
+          </div>
+          <div class="terminal-actions">
+            <button class="tool-btn" onclick="toggleTheme()" id="theme-btn" title="Toggle Light / Dark theme">
+              <svg id="theme-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+              <span id="theme-btn-label">Dark Mode</span>
+            </button>
+            <button class="tool-btn" onclick="saveLog()" title="Download session log as .txt">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Save Log
+            </button>
+            <button class="tool-btn" onclick="clearTerminal()" title="Clear terminal screen">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              Clear
+            </button>
+                        <button class="tool-btn" onclick="toggleMessageHistory()" id="btn-msg-history" title="View system message history">
+              <span id="msg-history-label">Messages (0)</span>
+            </button>
+            <button class="tool-btn" onclick="toggleFullscreen()" title="Toggle fullscreen view">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Output Screen -->
+        <div id="terminal-screen" tabindex="0"></div>
+        
+
+        <!-- Bottom Command Input Bar -->
+        <div class="input-bar">
+          <div class="mode-badge" id="mode-badge" onclick="cycleInputMode()" title="Click to toggle Input Mode">
+            Mode: Direct
+          </div>
+          <div class="input-wrapper">
+            <input type="text" id="cmd-input" placeholder="Click terminal to send raw keys, or type here and press Enter..." autocomplete="off" />
+          </div>
+          <button class="btn-send" onclick="sendInputBox()">Send</button>
+        </div>
+      </div>
+
+      <!-- VIEW 2: RENDERED SETTINGS PAGE (DYNAMIC CONTROLS) -->
+      <div id="view-controls" class="main-viewport-view" style="display: none;">
+        <div class="settings-page-header">
+          <div class="settings-header-left">
+            <div class="settings-title-row">
+              <h2 class="settings-title">HARDWARE SETTINGS & PARAMETERS</h2>
+              <span class="settings-badge" id="dyn-header-badge">READY</span>
+            </div>
+            <div class="settings-subtitle">Hardware configuration schema negotiated dynamically (!MENU*)</div>
+          </div>
+          <div class="settings-header-right">
+            <div class="settings-search-wrap">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" id="settings-search-input" placeholder="Filter parameters..." oninput="filterDynamicSettings(this.value)" autocomplete="off" />
+            </div>
+            <button class="tool-btn settings-sync-btn" id="settings-sync-btn" onclick="fetchDynamicMenu()" title="Sync parameters from Brainfuino">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              <span id="settings-sync-label">Sync Settings</span>
+            </button>
+            <button class="tool-btn" onclick="toggleTheme()" id="theme-btn-settings" title="Toggle Light / Dark theme">
+              <svg id="theme-icon-settings" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+              <span id="theme-btn-settings-label">Dark Mode</span>
+            </button>
+            <button class="tool-btn" onclick="switchTab('terminal')" title="Return to Serial Terminal">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+              <span>Terminal</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Real-time Status Notification Strip -->
+        <div class="settings-status-strip" id="settings-status-strip">
+          <div class="status-strip-left">
+            <span class="status-strip-dot" id="settings-strip-dot"></span>
+            <span id="settings-strip-msg">Hardware parameters ready. Connect to serial or click Sync to refresh.</span>
+          </div>
+          <div class="status-strip-right" id="settings-strip-stats">Schema items: 0</div>
+        </div>
+
+        <!-- Scrollable Settings Canvas -->
+        <div class="settings-content-scroll" id="settings-content-scroll">
+          <!-- Empty State Card -->
+          <div class="settings-empty-state" id="settings-empty-state">
+            <div class="empty-state-icon">
+              <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
+            </div>
+            <h3>Dynamic Hardware Settings</h3>
+            <p>Brainfuino exposes its entire configuration dynamically using a machine protocol over serial (!MENU*). No hardcoded parameter definitions are required in the client.</p>
+            <div class="empty-state-actions">
+              <button class="btn-primary-action" onclick="fetchDynamicMenu()">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Query Brainfuino (!MENU*)</span>
+              </button>
+              <button class="btn-secondary-action" onclick="loadDefaultPreviewSchema()">
+                <span>Load Live Schema Preview</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Dynamic Parameter Cards Grid -->
+          <div class="settings-cards-grid" id="settings-cards-grid" style="display: none;"></div>
+        </div>
+      </div>
+
+      <!-- VIEW 3: IN-CIRCUIT FIRMWARE & BITSTREAM FLASHER -->
+      <div id="view-flashing" class="main-viewport-view" style="display: none;">
+        <div class="flasher-page-header">
+          <div class="settings-header-left">
+            <div class="settings-title-row">
+              <h2 class="settings-title">FIRMWARE & BITSTREAM FLASHER</h2>
+              <span class="settings-badge synced" id="flasher-header-badge">READY</span>
+            </div>
+            <div class="settings-subtitle">Direct in-browser WebUSB DFU flashing for STM32 companion and FPGA bitstreams</div>
+          </div>
+          <div class="settings-header-right">
+            <button class="tool-btn" id="flasher-sync-btn" onclick="fetchGitHubReleases(true)" title="Check GitHub for newer releases">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              <span>Sync Releases</span>
+            </button>
+            <button class="tool-btn" onclick="toggleTheme()" id="theme-btn-flasher" title="Toggle Light / Dark theme">
+              <svg id="theme-icon-flasher" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+              <span id="theme-btn-flasher-label">Dark Mode</span>
+            </button>
+            <button class="tool-btn" onclick="switchTab('terminal')" title="Return to Serial Terminal">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+              <span>Terminal</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Real-time Status Notification Strip -->
+        <div class="flasher-status-strip" id="flasher-status-strip">
+          <div class="status-strip-left">
+            <span class="status-strip-dot" id="flasher-strip-dot"></span>
+            <span id="flasher-strip-msg">Release assets loaded. Select target and pair DFU device to flash.</span>
+          </div>
+          <div class="status-strip-right" id="flasher-strip-stats">Target: STM32 Companion (0483:DF11)</div>
+        </div>
+
+        <!-- Scrollable Flasher Canvas -->
+        <div class="flasher-content-scroll" id="flasher-content-scroll">
+          <div class="flasher-unified-container">
+            <!-- UNIFIED CARD 1 & 2: SETUP & HARDWARE DFU CONNECTION -->
+            <div class="flasher-card">
+              <div class="flasher-card-header">
+                <div class="settings-card-title-group">
+                  <span class="settings-card-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                  </span>
+                  <h3 class="settings-card-title">Firmware & Hardware Setup</h3>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span class="settings-card-count" id="flasher-release-date">Sept 16, 2026</span>
+                  <span class="settings-card-count" id="flasher-dfu-state-badge">DISCONNECTED</span>
+                </div>
+              </div>
+              <div class="flasher-card-body" style="gap:16px;">
+                <!-- SECTION 1: FIRMWARE RELEASE & TARGET -->
+                <div class="flasher-section-block">
+                  <div class="flasher-section-header">
+                    <span class="flasher-step-num">1</span>
+                    <span class="flasher-step-title">Select Firmware Release & Hardware Target</span>
+                  </div>
+
+                  <div>
+                    <label class="flasher-label-prominent">Release Channel</label>
+                    <select id="flasher-release-select" class="flasher-select-hero" onchange="onReleaseSelectChange(this.value)">
+                      <option value="v1.1">Release v1.1 - Brainfuino v1.1 (Official Stable)</option>
+                      <option value="nightly" disabled>Nightly - GitHub Actions CI Auto-Build (Coming Soon)</option>
+                      <option value="custom">Custom Local File (.hex, .bin, .jed)</option>
+                    </select>
+                  </div>
+
+                  <div style="display:grid; grid-template-columns: 240px 1fr; gap:12px; align-items:start;">
+                    <div>
+                      <label class="flasher-label-prominent">Hardware Target</label>
+                      <div class="flasher-pill-group">
+                        <button class="flasher-pill active" id="pill-target-stm32" onclick="setFlasherTarget('stm32')">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect></svg>
+                          <span>STM32 Companion</span>
+                        </button>
+                        <button class="flasher-pill" id="pill-target-fpga" onclick="setFlasherTarget('fpga')">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+                          <span>MachXO2 FPGA</span>
+                        </button>
+                      </div>
+
+                      <!-- Board Revision Selector (Shown when FPGA is active) -->
+                      <div id="flasher-fpga-rev-container" style="display:none; margin-top:8px;">
+                        <label class="flasher-label-prominent" style="font-size:0.72rem; color:var(--text-muted);">Board Revision</label>
+                        <div class="flasher-pill-group" style="margin-top:2px;">
+                          <button class="flasher-pill active" id="pill-rev-10" onclick="setFpgaBoardRev('1.0')">
+                            <span>Rev 1.0</span>
+                          </button>
+                          <button class="flasher-pill" id="pill-rev-11" onclick="setFpgaBoardRev('1.1')">
+                            <span>Rev 1.1</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Release Asset Info Box -->
+                    <div class="flasher-info-box" id="flasher-asset-box" style="margin-top:0;">
+                      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                        <div class="meta-row" style="margin:0;">
+                          <span class="meta-label">Payload:</span>
+                          <span class="meta-val" id="flasher-asset-name" style="font-weight:600;">BrainfuinoMCU-v1.1.hex</span>
+                        </div>
+                        <div class="meta-row" style="margin:0;">
+                          <span class="meta-label">Size:</span>
+                          <span class="meta-val" id="flasher-asset-size">114.4 kB (Intel HEX)</span>
+                        </div>
+                        <div class="meta-row" style="margin:0;">
+                          <span class="meta-label">Base:</span>
+                          <span class="meta-val">0x08000000</span>
+                        </div>
+                        <a id="flasher-download-link" href="https://github.com/m-archibald/Brainfuino/releases/download/v1.1/BrainfuinoMCU-v1.1.hex" target="_blank" style="color:var(--accent-indigo); font-size:0.68rem; text-decoration:none; display:flex; align-items:center; gap:4px; font-weight:500;">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                          <span>Download Asset</span>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Custom Local File Dropzone (shown when custom is selected) -->
+                  <div class="flasher-dropzone" id="flasher-dropzone" style="display: none; margin-top: 10px;" onclick="document.getElementById('flasher-file-input').click()">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    <span id="flasher-dropzone-label">Click or drag & drop .hex, .bin, or .jed file here</span>
+                    <input type="file" id="flasher-file-input" style="display:none;" accept=".hex,.bin,.jed" onchange="handleFlasherFileSelect(this.files)" />
+                  </div>
+                </div>
+
+                <!-- SECTION DIVIDER -->
+                <div class="flasher-section-divider"></div>
+
+                <!-- SECTION 2A (STM32): HARDWARE DFU MODE & CONNECTION -->
+                <div class="flasher-section-block" id="flasher-step2-stm32">
+                  <div class="flasher-section-header" style="justify-content:space-between;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <span class="flasher-step-num">2</span>
+                      <span class="flasher-step-title">Hardware DFU Mode & Device Connection</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:12px; font-size:0.70rem;">
+                      <span style="color:var(--text-muted);">Serial Status: <strong id="flasher-serial-status-text" style="color:var(--text-muted);">Disconnected</strong></span>
+                      <span style="color:var(--text-dim);">|</span>
+                      <span style="color:var(--text-muted);">USB DFU: <strong id="flasher-dfu-status-text" style="color:var(--text-muted);">Not Paired</strong></span>
+                    </div>
+                  </div>
+
+                  <!-- Side-by-side action buttons for top-down workflow -->
+                  <div class="flasher-actions-row">
+                    <button class="flasher-action-btn flasher-btn-secondary" id="flasher-reboot-btn" onclick="triggerDfuReboot()" title="Send !DFU! software reboot to Brainfuino over active serial connection">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                      <span>Reboot to DFU Mode (!DFU!)</span>
+                    </button>
+                    <button class="flasher-action-btn" id="flasher-pair-btn" onclick="connectDfuDevice()" title="Pair with ST USB DFU Bootloader (0483:DF11) via WebUSB">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                      <span>Pair & Connect DFU Device (WebUSB)</span>
+                    </button>
+                  </div>
+
+                  <!-- Collapsible Driver / Hardware DFU Helper Note -->
+                  <details style="font-size:0.68rem; color:var(--text-muted); cursor:pointer; margin-top:4px;">
+                    <summary style="font-weight:600; color:var(--text-main);">Windows Driver / Hardware DFU Help</summary>
+                    <div style="margin-top:6px; line-height:1.45; padding:8px 12px; background:var(--bg-sidebar); border-radius:4px;">
+                      <p style="margin-bottom:4px;"><strong>Manual DFU Entry:</strong> Unplug USB-C, place the jumper on the <code>BOOT0</code> header (pulls BOOT0 HIGH to 3.3V), and reconnect USB-C. Remove or return the jumper to normal position after programming.</p>
+                      <p style="margin-bottom:4px;"><strong>Windows WinUSB:</strong> If Chrome reports <em>Access Denied</em>, Windows has bound the legacy ST driver. Run <strong>Zadig</strong> once to assign the <code>WinUSB</code> driver to <code>STM32 BOOTLOADER</code>.</p>
+                      <p><strong>CLI Alternative:</strong> <code>pwsh companion-STM32-firmware/build.ps1 -Flash</code></p>
+                    </div>
+                  </details>
+                </div>
+
+                <!-- SECTION 2B (FPGA): JTAG PROGRAMMER (openFPGALoader WebAssembly & DirtyJTAG) -->
+                <div class="flasher-section-block" id="flasher-step2-fpga" style="display:none;">
+                  <div class="flasher-section-header" style="justify-content:space-between;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <span class="flasher-step-num">2</span>
+                      <span class="flasher-step-title">JTAG Hardware Programmer (openFPGALoader WebAssembly)</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:12px; font-size:0.70rem;">
+                      <span style="color:var(--text-muted);">JTAG Adapter: <strong id="flasher-jtag-status-text" style="color:var(--text-muted);">Not Connected</strong></span>
+                    </div>
+                  </div>
+
+                  <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; align-items:end;">
+                    <div>
+                      <label class="flasher-label-prominent">JTAG Cable / Adapter Protocol</label>
+                      <select id="flasher-jtag-cable-select" class="flasher-select-hero" style="font-size:0.80rem; height:38px; padding:6px 12px;" onchange="updateJtagPinoutHelper()">
+                        <option value="dirtyJtag" selected>DirtyJTAG (Raspberry Pi Pico / Blue Pill / RP2040) [-c dirtyJtag]</option>
+                        <option value="cmsis-dap">CMSIS-DAP / DAPLink / Raspberry Pi Debug Probe [-c cmsisdap]</option>
+                        <option value="ft2232">FTDI FT2232H / FT232H / FT4232H [-c ft2232]</option>
+                        <option value="usbBlaster">Altera / Intel USB-Blaster I, II & III [-c usbBlaster]</option>
+                        <option value="ch347">WCH CH347 High-Speed JTAG (480 Mbps) [-c ch347]</option>
+                        <option value="ch341">WCH CH341A / CH341T Bitbang JTAG [-c ch341]</option>
+                        <option value="jlink">Segger J-Link (EDU / BASE / PRO / OB) [-c jlink]</option>
+                        <option value="stlink">ST-Link v2 / v2-1 / v3 (JTAG Mode) [-c stlink]</option>
+                        <option value="digilent">Digilent JTAG-HS1 / HS2 / HS3 / SMT2 / SMT3 [-c digilent]</option>
+                        <option value="lattice">Lattice HW-USBN-2A / HW-USBN-2B / Embedded [-c lattice]</option>
+                        <option value="xpc">Xilinx Platform Cable USB (DLC9G / DLC10) [-c xpc]</option>
+                        <option value="tigard">Tigard FT2232H Multi-Protocol Tool [-c tigard]</option>
+                        <option value="busblaster">Dangerous Prototypes Bus Blaster [-c busblaster]</option>
+                        <option value="flyswatter">TinCanTools Flyswatter / Flyswatter 2 [-c flyswatter]</option>
+                        <option value="all">Auto-Detect / Any Supported JTAG Adapter</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <button class="flasher-action-btn" id="flasher-jtag-pair-btn" onclick="connectJtagDevice()" style="width:100%; height:38px;" title="Pair with JTAG adapter via WebUSB">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        <span id="flasher-jtag-pair-label">Pair & Connect JTAG Adapter (WebUSB)</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- JTAG Header Wiring Reference Box -->
+                  <div class="flasher-info-box" style="margin-top:2px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                      <strong id="flasher-jtag-pinout-title" style="color:var(--text-main); font-size:0.72rem;">Raspberry Pi Pico (pico-dirtyJtag) &rarr; Brainfuino JTAG:</strong>
+                      <span style="color:var(--accent-indigo); font-size:0.68rem; font-weight:600;">MachXO2 Flash Mode (-f)</span>
+                    </div>
+                    <div id="flasher-jtag-pinout-pins" style="display:flex; gap:16px; flex-wrap:wrap; font-size:0.68rem; font-family:'Roboto Mono', monospace;">
+                      <span><strong>GPIO18 (Pin 24, TCK)</strong> &rarr; TCK</span>
+                      <span><strong>GPIO19 (Pin 25, TMS)</strong> &rarr; TMS</span>
+                      <span><strong>GPIO16 (Pin 21, TDI)</strong> &rarr; TDI</span>
+                      <span><strong>GPIO17 (Pin 22, TDO)</strong> &rarr; TDO</span>
+                      <span><strong>GND (Pin 23 / 28)</strong> &rarr; GND</span>
+                      <span><strong>3V3 (Pin 36)</strong> &rarr; 3.3V / VCC</span>
+                    </div>
+                  </div>
+
+                  <!-- Collapsible openFPGALoader info -->
+                  <details style="font-size:0.68rem; color:var(--text-muted); cursor:pointer;">
+                    <summary style="font-weight:600; color:var(--text-main);">openFPGALoader & JTAG Cable Guide</summary>
+                    <div style="margin-top:6px; line-height:1.45; padding:8px 12px; background:var(--bg-sidebar); border-radius:4px;">
+                      <p style="margin-bottom:4px;"><strong>Supported WebUSB Cables:</strong> DirtyJTAG (<code>-c dirtyJtag</code>), CMSIS-DAP (<code>-c cmsisdap</code>), FTDI MPSSE (<code>-c ft2232</code>), USB-Blaster (<code>-c usbBlaster</code>), WCH CH347 (<code>-c ch347</code>), WCH CH341 (<code>-c ch341</code>), Segger J-Link (<code>-c jlink</code>), ST-Link (<code>-c stlink</code>), Digilent (<code>-c digilent</code>), Lattice (<code>-c lattice</code>), Xilinx (<code>-c xpc</code>), Tigard (<code>-c tigard</code>), Bus Blaster (<code>-c busblaster</code>), and Flyswatter (<code>-c flyswatter</code>).</p>
+                      <p style="margin-bottom:4px;"><strong>No proprietary programmer required:</strong> Use a $4 Raspberry Pi Pico running pico-dirtyJtag or any standard USB-Blaster / FTDI / CMSIS-DAP cable.</p>
+                      <p>Directly flashes Lattice MachXO2 NVCM/Flash non-volatile configuration memory in-circuit.</p>
+                    </div>
+                  </details>
+                </div>
+              </div>
+            </div>
+
+            <!-- CARD 3: FLASH EXECUTION & LIVE MONITOR -->
+            <div class="flasher-card">
+              <div class="flasher-card-header">
+                <div class="settings-card-title-group">
+                  <span class="flasher-step-num">3</span>
+                  <h3 class="settings-card-title">Flash Execution & Live Monitor</h3>
+                </div>
+                <span class="settings-card-count" id="flasher-progress-pct">0%</span>
+              </div>
+              <div class="flasher-card-body">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+                  <div style="flex:1;">
+                    <div class="flasher-progress-track">
+                      <div class="flasher-progress-bar" id="flasher-progress-bar"></div>
+                    </div>
+                  </div>
+                  <button class="flasher-action-btn" id="flasher-start-btn" onclick="startFlashingProcess()" style="min-width:180px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2v8h8l-10 12v-8H3l10-12z"></path></svg>
+                    <span id="flasher-start-label">Flash Firmware</span>
+                  </button>
+                </div>
+
+                <!-- Live Flasher Log Console -->
+                <div class="flasher-console-window" id="flasher-console-log">Ready. Select release and pair DFU device to begin in-circuit flashing.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW 4: PROGRAM WRITER & DYNAMIC LIBRARY VIEW -->
+      <div id="view-write" class="main-viewport-view" style="display: none;">
+        <!-- Header -->
+        <div class="terminal-header">
+          <div class="terminal-title">
+            <span>PROGRAM WRITER & LIBRARY</span>
+            <span class="direct-pill" id="write-lib-status-pill">LIBRARY IDLE</span>
+            <span class="terminal-stats" id="write-stats">0 Bytes | 0 BF Ops</span>
+          </div>
+          <div class="terminal-actions">
+            <button class="tool-btn" id="write-sync-lib-btn" onclick="queryDynamicLibrary()" title="Query Brainfuino program library schema (!LIB*)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              <span>Sync Library</span>
+            </button>
+            <button class="tool-btn" onclick="toggleTheme()" id="theme-btn-write" title="Toggle Light / Dark theme">
+              <svg id="theme-icon-write" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+              <span id="theme-btn-write-label">Dark Mode</span>
+            </button>
+            <button class="tool-btn" onclick="switchTab('terminal')" title="Return to Serial Terminal">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+              <span>Terminal</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Real-time Status Notification Strip -->
+        <div class="flasher-status-strip" id="write-status-strip">
+          <div class="status-strip-left">
+            <span class="status-strip-dot" id="write-strip-dot"></span>
+            <span id="write-strip-msg">Program writer ready. Select an example or write code below.</span>
+          </div>
+          <div class="status-strip-right" id="write-strip-stats">Library: Idle</div>
+        </div>
+
+        <!-- Split 2-Column Workspace Canvas -->
+        <div class="write-tab-layout" id="write-tab-layout">
+          <!-- LEFT COLUMN: WRITE EDITOR + LIBRARY -->
+          <div class="write-left-column">
+            <!-- TOP CARD: PROGRAM WRITE & FLASH -->
+            <div class="flasher-card">
+              <div class="flasher-card-header">
+                <div class="settings-card-title-group">
+                  <span class="settings-card-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                  </span>
+                  <h3 class="settings-card-title">Write Brainfuck Program</h3>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span class="settings-card-count" id="write-size-badge">0 B</span>
+                  <span class="settings-card-count" id="write-prune-badge">100% Code</span>
+                </div>
+              </div>
+
+              <div class="flasher-card-body" style="gap:10px;">
+                <!-- Title Row & Editor Utilities Toolbar -->
+                <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap;">
+                  <div style="flex:1; min-width:180px;">
+                    <label class="flasher-label-prominent" for="write-prog-name">Program Title (for Library slot)</label>
+                    <input type="text" id="write-prog-name" class="flasher-input-hero" placeholder="e.g. Mandelbrot" maxlength="15" value="MyProgram" />
+                  </div>
+                  <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                    <button class="tool-btn" onclick="loadDefaultLogoToEditor()" title="Load Brainfuino Banner into editor">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                      <span>Load Demo</span>
+                    </button>
+                    <button class="tool-btn" onclick="pruneEditorComments()" title="Strip all non-Brainfuck comment characters">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                      <span>Strip Comments</span>
+                    </button>
+                    <button class="tool-btn" onclick="clearWriteEditor()" title="Clear editor content">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                      <span>Clear</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Compact In-Box File Loader -->
+                <div class="write-file-dropzone" id="write-file-dropzone" onclick="document.getElementById('write-file-input').click()" ondragover="handleWriteDragOver(event)" ondragleave="handleWriteDragLeave(event)" ondrop="handleWriteDrop(event)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                  <span style="font-weight:600; font-size:0.73rem; color:var(--text-main);">Drop .b / .bf file here or click to browse</span>
+                  <span style="font-size:0.67rem; color:var(--text-muted);">(loads directly into editor)</span>
+                  <input type="file" id="write-file-input" accept=".b,.bf,.txt" style="display:none;" onchange="handleWriteFileInput(event)">
+                </div>
+
+                <div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <label class="flasher-label-prominent" style="margin:0;" for="write-code-area">Source Code (.b / .bf)</label>
+                    <div style="font-size:0.68rem; color:var(--text-muted);" id="write-editor-meta">0 chars | 0 lines</div>
+                  </div>
+                  <textarea id="write-code-area" class="write-editor-textarea" style="height:105px; min-height:75px; max-height:280px; resize:vertical;" placeholder="Paste or type Brainfuck source code here, drop a file above, or select an example from the left sidebar..." oninput="updateWriteCodeStats()"></textarea>
+                </div>
+
+                <!-- Action Button Row -->
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+                  <button class="btn-primary-action" id="btn-write-run" onclick="executeWriteLiveRun()" style="min-width:130px;" title="Send code and execute immediately on soft-processor">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    <span>Write (Live Run)</span>
+                  </button>
+                  <button class="btn-primary-action" id="btn-write-lib-test" onclick="executeWriteToLibrary(true)" style="min-width:165px; background:linear-gradient(135deg, #10b981 0%, #059669 100%);" title="Flash to library and run 10-second interactive verification before permanent save">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                    <span>Write to Library (with Test)</span>
+                  </button>
+                  <button class="btn-primary-action" id="btn-write-lib-notest" onclick="executeWriteToLibrary(false)" style="min-width:165px; background:linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);" title="Flash directly to library slot without 10-second verification test">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                    <span>Write to Library (no Test)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- CARD 2: HARDWARE PROGRAM LIBRARY MANAGER -->
+            <div class="flasher-card">
+              <div class="flasher-card-header">
+                <div class="settings-card-title-group">
+                  <span class="settings-card-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                  </span>
+                  <h3 class="settings-card-title">Brainfuino Program Library</h3>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <button class="tool-btn" id="write-sync-lib-btn" onclick="queryDynamicLibrary()" style="padding:2px 7px; font-size:0.68rem;" title="Query programs from Brainfuino Flash (!LIB*)">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                    <span>Sync</span>
+                  </button>
+                  <span class="settings-card-count" id="lib-slots-count">0 / 64 Slots</span>
+                  <span class="settings-card-count" id="lib-usage-badge">0 B / 44 kB</span>
+                </div>
+              </div>
+
+              <div class="flasher-card-body" style="gap:12px;">
+                <!-- Library Storage Bar -->
+                <div class="lib-storage-container">
+                  <div style="display:flex; justify-content:space-between; font-size:0.70rem; color:var(--text-muted); margin-bottom:4px;">
+                    <span>STM32 Flash Storage Pool (44 kB)</span>
+                    <span id="lib-storage-text">0.0 kB used (0%)</span>
+                  </div>
+                  <div class="lib-storage-track">
+                    <div class="lib-storage-fill" id="lib-storage-fill" style="width: 0%;"></div>
+                  </div>
+                </div>
+
+                <!-- Program List Table -->
+                <div class="lib-programs-table-wrapper">
+                  <table class="lib-programs-table">
+                    <thead>
+                      <tr>
+                        <th style="width:55px;">Slot</th>
+                        <th>Program Name</th>
+                        <th style="width:90px;">Size</th>
+                        <th style="width:80px;">Status</th>
+                        <th style="width:200px; text-align:right;">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody id="lib-programs-tbody">
+                      <tr>
+                        <td colspan="5" style="text-align:center; padding:24px; color:var(--text-muted);">
+                          Connect Brainfuino and click "Sync" to query programs (!LIB*)...
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT COLUMN: EXECUTION & VERIFICATION MONITOR -->
+          <div class="write-right-column">
+            <!-- CARD 3: EXECUTION & VERIFICATION MONITOR (PERMANENT) -->
+            <div class="flasher-card monitor-card" id="verify-monitor-card">
+              <div class="flasher-card-header">
+                <div class="settings-card-title-group">
+                  <span class="settings-card-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+                  </span>
+                  <h3 class="settings-card-title">Execution & Verification Monitor</h3>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span class="status-strip-dot" id="verify-status-dot"></span>
+                  <span class="verify-countdown-badge" id="verify-countdown-badge">IDLE</span>
+                </div>
+              </div>
+
+              <div class="flasher-card-body monitor-card-body">
+                <div class="monitor-subbar">
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span id="verify-monitor-sub">Soft-processor serial stream</span>
+                    <span class="tree-guide">|</span>
+                    <span id="verify-monitor-stats" style="font-family:'Roboto Mono', monospace; font-size:0.68rem; color:var(--text-dim);">0 B received</span>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <label class="toggle-row" style="margin:0; font-size:0.68rem; gap:4px;" title="Automatically scroll to bottom on new output">
+                      <span>Autoscroll</span>
+                      <input type="checkbox" id="verify-autoscroll-chk" checked />
+                    </label>
+                    <button class="tool-btn" onclick="clearVerifyTerminal()" title="Clear monitor output" style="padding:2px 7px; font-size:0.68rem;">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                      <span>Clear</span>
+                    </button>
+                    <button class="tool-btn" id="btn-verify-abort" onclick="abortVerification()" style="border-color:#ef4444; color:#ef4444; display:none; padding:2px 7px; font-size:0.68rem;" title="Abort test, restore default demo, and discard">
+                      <span>Cancel Test</span>
+                    </button>
+                    <button class="btn-primary-action" id="btn-verify-commit" onclick="commitVerificationNow()" style="background:linear-gradient(135deg, #10b981 0%, #059669 100%); display:none; padding:3px 9px; font-size:0.70rem;" title="Commit and permanently save program to library now">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      <span>Save Now</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Progress bar for 10s countdown (shown during active test) -->
+                <div class="verify-progress-track" id="verify-progress-track" style="opacity: 0.25;">
+                  <div class="verify-progress-fill" id="verify-progress-fill" style="width: 0%;"></div>
+                </div>
+
+                <!-- Output Screen (Styled identically to main terminal) -->
+                <div id="verify-terminal-screen" class="verify-terminal-screen" tabindex="0"></div>
+
+                <!-- Bottom Command Input Bar -->
+                <div class="monitor-input-bar">
+                  <div class="mode-badge" id="verify-mode-badge" onclick="cycleVerifyInputMode()" title="Click to toggle Direct / Line mode" style="font-size:0.65rem; padding:3px 6px;">
+                    Mode: Direct
+                  </div>
+                  <div class="input-wrapper">
+                    <input type="text" id="verify-cmd-input" placeholder="Click monitor for direct keys, or type here..." autocomplete="off" style="padding:5px 8px; font-size:0.74rem;" />
+                  </div>
+                  <button class="btn-send" onclick="sendVerifyInputBox()" style="padding:5px 10px; font-size:0.72rem;">Send</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- QGC-Style Toast Notification Container -->
+  <div id="qgc-toast-container"></div>
+
+  <!-- QGC-Style System Message History Drawer -->
+  <div id="qgc-history-panel" role="dialog" aria-label="System Message History">
+    <div class="qgc-history-header">
+      <span class="qgc-history-title">SYSTEM MESSAGES</span>
+      <div class="qgc-history-actions">
+        <button class="qgc-btn-xs" onclick="clearMessageHistory()">Clear</button>
+        <button class="qgc-btn-xs" onclick="toggleMessageHistory(false)" title="Close history panel">✕</button>
+      </div>
+    </div>
+    <div class="qgc-history-body" id="qgc-history-list">
+      <div class="qgc-history-empty" id="qgc-history-empty">No messages recorded in session</div>
+    </div>
+  </div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
