@@ -180,6 +180,9 @@ volatile uint8_t menu_exit_requested = 0;
 volatile uint8_t menu_exit_save_choice = 0;
 volatile int8_t  menu_action_pending = -1;
 volatile int8_t  menu_action_dir = 1; // +1 = Right/Enter/Space, -1 = Left
+volatile uint8_t  menu_esc_len = 0;
+uint8_t           menu_esc_buf[8];
+volatile uint32_t menu_esc_tick = 0;
 
 // Library Add Program state machine
 volatile uint8_t lib_add_substate = LIB_ADD_NAME;
@@ -2119,6 +2122,59 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		while (idx < len && (buff[idx] == ' ' || buff[idx] == '\t')) idx++;
 		if (idx >= len) return 1;
 
+		// 0. ANSI Escape Sequence Reassembly (handles packet fragmentation across USB microframes)
+		if (menu_esc_len > 0){
+			while (idx < len && menu_esc_len < sizeof(menu_esc_buf) - 1){
+				menu_esc_buf[menu_esc_len++] = buff[idx++];
+			}
+			if (menu_esc_len >= 3 && (menu_esc_buf[1] == '[' || menu_esc_buf[1] == 'O')){
+				if (menu_esc_buf[2] == 'A'){ // Up Arrow
+					menu_cursor--;
+					if (menu_cursor < 0) menu_cursor = count - 1;
+					menu_needs_render = 1;
+					menu_esc_len = 0;
+					return 1;
+				}
+				else if (menu_esc_buf[2] == 'B'){ // Down Arrow
+					menu_cursor++;
+					if (menu_cursor >= count) menu_cursor = 0;
+					menu_needs_render = 1;
+					menu_esc_len = 0;
+					return 1;
+				}
+				else if (menu_esc_buf[2] == 'C'){ // Right Arrow -> cycle forward in Settings only
+					if (menu_page == MENU_PAGE_SETTINGS && menu_cursor < count - 1){
+						menu_action_pending = menu_cursor;
+						menu_action_dir = 1;
+					}
+					menu_esc_len = 0;
+					return 1;
+				}
+				else if (menu_esc_buf[2] == 'D'){ // Left Arrow -> cycle backward in Settings only
+					if (menu_page == MENU_PAGE_SETTINGS && menu_cursor < count - 1){
+						menu_action_pending = menu_cursor;
+						menu_action_dir = -1;
+					}
+					menu_esc_len = 0;
+					return 1;
+				}
+				else if (menu_esc_buf[2] == '3' && menu_esc_len >= 4 && menu_esc_buf[3] == '~'){ // VT100 Delete Key
+					if (menu_page == MENU_PAGE_LIBRARY && menu_cursor < lib_display_count){
+						uint8_t slot = lib_display_slots[menu_cursor];
+						if (slot > 0){
+							lib_delete_pending_slot = slot;
+						}
+					}
+					menu_esc_len = 0;
+					return 1;
+				}
+			}
+			if (menu_esc_len < 3){
+				return 1;
+			}
+			menu_esc_len = 0;
+		}
+
 		// 1. ANSI / VT100 arrow keys & Escape
 		if (buff[idx] == 0x1B){
 			if (idx + 2 < len && (buff[idx+1] == '[' || buff[idx+1] == 'O')){
@@ -2158,6 +2214,16 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 					return 1;
 				}
 			}
+			else if (idx + 2 >= len){
+				// Incomplete escape sequence (packet split across USB boundaries): buffer and wait for next packet
+				menu_esc_len = 0;
+				while (idx < len && menu_esc_len < sizeof(menu_esc_buf) - 1){
+					menu_esc_buf[menu_esc_len++] = buff[idx++];
+				}
+				menu_esc_tick = HAL_GetTick();
+				return 1;
+			}
+
 			// Standalone ESC: back to parent menu or exit
 			if (menu_page == MENU_PAGE_SETTINGS || menu_page == MENU_PAGE_LIBRARY){
 				menu_page = MENU_PAGE_MAIN;
@@ -2842,7 +2908,28 @@ int main(void)
 
 	  // 2. Interactive Configuration Menu handling (Thread Mode)
 	  if (state == STATE_CONFIG){
-		  if (menu_exit_requested){
+		  // Check if a standalone ESC timed out (no bracket arrived within 40ms)
+		  if (menu_esc_len > 0 && ((HAL_GetTick() - menu_esc_tick) >= 40)){
+			  menu_esc_len = 0;
+			  if (menu_page == MENU_PAGE_SETTINGS || menu_page == MENU_PAGE_LIBRARY){
+				  menu_page = MENU_PAGE_MAIN;
+				  menu_cursor = 0;
+				  menu_needs_render = 1;
+			  } else if (menu_page == MENU_PAGE_CONFIRM_EXIT){
+				  menu_page = MENU_PAGE_MAIN;
+				  menu_cursor = 0;
+				  menu_needs_render = 1;
+			  } else {
+				  if (settings_dirty){
+					  menu_page = MENU_PAGE_CONFIRM_EXIT;
+					  menu_needs_render = 1;
+				  } else {
+					  menu_exit_requested = 1;
+					  menu_exit_save_choice = 0;
+				  }
+			  }
+		  }
+		  else if (menu_exit_requested){
 			  menu_exit_requested = 0;
 			  menu_exit(menu_exit_save_choice);
 		  }
