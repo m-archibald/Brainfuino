@@ -71,6 +71,12 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
         'loadDefaultLogoToEditor',
         'pruneEditorComments',
         'clearWriteEditor',
+        'handleTerminalDragOver',
+        'handleTerminalDragLeave',
+        'handleTerminalDrop',
+        'handleTerminalFileInput',
+        'handleTerminalCodeFile',
+        'handleWriteCodeFileClick',
         'handleWriteDragOver',
         'handleWriteDragLeave',
         'handleWriteDrop',
@@ -319,6 +325,34 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
       expect(() => win.queryClockSpeed()).not.toThrow();
       expect(() => win.stepClockUp()).not.toThrow();
       expect(() => win.stepClockDown()).not.toThrow();
+    });
+
+    it('handles terminal drag-and-drop overlay and write code file button', () => {
+      const overlay = document.getElementById('terminal-drop-overlay');
+      expect(overlay).not.toBeNull();
+
+      // Drag over shows overlay
+      const dragOverEvent = new Event('dragover', { bubbles: true });
+      win.handleTerminalDragOver(dragOverEvent);
+      expect(overlay!.style.display).toBe('flex');
+
+      // Drag leave hides overlay
+      const dragLeaveEvent = new Event('dragleave', { bubbles: true });
+      win.handleTerminalDragLeave(dragLeaveEvent);
+      // Drop also hides overlay
+      const dropEvent = new Event('drop', { bubbles: true });
+      win.handleTerminalDrop(dropEvent);
+      expect(overlay!.style.display).toBe('none');
+
+      // Write code file button exists
+      const writeBtn = document.getElementById('btn-write-code-file');
+      expect(writeBtn).not.toBeNull();
+      const fileInput = document.getElementById('terminal-file-input') as HTMLInputElement;
+      expect(fileInput).not.toBeNull();
+
+      const clickSpy = vi.spyOn(fileInput, 'click');
+      win.handleWriteCodeFileClick();
+      expect(clickSpy).toHaveBeenCalled();
     });
   });
 });

@@ -55,6 +55,9 @@ jobs:
       - name: Build documentation
         run: |
           mkdocs build -f documentation/mkdocs.yml
+          cp tools/web-terminal/index.html documentation/site/web-terminal.html
+          mkdir -p documentation/site/tools/terminal
+          cp tools/web-terminal/index.html documentation/site/tools/terminal/web-terminal.html
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

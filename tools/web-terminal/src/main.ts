@@ -3236,6 +3236,97 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
       }
     }
 
+    // --- Drag & Drop for Main Terminal View ---
+    function handleTerminalDragOver(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const overlay = document.getElementById('terminal-drop-overlay');
+      if (overlay) overlay.style.display = 'flex';
+    }
+
+    function handleTerminalDragLeave(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const viewTerm = document.getElementById('view-terminal');
+      if (viewTerm && e.relatedTarget && !viewTerm.contains(e.relatedTarget)) {
+        const overlay = document.getElementById('terminal-drop-overlay');
+        if (overlay) overlay.style.display = 'none';
+      }
+    }
+
+    function handleTerminalDrop(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const overlay = document.getElementById('terminal-drop-overlay');
+      if (overlay) overlay.style.display = 'none';
+
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleTerminalCodeFile(e.dataTransfer.files[0]);
+      }
+    }
+
+    function handleWriteCodeFileClick() {
+      const input = document.getElementById('terminal-file-input');
+      if (input) input.click();
+    }
+
+    function handleTerminalFileInput(e) {
+      const target = e.target;
+      if (target && target.files && target.files.length > 0) {
+        handleTerminalCodeFile(target.files[0]);
+        target.value = '';
+      }
+    }
+
+    async function handleTerminalCodeFile(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const text = (event.target && event.target.result) || '';
+        if (!text.trim()) {
+          postSystemMessage('Selected file is empty.', 'warn');
+          return;
+        }
+
+        // Populate Write tab editor as well
+        const area = document.getElementById('write-code-area');
+        const nameInput = document.getElementById('write-prog-name');
+        if (area) area.value = text;
+        if (nameInput) nameInput.value = file.name.replace(/\.[^/.]+$/, '').slice(0, 15);
+        if (typeof updateWriteCodeStats === 'function') updateWriteCodeStats();
+
+        if (!port || !writer) {
+          postSystemMessage(`Loaded '${file.name}' (${text.length} B). Connect Brainfuino to flash and run.`, 'info');
+          appendTextToTerminal(terminalScreen, `\r\n\x1b[33m[LOADED] '${file.name}' (${text.length} bytes) loaded into editor. Connect Brainfuino to run.\x1b[0m\r\n`, mainTerminalState);
+          return;
+        }
+
+        postSystemMessage(`Flashing '${file.name}' (${text.length} B) to Brainfuino ROM...`, 'info');
+        appendTextToTerminal(terminalScreen, `\r\n\x1b[36m[WRITE] Streaming '${file.name}' (${text.length} B) to Brainfuino ROM...\x1b[0m\r\n`, mainTerminalState);
+
+        // Ensure Auto-Program on Paste is enabled on companion MCU
+        await sendCmd('!SET:12=1\r\n');
+        await new Promise(r => setTimeout(r, 40));
+
+        // Pulse soft reset and stream code payload
+        await sendCmd('!RST\r\n');
+        await new Promise(r => setTimeout(r, 80));
+
+        const enc = new TextEncoder();
+        const chunkSize = 128;
+        for (let i = 0; i < text.length; i += chunkSize) {
+          const chunk = text.slice(i, i + chunkSize);
+          await writer.write(enc.encode(chunk));
+          await new Promise(r => setTimeout(r, 4));
+        }
+        await writer.write(enc.encode('\r\n'));
+
+        postSystemMessage(`Program '${file.name}' running on Brainfuino!`, 'success');
+        appendTextToTerminal(terminalScreen, `\x1b[32m[DONE] '${file.name}' flashed and executing on soft-processor!\x1b[0m\r\n`, mainTerminalState);
+      };
+      reader.readAsText(file);
+    }
+
     // Drag & Drop for Write tab
     function handleWriteDragOver(e) {
       e.preventDefault();
@@ -3516,6 +3607,10 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
       }
       clearVerifyTerminal();
       appendVerifyTerminalText(`--- Live Run: Writing and executing on Soft-Processor (${code.length} bytes) ---\r\n`);
+
+      // Ensure Auto-Program on Paste is enabled on companion MCU
+      await sendCmd('!SET:12=1\r\n');
+      await new Promise(r => setTimeout(r, 40));
 
       // Pulse soft reset and stream code payload
       await sendCmd('!RST\r\n');
@@ -4021,6 +4116,12 @@ Object.assign(window, {
   loadDefaultLogoToEditor,
   pruneEditorComments,
   clearWriteEditor,
+  handleTerminalDragOver,
+  handleTerminalDragLeave,
+  handleTerminalDrop,
+  handleTerminalFileInput,
+  handleTerminalCodeFile,
+  handleWriteCodeFileClick,
   handleWriteDragOver,
   handleWriteDragLeave,
   handleWriteDrop,

@@ -2137,4 +2137,51 @@
       border-top: 1px solid var(--border-main);
       padding-top: 8px;
       flex-shrink: 0;
-    }
+    }
+
+    /* Terminal View Drag & Drop Overlay */
+    .terminal-drop-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.78);
+      backdrop-filter: blur(2px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 99;
+      pointer-events: none;
+    }
+
+    .terminal-drop-box {
+      background: var(--bg-card);
+      border: 2px dashed var(--accent-indigo);
+      border-radius: 12px;
+      padding: 32px 40px;
+      text-align: center;
+      color: var(--text-main);
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+      animation: pulse-drop 1.5s ease-in-out infinite alternate;
+    }
+
+    @keyframes pulse-drop {
+      from { transform: scale(0.98); }
+      to { transform: scale(1.02); }
+    }
+
+    .terminal-drop-box svg {
+      color: var(--accent-indigo);
+      margin-bottom: 10px;
+    }
+
+    .terminal-drop-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .terminal-drop-sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+

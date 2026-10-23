@@ -12,20 +12,10 @@ export default defineConfig({
       name: 'copy-bundles',
       closeBundle() {
         const distFile = path.resolve(__dirname, 'dist/index.html');
-        const targets = [
-          path.resolve(__dirname, 'index.html'),
-          path.resolve(__dirname, '../../documentation/docs/tools/terminal/web-terminal.html'),
-          path.resolve(__dirname, '../../documentation/docs/web-terminal.html'),
-          path.resolve(__dirname, '../../documentation/docs/tools/web-terminal.html'),
-        ];
+        const rootIndex = path.resolve(__dirname, 'index.html');
         if (fs.existsSync(distFile)) {
-          for (const target of targets) {
-            const dir = path.dirname(target);
-            if (fs.existsSync(dir)) {
-              fs.copyFileSync(distFile, target);
-            }
-          }
-          console.log('[copy-bundles] Updated root index.html and all documentation web-terminal.html targets');
+          fs.copyFileSync(distFile, rootIndex);
+          console.log('[copy-bundles] Updated single production index.html at tools/web-terminal/index.html');
         }
       }
     }

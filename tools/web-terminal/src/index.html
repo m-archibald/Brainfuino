@@ -118,6 +118,11 @@
             <button class="action-btn" onclick="sendCmd('!MENU\r\n')" title="Open Interactive Menu">!MENU</button>
             <button class="action-btn" onclick="sendCmd('!DUMP\r\n')" title="Dump Program ROM (!DUMP)">!DUMP</button>
           </div>
+          <button class="action-btn" id="btn-write-code-file" style="width:100%; margin-top:6px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="handleWriteCodeFileClick()" title="Select a .b / .bf file to write and run on Brainfuino">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            <span>Write Code File</span>
+          </button>
+          <input type="file" id="terminal-file-input" accept=".b,.bf,.txt" style="display:none;" onchange="handleTerminalFileInput(event)">
 
           <h4 style="margin-top:10px;">FPGA Clock Frequency</h4>
           <div class="clock-control-panel">
@@ -258,7 +263,16 @@
     <!-- Right Main Panel: White Terminal Area & Rendered Settings Page -->
     <main class="terminal-container" id="main-viewport">
       <!-- VIEW 1: SERIAL TERMINAL CONSOLE -->
-      <div id="view-terminal" class="main-viewport-view">
+      <div id="view-terminal" class="main-viewport-view" ondragover="handleTerminalDragOver(event)" ondragleave="handleTerminalDragLeave(event)" ondrop="handleTerminalDrop(event)">
+        <!-- Drag & Drop Overlay for Main Terminal -->
+        <div id="terminal-drop-overlay" class="terminal-drop-overlay" style="display:none;">
+          <div class="terminal-drop-box">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            <div class="terminal-drop-title">Drop Brainfuck Code File (.b / .bf)</div>
+            <div class="terminal-drop-sub">Stream code to Brainfuino ROM and execute live</div>
+          </div>
+        </div>
+
         <div class="terminal-header">
           <div class="terminal-title">
             <span>TERMINAL CONSOLE</span>
