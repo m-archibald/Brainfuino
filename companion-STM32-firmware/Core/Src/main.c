@@ -131,7 +131,7 @@ TIM_HandleTypeDef htim1;
 
 extern USBD_HandleTypeDef hUsbDeviceFS;
 uint8_t out_pending;
-uint8_t code_dump;
+volatile uint8_t code_dump;
 uint8_t state;
 uint8_t freq;
 uint8_t serial_input;
@@ -3405,12 +3405,18 @@ int main(void)
 		  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
 		  HAL_Delay(10);
 
+		  initROMProgramming();
+		  setDataBusModeInput();
+		  wait(1000);
+
 		  uint8_t dump_chunk[64];
 		  uint32_t dump_len = 0;
+		  uint32_t total_dumped = 0;
 		  for(uint32_t addr = 0; addr < FLASH_CAPACITY; addr++){
-			  uint8_t b = readROM(addr);
+			  uint8_t b = LLReadROMFast(addr);
 			  if (b == 0xFF) break;
 			  dump_chunk[dump_len++] = b;
+			  total_dumped++;
 			  if (dump_len == sizeof(dump_chunk)){
 				  CDC_Write(dump_chunk, dump_len);
 				  dump_len = 0;
@@ -3418,6 +3424,11 @@ int main(void)
 		  }
 		  if (dump_len > 0){
 			  CDC_Write(dump_chunk, dump_len);
+		  }
+		  if (total_dumped == 0){
+			  CDC_Print("[ROM Empty: No program in Flash]\r\n");
+		  } else {
+			  CDC_Print("\r\n");
 		  }
 
 		  if(state==STATE_RUN){
