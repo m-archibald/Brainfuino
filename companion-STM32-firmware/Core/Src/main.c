@@ -1746,7 +1746,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		return 1;
 	}
 
-	if (is_prefix_ci(buff, len, "!RESET") || is_prefix_ci(buff, len, "!RST")){
+	if (is_prefix_ci(buff, len, "!RESET") || is_prefix_ci(buff, len, "!RST") || is_prefix_ci(buff, len, "!RUN")){
 		reset_requested = 1;
 		return 1;
 	}
@@ -3405,6 +3405,8 @@ int main(void)
 		  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
 		  HAL_Delay(10);
 
+		  CDC_Print("[Firmware Dump]\r\n\r\n");
+
 		  initROMProgramming();
 		  setDataBusModeInput();
 		  wait(1000);
@@ -3431,14 +3433,11 @@ int main(void)
 			  CDC_Print("\r\n");
 		  }
 
-		  if(state==STATE_RUN){
-			  initROMNormal();
-			  HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
-			  HAL_Delay(10);
-			  if(HAL_GPIO_ReadPin(BRD_RST_GPIO_Port, BRD_RST_Pin))  // if RST button pressed, don't un-reset
-				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
-			  HAL_Delay(1);
-		  }
+		  // Return bus to normal input mode and keep FPGA in reset (do not run program)
+		  initROMNormal();
+		  HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
+		  HAL_Delay(10);
+		  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
 
 		  code_dump = 0;
 	  }
