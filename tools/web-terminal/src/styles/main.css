@@ -148,6 +148,7 @@
       gap: 5px;
       border: 1px solid var(--border-main);
       font-weight: 500;
+      white-space: nowrap;
     }
 
     .status-dot {
@@ -165,21 +166,6 @@
     .status-pill.connected .status-dot {
       background: var(--accent-green);
       box-shadow: 0 0 6px var(--accent-green);
-    }
-
-    .status-pill.waiting {
-      background: rgba(245, 158, 11, 0.12);
-      color: #f59e0b;
-      border-color: rgba(245, 158, 11, 0.3);
-    }
-    .status-pill.waiting .status-dot {
-      background: #f59e0b;
-      box-shadow: 0 0 6px #f59e0b;
-      animation: pulse-dot 1.2s infinite ease-in-out;
-    }
-    @keyframes pulse-dot {
-      0%, 100% { opacity: 0.4; transform: scale(0.85); }
-      50% { opacity: 1; transform: scale(1.15); }
     }
 
     /* Sidebar Navigation Tabs */
@@ -244,15 +230,31 @@
     .connection-panel {
       padding: 12px 14px;
       border-bottom: 1px solid var(--border-main);
+      position: relative;
     }
 
-    .btn-connect {
+    .connect-split-btn {
+      display: flex;
+      align-items: stretch;
       width: 100%;
-      padding: 8px 12px;
       border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      background: var(--accent-indigo);
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+
+    .connect-split-btn.connected {
+      background: var(--accent-red);
+    }
+
+    .connect-split-btn .btn-connect {
+      flex: 1;
+      padding: 8px 10px 8px 12px;
+      border-radius: 0;
       font-size: 0.78rem;
       font-weight: 600;
-      background: var(--accent-indigo);
+      background: transparent;
       color: #ffffff;
       border: none;
       cursor: pointer;
@@ -260,18 +262,205 @@
       align-items: center;
       justify-content: center;
       gap: 7px;
-      transition: background 0.15s, transform 0.05s;
+      transition: background 0.15s;
+      white-space: nowrap;
     }
 
-    .btn-connect:hover {
+    .connect-split-btn .btn-connect:hover {
+      background: rgba(0, 0, 0, 0.12);
+    }
+
+    .connect-split-btn .btn-connect-dropdown {
+      width: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      border-left: 1px solid rgba(255, 255, 255, 0.25);
+      color: #ffffff;
+      cursor: pointer;
+      padding: 0;
+      transition: background 0.15s;
+    }
+
+    .connect-split-btn .btn-connect-dropdown:hover {
+      background: rgba(0, 0, 0, 0.15);
+    }
+
+    #connect-dropdown-chevron {
+      transition: transform 0.2s ease;
+      display: block;
+    }
+
+    /* Betaflight-style Dropdown Menu */
+    .connect-dropdown-menu {
+      position: absolute;
+      top: calc(100% - 2px);
+      left: 14px;
+      right: 14px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+      z-index: 1050;
+      padding: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .connect-dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 8px 10px;
+      border: none;
+      background: transparent;
+      border-radius: 5px;
+      font-size: 0.74rem;
+      font-family: inherit;
+      color: var(--text-main);
+      text-align: left;
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+      user-select: none;
+    }
+
+    .connect-dropdown-item:hover {
+      background: var(--bg-sidebar-hover);
+    }
+
+    .connect-dropdown-item svg {
+      flex-shrink: 0;
+      color: var(--text-muted);
+    }
+
+    .connect-dropdown-divider {
+      height: 1px;
+      background: var(--border-main);
+      margin: 4px 2px;
+    }
+
+    .connect-dropdown-check-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .dropdown-checkmark {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--accent-green);
+      line-height: 1;
+    }
+
+    .dropdown-checkmark.hidden {
+      visibility: hidden;
+    }
+
+    /* Modal Dialog */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(2px);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .modal-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: 10px;
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.25);
+      max-width: 520px;
+      width: 100%;
+      overflow: hidden;
+      animation: modal-fade-in 0.15s ease-out;
+    }
+
+    @keyframes modal-fade-in {
+      from { opacity: 0; transform: translateY(-10px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .modal-header {
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-main);
+    }
+
+    .modal-title {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .modal-close-btn {
+      background: transparent;
+      border: none;
+      font-size: 1.3rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      line-height: 1;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .modal-close-btn:hover {
+      background: var(--bg-sidebar-hover);
+      color: var(--text-main);
+    }
+
+    .modal-body {
+      padding: 18px;
+      font-size: 0.80rem;
+      color: var(--text-muted);
+    }
+
+    .modal-body strong {
+      color: var(--text-main);
+    }
+
+    .modal-body code {
+      font-family: "Roboto Mono", monospace;
+      font-size: 0.75rem;
+      background: var(--badge-bg);
+      color: var(--text-main);
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+
+    .modal-footer {
+      padding: 12px 18px;
+      border-top: 1px solid var(--border-main);
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .modal-footer .btn-primary {
+      padding: 6px 16px;
+      border-radius: 5px;
+      background: var(--accent-indigo);
+      color: #fff;
+      font-size: 0.78rem;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+    }
+
+    .modal-footer .btn-primary:hover {
       background: var(--accent-indigo-hover);
-    }
-
-    .btn-connect.connected {
-      background: var(--accent-red);
-    }
-    .btn-connect.connected:hover {
-      background: #b91c1c;
     }
 
     /* Sidebar Content Sections */

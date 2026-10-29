@@ -59,6 +59,18 @@
       return !!(autoconnectChk && autoconnectChk.checked);
     }
 
+    function syncAutoConnectUI() {
+      const enabled = isAutoConnectEnabled();
+      if (autoconnectChk) {
+        autoconnectChk.checked = enabled;
+      }
+      const checkEl = document.getElementById('dropdown-autoconnect-check');
+      if (checkEl) {
+        checkEl.classList.toggle('hidden', !enabled);
+        checkEl.style.visibility = enabled ? 'visible' : 'hidden';
+      }
+    }
+
     if (autoconnectChk) {
       const savedAutoConnect = localStorage.getItem('bf_auto_reconnect');
       autoconnectChk.checked = (savedAutoConnect === null || savedAutoConnect === '1');
@@ -68,6 +80,7 @@
       autoconnectChk.addEventListener('change', () => {
         localStorage.setItem('bf_auto_reconnect', autoconnectChk.checked ? '1' : '0');
         manualDisconnect = false;
+        syncAutoConnectUI();
         if (autoconnectChk.checked && !port) {
           updateConnectionUI(false);
           attemptAutoConnect();
@@ -76,6 +89,100 @@
         }
       });
     }
+
+    function toggleConnectDropdown(event?: Event) {
+      if (event && typeof event.stopPropagation === 'function') {
+        event.stopPropagation();
+      }
+      const menu = document.getElementById('connect-dropdown-menu');
+      const chevron = document.getElementById('connect-dropdown-chevron');
+      if (!menu) return;
+      const isClosed = menu.style.display === 'none' || !menu.style.display;
+      if (isClosed) {
+        syncAutoConnectUI();
+        menu.style.display = 'flex';
+        if (chevron) chevron.style.transform = 'rotate(180deg)';
+      } else {
+        menu.style.display = 'none';
+        if (chevron) chevron.style.transform = 'rotate(0deg)';
+      }
+    }
+
+    function closeConnectDropdown() {
+      const menu = document.getElementById('connect-dropdown-menu');
+      const chevron = document.getElementById('connect-dropdown-chevron');
+      if (menu && menu.style.display !== 'none') {
+        menu.style.display = 'none';
+        if (chevron) chevron.style.transform = 'rotate(0deg)';
+      }
+    }
+
+    function toggleAutoConnectFromDropdown() {
+      const next = !isAutoConnectEnabled();
+      if (autoconnectChk) {
+        autoconnectChk.checked = next;
+      }
+      try {
+        localStorage.setItem('bf_auto_reconnect', next ? '1' : '0');
+      } catch (e) {}
+      manualDisconnect = false;
+      syncAutoConnectUI();
+      updateConnectionUI(!!port);
+      if (next && !port) {
+        postSystemMessage('Auto-Connect enabled', 'info', 2000);
+        attemptAutoConnect();
+      } else {
+        postSystemMessage('Auto-Connect disabled', 'info', 2000);
+      }
+    }
+
+    async function triggerManualPortPicker() {
+      closeConnectDropdown();
+      if (port) {
+        postSystemMessage('Disconnect current connection first to pick another port', 'warning', 3000);
+        return;
+      }
+      try {
+        await connectPort();
+      } catch (err: any) {
+        console.warn('Manual port picker cancelled or failed:', err);
+      }
+    }
+
+    function showUsbTroubleshootHelp() {
+      closeConnectDropdown();
+      const modal = document.getElementById('usb-help-modal');
+      if (modal) {
+        modal.style.display = 'flex';
+      }
+    }
+
+    function closeUsbHelpModal() {
+      const modal = document.getElementById('usb-help-modal');
+      if (modal) {
+        modal.style.display = 'none';
+      }
+    }
+
+    function handleUsbBackdropClick(event?: Event) {
+      if (event && (event.target === event.currentTarget || (event as any).target?.id === 'usb-help-modal')) {
+        closeUsbHelpModal();
+      }
+    }
+
+    document.addEventListener('click', (e: MouseEvent) => {
+      const panel = document.querySelector('.connection-panel');
+      if (panel && !panel.contains(e.target as Node)) {
+        closeConnectDropdown();
+      }
+    });
+
+    document.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeConnectDropdown();
+        closeUsbHelpModal();
+      }
+    });
 
     // --- Theme Management (Light mode default) ---
     function toggleTheme() {
@@ -594,9 +701,11 @@
     }
 
     function updateConnectionUI(connected) {
+      const splitBtn = document.getElementById('connect-split-btn');
       if (connected) {
         statusPill.className = 'status-pill connected';
         statusText.textContent = 'Connected';
+        if (splitBtn) splitBtn.classList.add('connected');
         connectBtn.classList.add('connected');
         connectBtnLabel.textContent = 'Disconnect';
         terminalScreen.focus();
@@ -606,17 +715,13 @@
           if (port && writer) queryClockSpeed();
         }, 400);
       } else {
+        if (splitBtn) splitBtn.classList.remove('connected');
         connectBtn.classList.remove('connected');
         connectBtnLabel.textContent = 'Connect Brainfuino';
-
-        if (isAutoConnectEnabled() && !manualDisconnect) {
-          statusPill.className = 'status-pill waiting';
-          statusText.textContent = 'Auto-Connect: Waiting...';
-        } else {
-          statusPill.className = 'status-pill';
-          statusText.textContent = 'Disconnected';
-        }
+        statusPill.className = 'status-pill';
+        statusText.textContent = 'Disconnected';
       }
+      syncAutoConnectUI();
       if (typeof updateFlasherDeviceStatus === 'function') {
         updateFlasherDeviceStatus();
       }
@@ -4141,6 +4246,7 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
     // Initialize routing from URL hash, serial hotplug listeners, and auto-connect
     initRouteFromHash();
     initSerialHotplugListeners();
+    syncAutoConnectUI();
     if (isAutoConnectEnabled()) {
       updateConnectionUI(false);
       attemptAutoConnect();
@@ -4154,6 +4260,14 @@ function setMaxScrollbackLines(val: any) {
 // Expose all interactive event handlers to global window for HTML inline onclick/onchange attributes
 Object.assign(window, {
   toggleConnect,
+  toggleConnectDropdown,
+  closeConnectDropdown,
+  triggerManualPortPicker,
+  showUsbTroubleshootHelp,
+  closeUsbHelpModal,
+  handleUsbBackdropClick,
+  toggleAutoConnectFromDropdown,
+  syncAutoConnectUI,
   switchTab,
   setInputMode,
   sendCmd,

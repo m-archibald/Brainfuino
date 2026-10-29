@@ -35,6 +35,14 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
     it('exposes all required interactive event handlers on window', () => {
       const requiredHandlers = [
         'toggleConnect',
+        'toggleConnectDropdown',
+        'closeConnectDropdown',
+        'triggerManualPortPicker',
+        'showUsbTroubleshootHelp',
+        'closeUsbHelpModal',
+        'handleUsbBackdropClick',
+        'toggleAutoConnectFromDropdown',
+        'syncAutoConnectUI',
         'switchTab',
         'setInputMode',
         'sendCmd',
@@ -113,7 +121,7 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
         let fnMatch;
         while ((fnMatch = fnCallRegex.exec(handlerCode)) !== null) {
           const fnName = fnMatch[1];
-          if (['parseInt', 'alert', 'confirm', 'console', 'preventDefault', 'stopPropagation'].includes(fnName)) {
+          if (['if', 'while', 'for', 'parseInt', 'alert', 'confirm', 'console', 'preventDefault', 'stopPropagation'].includes(fnName)) {
             continue;
           }
           if (fnName === 'getElementById') {
@@ -356,6 +364,58 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
       const clickSpy = vi.spyOn(fileInput, 'click');
       win.handleWriteCodeFileClick();
       expect(clickSpy).toHaveBeenCalled();
+    });
+
+    it('manages Betaflight-style connection split button and dropdown menu', () => {
+      const menu = document.getElementById('connect-dropdown-menu');
+      const chevron = document.getElementById('connect-dropdown-chevron');
+      const checkEl = document.getElementById('dropdown-autoconnect-check');
+      const autoconnectChk = document.getElementById('autoconnect-chk') as HTMLInputElement;
+
+      expect(menu).not.toBeNull();
+      expect(chevron).not.toBeNull();
+      expect(checkEl).not.toBeNull();
+
+      // 1. Initially closed
+      win.closeConnectDropdown();
+      expect(menu!.style.display).toBe('none');
+
+      // 2. Open via toggleConnectDropdown
+      win.toggleConnectDropdown();
+      expect(menu!.style.display).toBe('flex');
+      expect(chevron!.style.transform).toBe('rotate(180deg)');
+
+      // 3. Close via closeConnectDropdown
+      win.closeConnectDropdown();
+      expect(menu!.style.display).toBe('none');
+      expect(chevron!.style.transform).toBe('rotate(0deg)');
+
+      // 4. Toggle auto-connect from dropdown
+      const initialSetting = win.isAutoConnectEnabled();
+      win.toggleAutoConnectFromDropdown();
+      expect(win.isAutoConnectEnabled()).toBe(!initialSetting);
+      if (autoconnectChk) {
+        expect(autoconnectChk.checked).toBe(!initialSetting);
+      }
+
+      // Revert back
+      win.toggleAutoConnectFromDropdown();
+      expect(win.isAutoConnectEnabled()).toBe(initialSetting);
+
+      // 5. USB help modal toggle
+      const modal = document.getElementById('usb-help-modal');
+      expect(modal).not.toBeNull();
+
+      win.showUsbTroubleshootHelp();
+      expect(modal!.style.display).toBe('flex');
+
+      win.closeUsbHelpModal();
+      expect(modal!.style.display).toBe('none');
+
+      // 6. Manual port picker triggers requestPort when disconnected
+      const requestPortSpy = vi.spyOn((window as any).navigator.serial, 'requestPort').mockRejectedValueOnce(new Error('User cancelled'));
+      win.triggerManualPortPicker();
+      expect(requestPortSpy).toHaveBeenCalled();
     });
   });
 });

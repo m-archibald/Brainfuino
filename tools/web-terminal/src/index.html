@@ -31,11 +31,33 @@
       </div>
 
       <!-- Global Connection Panel -->
-      <div class="connection-panel" style="padding: 10px 14px 6px;">
-        <button class="btn-connect" id="connect-btn" onclick="toggleConnect()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-          <span id="connect-btn-label">Connect Brainfuino</span>
-        </button>
+      <div class="connection-panel" style="padding: 10px 14px 6px; position: relative;">
+        <div class="connect-split-btn" id="connect-split-btn">
+          <button type="button" class="btn-connect" id="connect-btn" onclick="toggleConnect()" title="Connect / Disconnect Brainfuino">
+            <svg class="connect-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            <span id="connect-btn-label">Connect Brainfuino</span>
+          </button>
+          <button type="button" class="btn-connect-dropdown" id="connect-dropdown-btn" onclick="toggleConnectDropdown(event)" aria-label="Connection options" title="Connection options">
+            <svg id="connect-dropdown-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+        </div>
+
+        <!-- Betaflight-style Dropdown Menu -->
+        <div class="connect-dropdown-menu" id="connect-dropdown-menu" style="display: none;">
+          <button type="button" class="connect-dropdown-item" id="dropdown-manual-port-btn" onclick="triggerManualPortPicker()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+            <span>Select Port Manually...</span>
+          </button>
+          <button type="button" class="connect-dropdown-item" id="dropdown-usb-help-btn" onclick="showUsbTroubleshootHelp()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            <span>--- I can't find my USB device ---</span>
+          </button>
+          <div class="connect-dropdown-divider"></div>
+          <button type="button" class="connect-dropdown-item connect-dropdown-check-item" id="dropdown-autoconnect-btn" onclick="toggleAutoConnectFromDropdown()">
+            <span class="dropdown-item-label">Auto-Connect</span>
+            <span class="dropdown-checkmark" id="dropdown-autoconnect-check">✓</span>
+          </button>
+        </div>
       </div>
 
       <!-- Navigation Tabs (Sidebar Layout, zero emojis) -->
@@ -899,6 +921,32 @@
     </div>
     <div class="qgc-history-body" id="qgc-history-list">
       <div class="qgc-history-empty" id="qgc-history-empty">No messages recorded in session</div>
+    </div>
+  </div>
+
+  <!-- USB Troubleshooting Modal -->
+  <div id="usb-help-modal" class="modal-backdrop" style="display: none;" onclick="handleUsbBackdropClick(event)">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          <span>USB Connection Troubleshooting</span>
+        </div>
+        <button type="button" class="modal-close-btn" onclick="closeUsbHelpModal()" title="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 12px; font-weight: 500;">If your Brainfuino or STM32 device does not show up in the port selector:</p>
+        <ol style="margin-left: 20px; line-height: 1.6; display: flex; flex-direction: column; gap: 8px;">
+          <li><strong>Check your USB cable:</strong> Ensure you are using a full data USB cable. Many charging-only cables omit data lines.</li>
+          <li><strong>Check Device Manager (Windows):</strong> Look under <em>Ports (COM & LPT)</em> for <code>STMicroelectronics Virtual COM Port</code>. If it has a yellow warning icon, re-install the STM32 VCP driver or use Zadig.</li>
+          <li><strong>Port Conflict / Exclusive Lock:</strong> Close any other terminal programs or tools (such as PuTTY, Arduino IDE, STM32CubeProgrammer, or Cura) that may already have the COM port open.</li>
+          <li><strong>Hardware Reset:</strong> Press the Reset (NRST) button on your Brainfuino board to restart the USB CDC enumeration.</li>
+          <li><strong>Browser Support:</strong> Ensure you are using Google Chrome, Microsoft Edge, or Brave over HTTPS, <code>localhost</code>, or local file access with Web Serial permissions enabled.</li>
+        </ol>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-primary" onclick="closeUsbHelpModal()">Got it</button>
+      </div>
     </div>
   </div>
 
