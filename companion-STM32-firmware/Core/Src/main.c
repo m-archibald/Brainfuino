@@ -2756,21 +2756,45 @@ int main(void)
 	  // Check for soft-processor reset request
 	  if (reset_requested){
 		  reset_requested = 0;
-		  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-		  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
-		  HAL_Delay(10);
-		  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
-		  HAL_Delay(60);
-		  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-		  manual_step_ticks_pending = 0;
-		  serial_inbox_head = 0;
-		  serial_inbox_tail = 0;
-		  serial_input = 0;
-		  set_freq(freq);
-		  CDC_Printf_MCU("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
-		  if (cfg_manual_step_enabled){
-			  CDC_Printf("[Manual Step Mode Active: Press %s to step %s]\r\n",
-			             get_step_key_name(cfg_manual_step_key), get_step_ticks_name(cfg_manual_step_ticks));
+		  if (state == STATE_CONFIG){
+			  // If inside interactive menu, exit menu cleanly and resume program
+			  menu_exit(settings_dirty);
+		  } else if (state == STATE_PROGRAM){
+			  // In Program Mode: exit to run mode
+			  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+			  initROMNormal();
+			  wait(1000);
+			  HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
+			  wait(1000);
+			  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+			  HAL_Delay(10);
+			  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+			  serial_inbox_head = 0;
+			  serial_inbox_tail = 0;
+			  serial_input = 0;
+			  state = STATE_RUN;
+			  CDC_Print("\r\n[Running program]\r\n");
+		  } else {
+			  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+			  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+			  HAL_Delay(10);
+			  initROMNormal();
+			  HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
+			  wait(1000);
+			  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+			  HAL_Delay(60);
+			  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+			  manual_step_ticks_pending = 0;
+			  serial_inbox_head = 0;
+			  serial_inbox_tail = 0;
+			  serial_input = 0;
+			  state = STATE_RUN;
+			  set_freq(freq);
+			  CDC_Printf_MCU("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
+			  if (cfg_manual_step_enabled){
+				  CDC_Printf("[Manual Step Mode Active: Press %s to step %s]\r\n",
+				             get_step_key_name(cfg_manual_step_key), get_step_ticks_name(cfg_manual_step_ticks));
+			  }
 		  }
 	  }
 
