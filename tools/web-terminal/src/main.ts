@@ -3334,6 +3334,25 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
     }
 
     function renderGitHubProgramCatalog() {
+      // 1. Populate compact dropdown selector
+      const select = document.getElementById('suite-prog-select') as HTMLSelectElement;
+      if (select) {
+        const curVal = select.value;
+        let selectHtml = '';
+        GITHUB_PROGRAMS_SUITE.forEach(group => {
+          selectHtml += `<optgroup label="${escapeHtml(group.category)}">`;
+          group.programs.forEach(p => {
+            selectHtml += `<option value="${escapeHtml(p.path)}" title="${escapeHtml(p.desc)}">${escapeHtml(p.name)} (${p.size})</option>`;
+          });
+          selectHtml += `</optgroup>`;
+        });
+        select.innerHTML = selectHtml;
+        if (curVal) {
+          select.value = curVal;
+        }
+      }
+
+      // 2. Populate legacy/fallback tree if present
       const tree = document.getElementById('github-programs-tree');
       if (!tree) return;
 
@@ -3449,6 +3468,22 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
       postSystemMessage(`Program '${name}' running on Brainfuino!`, 'success');
       appendTextToTerminal(terminalScreen, `\x1b[32m[DONE] '${name}' flashed and executing on soft-processor!\x1b[0m\r\n`, mainTerminalState);
       terminalScreen.focus();
+    }
+
+    function runSelectedSuiteProgram() {
+      const select = document.getElementById('suite-prog-select') as HTMLSelectElement;
+      if (!select || !select.value) {
+        alert('Please select a program demo first.');
+        return;
+      }
+      const chosenPath = select.value;
+      for (const group of GITHUB_PROGRAMS_SUITE) {
+        const p = group.programs.find(item => item.path === chosenPath);
+        if (p) {
+          loadGitHubProgram(p.path, p.name, p.filename);
+          return;
+        }
+      }
     }
 
     // --- Drag & Drop for Main Terminal View ---
@@ -4364,6 +4399,7 @@ Object.assign(window, {
   toggleLibraryModal,
   handleLibraryModalBackdropClick,
   runSelectedQuickLibrarySlot,
+  runSelectedSuiteProgram,
   clearVerifyTerminal,
   abortVerification,
   commitVerificationNow,

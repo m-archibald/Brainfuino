@@ -95,6 +95,7 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
         'updateWriteCodeStats',
         'executeWriteLiveRun',
         'executeWriteToLibrary',
+        'runSelectedSuiteProgram',
         'clearVerifyTerminal',
         'abortVerification',
         'commitVerificationNow',
@@ -234,6 +235,27 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
 
       expect(nameInput.value).toBe('fibonacci');
       expect(codeArea.value.length).toBeGreaterThan(100);
+    });
+
+    it('populates compact suite program select dropdown and runs selected demo', async () => {
+      win.renderGitHubProgramCatalog();
+      const select = document.getElementById('suite-prog-select') as HTMLSelectElement;
+      expect(select).not.toBeNull();
+
+      const optgroups = select.querySelectorAll('optgroup');
+      expect(optgroups.length).toBe(5);
+
+      const options = select.querySelectorAll('option');
+      expect(options.length).toBe(11);
+
+      // Select banner.b and run
+      select.value = 'basic/banner.b';
+      await win.runSelectedSuiteProgram();
+
+      const nameInput = document.getElementById('write-prog-name') as HTMLInputElement;
+      const codeArea = document.getElementById('write-code-area') as HTMLTextAreaElement;
+      expect(nameInput.value).toBe('banner');
+      expect(codeArea.value.length).toBeGreaterThan(20);
     });
   });
 

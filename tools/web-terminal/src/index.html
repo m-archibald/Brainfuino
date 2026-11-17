@@ -133,21 +133,24 @@
           </div>
         </div>
 
-        <!-- Program Suite Demos Catalog -->
+        <!-- Program Suite Demos Quick Access -->
         <div class="sidebar-section">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
             <h4 style="margin:0;">Program Suite</h4>
-            <button class="tool-btn" onclick="renderGitHubProgramCatalog()" style="padding:1px 5px; font-size:0.62rem;" title="Re-sync program demos from GitHub">
+            <button class="tool-btn" onclick="renderGitHubProgramCatalog()" style="padding:1px 5px; font-size:0.62rem;" title="Re-sync program demos">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
               <span>Sync</span>
             </button>
           </div>
-          <p style="font-size:0.67rem; color:var(--text-muted); line-height:1.3; margin:0 0 6px 0;">
-            Official demos. Click to stream & run live:
-          </p>
-          <div id="github-programs-tree" class="github-programs-tree" style="max-height: 200px; overflow-y: auto;">
-            <!-- Populated dynamically by renderGitHubProgramCatalog() -->
+          <div style="display:flex; gap:4px; align-items:center;">
+            <select id="suite-prog-select" style="flex:1; min-width:0; font-size:0.70rem; padding:4px 6px; border-radius:4px; border:1px solid var(--border-main); background:var(--bg-card); color:var(--text-main);" title="Select an official demo to stream and run">
+              <option value="">Loading demos...</option>
+            </select>
+            <button class="action-btn" id="suite-run-btn" onclick="runSelectedSuiteProgram()" style="padding:4px 8px; font-size:0.70rem; white-space:nowrap;" title="Stream & run selected demo on Brainfuino">
+              Run
+            </button>
           </div>
+          <div id="github-programs-tree" style="display:none;"></div>
         </div>
 
         <!-- FPGA Clock Frequency -->
