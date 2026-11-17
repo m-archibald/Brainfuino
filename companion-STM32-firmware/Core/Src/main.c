@@ -4307,11 +4307,36 @@ void Execute_DFU_Jump(void){
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
 	for (volatile int i = 0; i < 1000000; i++);
 
-	// Set magic flag in SRAM (survives NVIC_SystemReset)
+	// De-initialize GPIO pin
+	HAL_GPIO_DeInit(GPIOA, GPIO_PIN_12);
+
+	// De-initialize HAL and RCC to return all peripheral clocks to reset state
+	HAL_RCC_DeInit();
+	HAL_DeInit();
+
+	// Disable all interrupts and stop SysTick
+	__disable_irq();
+	SysTick->CTRL = 0;
+	SysTick->LOAD = 0;
+	SysTick->VAL = 0;
+
+	// Remap System Memory to 0x00000000 via SYSCFG
+	__HAL_RCC_SYSCFG_CLK_ENABLE();
+	SYSCFG->CFGR1 = (SYSCFG->CFGR1 & ~SYSCFG_CFGR1_MEM_MODE) | SYSCFG_CFGR1_MEM_MODE_0;
+
+	// Set magic flag in SRAM as secondary backup
 	DFU_MAGIC_ADDR = DFU_MAGIC_VALUE;
 
-	// Trigger genuine hardware system reset into ST ROM bootloader
-	NVIC_SystemReset();
+	// Direct jump to ST ROM Bootloader (STM32F072 System Memory at 0x1FFFC800)
+	uint32_t bootloader_address = 0x1FFFC800;
+	uint32_t initial_msp = *((volatile uint32_t *)bootloader_address);
+	uint32_t bootloader_reset = *((volatile uint32_t *)(bootloader_address + 4));
+
+	__set_MSP(initial_msp);
+	void (*SysMemBootJump)(void) = (void (*)(void))bootloader_reset;
+	SysMemBootJump();
+
+	while (1);
 }
 
 void writeBFInput(uint8_t data){

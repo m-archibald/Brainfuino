@@ -33,6 +33,7 @@
         terminalScreen.classList.toggle('hide-timestamps', !show);
       }
     }
+    (window as any).updateTimestampsVisibility = updateTimestampsVisibility;
 
     // Restore user preferences
     if (timestampsChk) {
@@ -1445,10 +1446,8 @@
       const h = String(d.getHours()).padStart(2, '0');
       const m = String(d.getMinutes()).padStart(2, '0');
       const s = String(d.getSeconds()).padStart(2, '0');
-      
       const ms = String(d.getMilliseconds()).padStart(3, '0');
-      const tenth = Math.min(9, Math.max(0, Math.floor(((now % 1) + 1e-5) * 10)));
-      return `[${h}:${m}:${s}.${ms}${tenth}] `;
+      return `[${h}:${m}:${s}.${ms}] `;
     }
 
     function createTimestampSpan(timestampMs) {
@@ -1861,7 +1860,7 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
 
       appendTextToTerminal(terminalScreen, rawText, mainTerminalState, {
         autoscroll: autoscrollChk ? autoscrollChk.checked : true,
-        enableTimestamps: timestampsChk ? timestampsChk.checked : false,
+        enableTimestamps: true,
         chunkTimestamp: chunkTimestamp,
         maxScrollbackLines: maxScrollbackLines
       });
@@ -2467,8 +2466,7 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
         try {
           if (rebootBtn) rebootBtn.classList.add('loading');
           await sendCmd('!DFU!\r\n');
-          await sendCmd('!CMD:12\r\n');
-          flasherLog('[SERIAL] Commands sent. Waiting 350ms before releasing COM port...');
+          flasherLog('[SERIAL] Command sent. Waiting 350ms before releasing COM port...');
           await new Promise(r => setTimeout(r, 350));
 
           // Close active Web Serial connection so the USB COM interface is released
@@ -2480,8 +2478,8 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
 
           // Automatically prompt pairing with WebUSB DFU
           setTimeout(() => {
-            connectDfuDevice();
-          }, 600);
+            connectDfuDevice(true);
+          }, 800);
         } catch (err) {
           flasherLog(`[SERIAL] Failed to send DFU reboot command: ${err.message}`, true);
         } finally {
@@ -2489,31 +2487,44 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
         }
       } else {
         flasherLog('[INFO] Serial port not connected. Attempting direct WebUSB DFU pairing...');
-        connectDfuDevice();
+        connectDfuDevice(true);
       }
     }
 
     // --- 2. WebUSB DFU Device Connection (0483:DF11) ---
-    async function connectDfuDevice() {
+    async function connectDfuDevice(autoPrompt = true) {
       const pairBtn = document.getElementById('flasher-pair-btn');
       if (!('usb' in navigator)) {
         flasherLog('[ERROR] WebUSB API is not supported in this browser. Please use Chrome, Edge, or Opera.', true);
         alert('WebUSB is not supported in this browser. Please use Google Chrome or Microsoft Edge.');
-        return;
+        return false;
       }
 
       try {
         if (pairBtn) pairBtn.classList.add('loading');
-        flasherLog('Requesting USB DFU Device pairing (0483:DF11)...');
 
-        // Request device targeting STMicroelectronics DFU Bootloader
-        dfuDevice = await navigator.usb.requestDevice({
-          filters: [
-            { vendorId: 0x0483, productId: 0xdf11 }, // STM32 DFU Bootloader
-            { vendorId: 0x0483 }                     // Fallback ST device
-          ]
-        });
+        // Check if an authorized ST DFU bootloader device is already available without prompt
+        let targetDev = null;
+        try {
+          const pairedDevices = await navigator.usb.getDevices();
+          targetDev = pairedDevices.find(d => d.vendorId === 0x0483 && (d.productId === 0xdf11 || !d.productId));
+          if (targetDev) {
+            flasherLog(`[DFU] Found authorized WebUSB device: ${targetDev.productName || 'STM32 Bootloader'}`);
+          }
+        } catch(e) {}
 
+        if (!targetDev) {
+          if (!autoPrompt) return false;
+          flasherLog('Requesting USB DFU Device pairing (0483:DF11)...');
+          targetDev = await navigator.usb.requestDevice({
+            filters: [
+              { vendorId: 0x0483, productId: 0xdf11 }, // STM32 DFU Bootloader
+              { vendorId: 0x0483 }                     // Fallback ST device
+            ]
+          });
+        }
+
+        dfuDevice = targetDev;
         flasherLog(`USB device selected: ${dfuDevice.productName || 'STM32 Bootloader'} (VID: 0x${dfuDevice.vendorId.toString(16)}, PID: 0x${dfuDevice.productId.toString(16)})`);
 
         await dfuDevice.open();
@@ -2558,6 +2569,7 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
 
         updateFlasherDeviceStatus();
         setFlasherProgress(0, 'DFU Bootloader connected and ready to flash.');
+        return true;
       } catch (err) {
         if (err.name === 'NotFoundError') {
           flasherLog('Device pairing cancelled by user.');
@@ -3202,10 +3214,24 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
           flasherLog(`Parsed ${parsed.totalBytes} firmware bytes at base 0x${baseAddress.toString(16).toUpperCase()}`);
         }
 
-        // Step 2: Ensure DFU Device is Connected
+        // Step 2: Ensure DFU Device is Connected (Auto-reboot from active serial if connected)
+        if (port && writer) {
+          flasherLog('[SERIAL] Brainfuino connected via Serial. Initiating software DFU reboot (!DFU!)...');
+          try {
+            await sendCmd('!DFU!\r\n');
+            await new Promise(r => setTimeout(r, 250));
+            await disconnectPort();
+            updateFlasherDeviceStatus();
+            flasherLog('[SERIAL] Serial connection released. Waiting for STM32 DFU USB bootloader (0483:DF11)...');
+            await new Promise(r => setTimeout(r, 1200));
+          } catch (e) {
+            flasherLog(`[SERIAL] Note: ${(e as Error).message}`);
+          }
+        }
+
         if (!dfuDevice || !dfuDevice.opened) {
-          flasherLog('DFU device not connected. Prompting for WebUSB pairing...');
-          await connectDfuDevice();
+          flasherLog('Connecting to WebUSB DFU device (0483:DF11)...');
+          await connectDfuDevice(true);
           if (!dfuDevice || !dfuDevice.opened) {
             throw new Error('WebUSB DFU device pairing was not completed.');
           }
@@ -3263,6 +3289,13 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
           headerBadge.className = 'settings-badge synced';
         }
         updateFlasherDeviceStatus();
+
+        if (autoconnectChk && autoconnectChk.checked) {
+          flasherLog('[SERIAL] Auto-connect is active. Reconnecting Serial Terminal in 1.5s...');
+          setTimeout(() => {
+            connectPort();
+          }, 1500);
+        }
       } catch (err) {
         flasherLog(`[ERROR] Flashing aborted: ${err.message}`, true);
         setFlasherProgress(0, `Flashing error: ${err.message}`);

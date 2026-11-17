@@ -191,7 +191,7 @@
           </label>
           <label class="toggle-row">
             <span>Timestamps</span>
-            <input type="checkbox" id="timestamps-chk" />
+            <input type="checkbox" id="timestamps-chk" onchange="updateTimestampsVisibility()" />
           </label>
           <label class="toggle-row">
             <span>Auto-connect</span>
@@ -371,7 +371,7 @@
         </div>
 
         <!-- Output Screen -->
-        <div id="terminal-screen" tabindex="0"></div>
+        <div id="terminal-screen" class="hide-timestamps" tabindex="0"></div>
         
 
         <!-- Bottom Command Input Bar -->
