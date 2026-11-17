@@ -186,6 +186,22 @@
       }
     }
 
+    function toggleSuiteModal(open?: boolean) {
+      const modal = document.getElementById('suite-modal');
+      if (!modal) return;
+      const shouldOpen = (open !== undefined) ? !!open : (modal.style.display === 'none');
+      modal.style.display = shouldOpen ? 'flex' : 'none';
+      if (shouldOpen) {
+        renderSuiteModalTable();
+      }
+    }
+
+    function handleSuiteModalBackdropClick(event?: Event) {
+      if (event && (event.target === event.currentTarget || (event as any).target?.id === 'suite-modal')) {
+        toggleSuiteModal(false);
+      }
+    }
+
     document.addEventListener('click', (e: MouseEvent) => {
       const panel = document.querySelector('.connection-panel');
       if (panel && !panel.contains(e.target as Node)) {
@@ -198,6 +214,7 @@
         closeConnectDropdown();
         closeUsbHelpModal();
         toggleLibraryModal(false);
+        toggleSuiteModal(false);
       }
     });
 
@@ -3352,7 +3369,10 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
         }
       }
 
-      // 2. Populate legacy/fallback tree if present
+      // 2. Populate suite modal table if present
+      renderSuiteModalTable();
+
+      // 3. Populate legacy/fallback tree if present
       const tree = document.getElementById('github-programs-tree');
       if (!tree) return;
 
@@ -3479,6 +3499,91 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
       const chosenPath = select.value;
       for (const group of GITHUB_PROGRAMS_SUITE) {
         const p = group.programs.find(item => item.path === chosenPath);
+        if (p) {
+          loadGitHubProgram(p.path, p.name, p.filename);
+          return;
+        }
+      }
+    }
+
+    function filterSuiteModalPrograms(query: string) {
+      renderSuiteModalTable(query);
+    }
+
+    function renderSuiteModalTable(filterQuery = '') {
+      const tbody = document.getElementById('suite-programs-tbody');
+      const countBadge = document.getElementById('suite-modal-count');
+      if (!tbody) return;
+
+      const q = filterQuery.trim().toLowerCase();
+      let matchCount = 0;
+      let html = '';
+
+      GITHUB_PROGRAMS_SUITE.forEach(group => {
+        group.programs.forEach(p => {
+          const matches = !q ||
+            group.category.toLowerCase().includes(q) ||
+            p.name.toLowerCase().includes(q) ||
+            p.filename.toLowerCase().includes(q) ||
+            p.desc.toLowerCase().includes(q);
+
+          if (matches) {
+            matchCount++;
+            html += `
+              <tr>
+                <td><span class="slot-pill">${escapeHtml(group.category)}</span></td>
+                <td>
+                  <strong>${escapeHtml(p.name)}</strong>
+                  <div style="font-size:0.68rem; color:var(--text-muted); font-family:Roboto Mono, monospace;">${escapeHtml(p.filename)}</div>
+                </td>
+                <td><span style="font-size:0.72rem; font-family:Roboto Mono, monospace;">${p.size}</span></td>
+                <td style="font-size:0.73rem; color:var(--text-muted); line-height:1.3;">${escapeHtml(p.desc)}</td>
+                <td style="text-align:right;">
+                  <div style="display:flex; justify-content:flex-end; gap:5px;">
+                    <button class="lib-btn-action" onclick="runSuiteProgramFromModal('${escapeHtml(p.path)}')" title="Stream and run live on Brainfuino">
+                      Run
+                    </button>
+                    <button class="lib-btn-action" onclick="editSuiteProgramFromModal('${escapeHtml(p.path)}')" title="Load into Code Editor">
+                      Edit
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }
+        });
+      });
+
+      if (matchCount === 0) {
+        html = `<tr><td colspan="5" style="text-align:center; padding:24px; color:var(--text-muted);">No demo programs matched "${escapeHtml(filterQuery)}"</td></tr>`;
+      }
+
+      tbody.innerHTML = html;
+      if (countBadge) {
+        countBadge.textContent = `${matchCount} Demo${matchCount === 1 ? '' : 's'}`;
+      }
+    }
+
+    function runSuiteProgramFromModal(path: string) {
+      toggleSuiteModal(false);
+      const select = document.getElementById('suite-prog-select') as HTMLSelectElement;
+      if (select) {
+        select.value = path;
+      }
+      for (const group of GITHUB_PROGRAMS_SUITE) {
+        const p = group.programs.find(item => item.path === path);
+        if (p) {
+          loadGitHubProgram(p.path, p.name, p.filename);
+          return;
+        }
+      }
+    }
+
+    function editSuiteProgramFromModal(path: string) {
+      toggleSuiteModal(false);
+      toggleLibraryModal(true);
+      for (const group of GITHUB_PROGRAMS_SUITE) {
+        const p = group.programs.find(item => item.path === path);
         if (p) {
           loadGitHubProgram(p.path, p.name, p.filename);
           return;
@@ -4398,6 +4503,11 @@ Object.assign(window, {
   executeWriteToLibrary,
   toggleLibraryModal,
   handleLibraryModalBackdropClick,
+  toggleSuiteModal,
+  handleSuiteModalBackdropClick,
+  filterSuiteModalPrograms,
+  runSuiteProgramFromModal,
+  editSuiteProgramFromModal,
   runSelectedQuickLibrarySlot,
   runSelectedSuiteProgram,
   clearVerifyTerminal,

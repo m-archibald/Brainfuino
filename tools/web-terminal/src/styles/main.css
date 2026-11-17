@@ -557,6 +557,14 @@
       text-align: center;
     }
 
+    .sidebar-run-btn {
+      flex: 0 0 auto !important;
+      min-width: 44px;
+      padding: 4px 10px !important;
+      font-size: 0.70rem;
+      white-space: nowrap;
+    }
+
     .action-btn:hover {
       background: var(--bg-sidebar-hover);
       border-color: var(--border-focus);

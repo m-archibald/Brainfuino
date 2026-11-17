@@ -95,6 +95,11 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
         'updateWriteCodeStats',
         'executeWriteLiveRun',
         'executeWriteToLibrary',
+        'toggleSuiteModal',
+        'handleSuiteModalBackdropClick',
+        'filterSuiteModalPrograms',
+        'runSuiteProgramFromModal',
+        'editSuiteProgramFromModal',
         'runSelectedSuiteProgram',
         'clearVerifyTerminal',
         'abortVerification',
@@ -256,6 +261,46 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
       const codeArea = document.getElementById('write-code-area') as HTMLTextAreaElement;
       expect(nameInput.value).toBe('banner');
       expect(codeArea.value.length).toBeGreaterThan(20);
+    });
+
+    it('manages Program Suite popup modal with catalog table, search, and run/edit actions', async () => {
+      const modal = document.getElementById('suite-modal')!;
+      expect(modal).not.toBeNull();
+      expect(modal.style.display).toBe('none');
+
+      // Open modal
+      win.toggleSuiteModal(true);
+      expect(modal.style.display).toBe('flex');
+
+      const tbody = document.getElementById('suite-programs-tbody')!;
+      expect(tbody.querySelectorAll('tr').length).toBe(11);
+
+      // Search filter
+      win.filterSuiteModalPrograms('fractal');
+      expect(tbody.querySelectorAll('tr').length).toBe(2);
+
+      // Reset search filter
+      win.filterSuiteModalPrograms('');
+      expect(tbody.querySelectorAll('tr').length).toBe(11);
+
+      // Run demo from modal closes modal and loads program
+      await win.runSuiteProgramFromModal('basic/hello.b');
+      expect(modal.style.display).toBe('none');
+      const nameInput = document.getElementById('write-prog-name') as HTMLInputElement;
+      expect(nameInput.value).toBe('hello');
+
+      // Backdrop click closes modal
+      win.toggleSuiteModal(true);
+      expect(modal.style.display).toBe('flex');
+      win.handleSuiteModalBackdropClick({ target: modal, currentTarget: modal } as any);
+      expect(modal.style.display).toBe('none');
+    });
+
+    it('verifies sidebar quick run buttons have compact sidebar-run-btn styling', () => {
+      const libRunBtn = document.getElementById('quick-lib-run-btn')!;
+      const suiteRunBtn = document.getElementById('suite-run-btn')!;
+      expect(libRunBtn.classList.contains('sidebar-run-btn')).toBe(true);
+      expect(suiteRunBtn.classList.contains('sidebar-run-btn')).toBe(true);
     });
   });
 
