@@ -68,12 +68,6 @@
             <span>Terminal</span>
           </div>
         </button>
-        <button class="nav-tab" id="tab-btn-upload" onclick="switchTab('upload')">
-          <div class="nav-tab-left">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
-            <span>Write</span>
-          </div>
-        </button>
         <button class="nav-tab" id="tab-btn-settings" onclick="switchTab('settings')">
           <div class="nav-tab-left">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
@@ -91,6 +85,96 @@
       <!-- Tab Content 1: Serial Terminal Controls -->
       <div id="tab-content-terminal">
 
+        <!-- Hardware Shortcuts & Code Actions -->
+        <div class="sidebar-section">
+          <h4>Hardware Shortcuts</h4>
+          <div class="btn-group">
+            <button class="action-btn" onclick="sendCmd('!RST\r\n')" title="Reset FPGA soft-processor">!RST</button>
+            <button class="action-btn" onclick="sendCmd('!MENU\r\n')" title="Open Interactive Menu">!MENU</button>
+            <button class="action-btn" onclick="sendCmd('!DUMP\r\n')" title="Dump Program ROM (!DUMP)">!DUMP</button>
+          </div>
+          <button class="action-btn" id="btn-write-code-file" style="width:100%; margin-top:6px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="handleWriteCodeFileClick()" title="Select a .b / .bf file to write and run on Brainfuino">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            <span>Write Code File</span>
+          </button>
+          <input type="file" id="terminal-file-input" accept=".b,.bf,.txt" style="display:none;" onchange="handleTerminalFileInput(event)">
+        </div>
+
+        <!-- Hardware Program Library Quick Access -->
+        <div class="sidebar-section">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <h4 style="margin:0;">Program Library</h4>
+            <div style="display:flex; gap:4px; align-items:center;">
+              <button class="tool-btn" onclick="queryDynamicLibrary()" style="padding:1px 5px; font-size:0.62rem;" title="Sync library (!LIB*)">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Sync</span>
+              </button>
+              <button class="tool-btn" onclick="toggleLibraryModal(true)" style="padding:1px 5px; font-size:0.62rem;" title="Open full 64-slot Library Manager">
+                <span>Manage</span>
+              </button>
+            </div>
+          </div>
+          <div class="lib-storage-container" style="margin-bottom:6px;">
+            <div style="display:flex; justify-content:space-between; font-size:0.65rem; color:var(--text-muted); margin-bottom:2px;">
+              <span id="sidebar-lib-slots-count">0 / 64 Slots</span>
+              <span id="sidebar-lib-storage-text">0%</span>
+            </div>
+            <div class="lib-storage-track" style="height:4px;">
+              <div class="lib-storage-fill" id="sidebar-lib-storage-fill" style="width: 0%;"></div>
+            </div>
+          </div>
+          <div style="display:flex; gap:4px; align-items:center;">
+            <select id="quick-lib-select" style="flex:1; min-width:0; font-size:0.70rem; padding:4px 6px; border-radius:4px; border:1px solid var(--border-main); background:var(--bg-card); color:var(--text-main);" title="Select an installed program slot to run">
+              <option value="">No programs synced</option>
+            </select>
+            <button class="action-btn" id="quick-lib-run-btn" onclick="runSelectedQuickLibrarySlot()" style="padding:4px 8px; font-size:0.70rem; white-space:nowrap;" title="Run selected slot on Brainfuino">
+              Run
+            </button>
+          </div>
+        </div>
+
+        <!-- Program Suite Demos Catalog -->
+        <div class="sidebar-section">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <h4 style="margin:0;">Program Suite</h4>
+            <button class="tool-btn" onclick="renderGitHubProgramCatalog()" style="padding:1px 5px; font-size:0.62rem;" title="Re-sync program demos from GitHub">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              <span>Sync</span>
+            </button>
+          </div>
+          <p style="font-size:0.67rem; color:var(--text-muted); line-height:1.3; margin:0 0 6px 0;">
+            Official demos. Click to stream & run live:
+          </p>
+          <div id="github-programs-tree" class="github-programs-tree" style="max-height: 200px; overflow-y: auto;">
+            <!-- Populated dynamically by renderGitHubProgramCatalog() -->
+          </div>
+        </div>
+
+        <!-- FPGA Clock Frequency -->
+        <div class="sidebar-section">
+          <h4>FPGA Clock Frequency</h4>
+          <div class="clock-control-panel">
+            <div class="clock-display-row">
+              <span class="clock-value-badge" id="clock-speed-val">500 kHz</span>
+              <button class="clock-query-btn" onclick="queryClockSpeed()" title="Query current frequency (!clk)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Query</span>
+              </button>
+            </div>
+            <div class="clock-btn-row">
+              <button class="clock-step-btn" onclick="stepClockDown()" title="Decrease frequency (!clk-)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <span>Down (!clk-)</span>
+              </button>
+              <button class="clock-step-btn" onclick="stepClockUp()" title="Increase frequency (!clk+)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <span>Up (!clk+)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Terminal Settings -->
         <div class="sidebar-section">
           <h4>Terminal Settings</h4>
           <label class="toggle-row">
@@ -130,41 +214,6 @@
               <option value="5000">5,000 lines</option>
               <option value="10000">10,000 lines</option>
             </select>
-          </div>
-        </div>
-
-        <div class="sidebar-section">
-          <h4>Hardware Shortcuts</h4>
-          <div class="btn-group">
-            <button class="action-btn" onclick="sendCmd('!RST\r\n')" title="Reset FPGA soft-processor">!RST</button>
-            <button class="action-btn" onclick="sendCmd('!MENU\r\n')" title="Open Interactive Menu">!MENU</button>
-            <button class="action-btn" onclick="sendCmd('!DUMP\r\n')" title="Dump Program ROM (!DUMP)">!DUMP</button>
-          </div>
-          <button class="action-btn" id="btn-write-code-file" style="width:100%; margin-top:6px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="handleWriteCodeFileClick()" title="Select a .b / .bf file to write and run on Brainfuino">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-            <span>Write Code File</span>
-          </button>
-          <input type="file" id="terminal-file-input" accept=".b,.bf,.txt" style="display:none;" onchange="handleTerminalFileInput(event)">
-
-          <h4 style="margin-top:10px;">FPGA Clock Frequency</h4>
-          <div class="clock-control-panel">
-            <div class="clock-display-row">
-              <span class="clock-value-badge" id="clock-speed-val">500 kHz</span>
-              <button class="clock-query-btn" onclick="queryClockSpeed()" title="Query current frequency (!clk)">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-                <span>Query</span>
-              </button>
-            </div>
-            <div class="clock-btn-row">
-              <button class="clock-step-btn" onclick="stepClockDown()" title="Decrease frequency (!clk-)">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                <span>Down (!clk-)</span>
-              </button>
-              <button class="clock-step-btn" onclick="stepClockUp()" title="Increase frequency (!clk+)">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                <span>Up (!clk+)</span>
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -220,24 +269,6 @@
         </div>
       </div>
 
-      <!-- Tab Content 2 (Write Tab Sidebar): Dedicated Program Suite Catalog -->
-      <div id="tab-content-upload" class="write-sidebar-pane" style="display:none;">
-        <div class="sidebar-header-fixed">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h4 style="margin:0; font-size:0.74rem; font-weight:700; color:var(--text-main); text-transform:uppercase; letter-spacing:0.04em;">Program Suite</h4>
-            <button class="tool-btn" style="padding:2px 6px; font-size:0.65rem;" onclick="renderGitHubProgramCatalog()" title="Re-sync program list from GitHub">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-              <span>Sync</span>
-            </button>
-          </div>
-          <p style="font-size:0.68rem; color:var(--text-muted); line-height:1.35; margin-top:4px; margin-bottom:0;">
-            Official Brainfuino programs. Click to load into editor:
-          </p>
-        </div>
-        <div id="github-programs-tree" class="github-programs-tree">
-          <!-- Populated dynamically by renderGitHubProgramCatalog() -->
-        </div>
-      </div>
 
       <!-- Tab Content 4: Settings -->
       <div id="tab-content-settings" style="display:none; padding:12px; font-size:0.75rem;">
@@ -302,6 +333,10 @@
             <span class="terminal-stats" id="terminal-stats">RX: 0 B | TX: 0 B</span>
           </div>
           <div class="terminal-actions">
+            <button class="tool-btn" onclick="toggleLibraryModal(true)" id="btn-library-modal" title="Hardware Program Library (64 slots)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+              <span id="lib-modal-btn-label">Library</span>
+            </button>
             <button class="tool-btn" onclick="toggleTheme()" id="theme-btn" title="Toggle Light / Dark theme">
               <svg id="theme-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
               <span id="theme-btn-label">Dark Mode</span>
@@ -672,239 +707,110 @@
         </div>
       </div>
 
-      <!-- VIEW 4: PROGRAM WRITER & DYNAMIC LIBRARY VIEW -->
-      <div id="view-write" class="main-viewport-view" style="display: none;">
-        <!-- Header -->
-        <div class="terminal-header">
-          <div class="terminal-title">
-            <span>PROGRAM WRITER & LIBRARY</span>
-            <span class="direct-pill" id="write-lib-status-pill">LIBRARY IDLE</span>
-            <span class="terminal-stats" id="write-stats">0 Bytes | 0 BF Ops</span>
+    </main>
+  </div>
+
+  <!-- Hardware Program Library Modal Dialog -->
+  <div id="library-modal" class="modal-backdrop" style="display: none;" onclick="handleLibraryModalBackdropClick(event)">
+    <div class="modal-card lib-modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          <span>Hardware Program Library (64 Slots)</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <button type="button" class="tool-btn" id="write-sync-lib-btn" onclick="queryDynamicLibrary()" title="Sync Program Library (!LIB*)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            <span>Sync</span>
+          </button>
+          <button type="button" class="modal-close-btn" onclick="toggleLibraryModal(false)" title="Close">&times;</button>
+        </div>
+      </div>
+      <div class="modal-body" style="display:flex; flex-direction:column; gap:12px; max-height:calc(85vh - 120px); overflow-y:auto;">
+        <!-- Storage usage bar -->
+        <div class="lib-storage-container">
+          <div style="display:flex; justify-content:space-between; font-size:0.70rem; color:var(--text-muted); margin-bottom:4px;">
+            <div style="display:flex; gap:8px; align-items:center;">
+              <span>STM32 Flash Storage Pool (44 kB)</span>
+              <span class="settings-card-count" id="lib-slots-count">0 / 64 Slots</span>
+              <span class="settings-card-count" id="lib-usage-badge">0 B / 44 kB</span>
+            </div>
+            <span id="lib-storage-text">0.0 kB used (0%)</span>
           </div>
-          <div class="terminal-actions">
-            <button class="tool-btn" id="write-sync-lib-btn" onclick="queryDynamicLibrary()" title="Query Brainfuino program library schema (!LIB*)">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-              <span>Sync Library</span>
-            </button>
-            <button class="tool-btn" onclick="toggleTheme()" id="theme-btn-write" title="Toggle Light / Dark theme">
-              <svg id="theme-icon-write" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-              <span id="theme-btn-write-label">Dark Mode</span>
-            </button>
-            <button class="tool-btn" onclick="switchTab('terminal')" title="Return to Serial Terminal">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
-              <span>Terminal</span>
-            </button>
+          <div class="lib-storage-track">
+            <div class="lib-storage-fill" id="lib-storage-fill" style="width: 0%;"></div>
           </div>
         </div>
 
-        <!-- Real-time Status Notification Strip -->
-        <div class="flasher-status-strip" id="write-status-strip">
-          <div class="status-strip-left">
-            <span class="status-strip-dot" id="write-strip-dot"></span>
-            <span id="write-strip-msg">Program writer ready. Select an example or write code below.</span>
-          </div>
-          <div class="status-strip-right" id="write-strip-stats">Library: Idle</div>
+        <!-- Program Slots Table -->
+        <div class="lib-programs-table-wrapper" style="max-height: 280px; overflow-y: auto;">
+          <table class="lib-programs-table">
+            <thead>
+              <tr>
+                <th style="width:55px;">Slot</th>
+                <th>Program Name</th>
+                <th style="width:90px;">Size</th>
+                <th style="width:80px;">Status</th>
+                <th style="width:190px; text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="lib-programs-tbody">
+              <tr>
+                <td colspan="5" style="text-align:center; padding:24px; color:var(--text-muted);">
+                  Connect Brainfuino and click "Sync" to query programs (!LIB*)...
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        <!-- Split 2-Column Workspace Canvas -->
-        <div class="write-tab-layout" id="write-tab-layout">
-          <!-- LEFT COLUMN: WRITE EDITOR + LIBRARY -->
-          <div class="write-left-column">
-            <!-- TOP CARD: PROGRAM WRITE & FLASH -->
-            <div class="flasher-card">
-              <div class="flasher-card-header">
-                <div class="settings-card-title-group">
-                  <span class="settings-card-icon">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-                  </span>
-                  <h3 class="settings-card-title">Write Brainfuck Program</h3>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                  <span class="settings-card-count" id="write-size-badge">0 B</span>
-                  <span class="settings-card-count" id="write-prune-badge">100% Code</span>
-                </div>
-              </div>
-
-              <div class="flasher-card-body" style="gap:10px;">
-                <!-- Title Row & Editor Utilities Toolbar -->
-                <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap;">
-                  <div style="flex:1; min-width:180px;">
-                    <label class="flasher-label-prominent" for="write-prog-name">Program Title (for Library slot)</label>
-                    <input type="text" id="write-prog-name" class="flasher-input-hero" placeholder="e.g. Mandelbrot" maxlength="15" value="MyProgram" />
-                  </div>
-                  <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                    <button class="tool-btn" onclick="loadDefaultLogoToEditor()" title="Load Brainfuino Banner into editor">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                      <span>Load Demo</span>
-                    </button>
-                    <button class="tool-btn" onclick="pruneEditorComments()" title="Strip all non-Brainfuck comment characters">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-                      <span>Strip Comments</span>
-                    </button>
-                    <button class="tool-btn" onclick="clearWriteEditor()" title="Clear editor content">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                      <span>Clear</span>
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Compact In-Box File Loader -->
-                <div class="write-file-dropzone" id="write-file-dropzone" onclick="document.getElementById('write-file-input').click()" ondragover="handleWriteDragOver(event)" ondragleave="handleWriteDragLeave(event)" ondrop="handleWriteDrop(event)">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                  <span style="font-weight:600; font-size:0.73rem; color:var(--text-main);">Drop .b / .bf file here or click to browse</span>
-                  <span style="font-size:0.67rem; color:var(--text-muted);">(loads directly into editor)</span>
-                  <input type="file" id="write-file-input" accept=".b,.bf,.txt" style="display:none;" onchange="handleWriteFileInput(event)">
-                </div>
-
-                <div>
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                    <label class="flasher-label-prominent" style="margin:0;" for="write-code-area">Source Code (.b / .bf)</label>
-                    <div style="font-size:0.68rem; color:var(--text-muted);" id="write-editor-meta">0 chars | 0 lines</div>
-                  </div>
-                  <textarea id="write-code-area" class="write-editor-textarea" style="height:105px; min-height:75px; max-height:280px; resize:vertical;" placeholder="Paste or type Brainfuck source code here, drop a file above, or select an example from the left sidebar..." oninput="updateWriteCodeStats()"></textarea>
-                </div>
-
-                <!-- Action Button Row -->
-                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
-                  <button class="btn-primary-action" id="btn-write-run" onclick="executeWriteLiveRun()" style="min-width:130px;" title="Send code and execute immediately on soft-processor">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                    <span>Write (Live Run)</span>
-                  </button>
-                  <button class="btn-primary-action" id="btn-write-lib-test" onclick="executeWriteToLibrary(true)" style="min-width:165px; background:linear-gradient(135deg, #10b981 0%, #059669 100%);" title="Flash to library and run 10-second interactive verification before permanent save">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                    <span>Write to Library (with Test)</span>
-                  </button>
-                  <button class="btn-primary-action" id="btn-write-lib-notest" onclick="executeWriteToLibrary(false)" style="min-width:165px; background:linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);" title="Flash directly to library slot without 10-second verification test">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                    <span>Write to Library (no Test)</span>
-                  </button>
-                </div>
-              </div>
+        <!-- Quick Flash to Slot Section -->
+        <div style="border-top:1px solid var(--border-main); padding-top:12px; display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-weight:700; font-size:0.76rem; color:var(--text-main);">Save Code to Flash Library</span>
+              <span class="settings-card-count" id="write-size-badge">0 B</span>
+              <span class="settings-card-count" id="write-prune-badge">100% Code</span>
             </div>
-
-            <!-- CARD 2: HARDWARE PROGRAM LIBRARY MANAGER -->
-            <div class="flasher-card">
-              <div class="flasher-card-header">
-                <div class="settings-card-title-group">
-                  <span class="settings-card-icon">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
-                  </span>
-                  <h3 class="settings-card-title">Brainfuino Program Library</h3>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                  <button class="tool-btn" id="write-sync-lib-btn" onclick="queryDynamicLibrary()" style="padding:2px 7px; font-size:0.68rem;" title="Query programs from Brainfuino Flash (!LIB*)">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-                    <span>Sync</span>
-                  </button>
-                  <span class="settings-card-count" id="lib-slots-count">0 / 64 Slots</span>
-                  <span class="settings-card-count" id="lib-usage-badge">0 B / 44 kB</span>
-                </div>
-              </div>
-
-              <div class="flasher-card-body" style="gap:12px;">
-                <!-- Library Storage Bar -->
-                <div class="lib-storage-container">
-                  <div style="display:flex; justify-content:space-between; font-size:0.70rem; color:var(--text-muted); margin-bottom:4px;">
-                    <span>STM32 Flash Storage Pool (44 kB)</span>
-                    <span id="lib-storage-text">0.0 kB used (0%)</span>
-                  </div>
-                  <div class="lib-storage-track">
-                    <div class="lib-storage-fill" id="lib-storage-fill" style="width: 0%;"></div>
-                  </div>
-                </div>
-
-                <!-- Program List Table -->
-                <div class="lib-programs-table-wrapper">
-                  <table class="lib-programs-table">
-                    <thead>
-                      <tr>
-                        <th style="width:55px;">Slot</th>
-                        <th>Program Name</th>
-                        <th style="width:90px;">Size</th>
-                        <th style="width:80px;">Status</th>
-                        <th style="width:200px; text-align:right;">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody id="lib-programs-tbody">
-                      <tr>
-                        <td colspan="5" style="text-align:center; padding:24px; color:var(--text-muted);">
-                          Connect Brainfuino and click "Sync" to query programs (!LIB*)...
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="tool-btn" onclick="loadDefaultLogoToEditor()" style="padding:2px 7px; font-size:0.68rem;" title="Load Demo into editor">Load Demo</button>
+              <button type="button" class="tool-btn" onclick="pruneEditorComments()" style="padding:2px 7px; font-size:0.68rem;" title="Strip non-BF characters">Strip Comments</button>
+              <button type="button" class="tool-btn" onclick="clearWriteEditor()" style="padding:2px 7px; font-size:0.68rem;" title="Clear editor">Clear</button>
             </div>
           </div>
-
-          <!-- RIGHT COLUMN: EXECUTION & VERIFICATION MONITOR -->
-          <div class="write-right-column">
-            <!-- CARD 3: EXECUTION & VERIFICATION MONITOR (PERMANENT) -->
-            <div class="flasher-card monitor-card" id="verify-monitor-card">
-              <div class="flasher-card-header">
-                <div class="settings-card-title-group">
-                  <span class="settings-card-icon">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
-                  </span>
-                  <h3 class="settings-card-title">Execution & Verification Monitor</h3>
-                </div>
-                <div style="display:flex; align-items:center; gap:8px;">
-                  <span class="status-strip-dot" id="verify-status-dot"></span>
-                  <span class="verify-countdown-badge" id="verify-countdown-badge">IDLE</span>
-                </div>
-              </div>
-
-              <div class="flasher-card-body monitor-card-body">
-                <div class="monitor-subbar">
-                  <div style="display:flex; align-items:center; gap:6px;">
-                    <span id="verify-monitor-sub">Soft-processor serial stream</span>
-                    <span class="tree-guide">|</span>
-                    <span id="verify-monitor-stats" style="font-family:'Roboto Mono', monospace; font-size:0.68rem; color:var(--text-dim);">0 B received</span>
-                  </div>
-                  <div style="display:flex; align-items:center; gap:6px;">
-                    <label class="toggle-row" style="margin:0; font-size:0.68rem; gap:4px;" title="Automatically scroll to bottom on new output">
-                      <span>Autoscroll</span>
-                      <input type="checkbox" id="verify-autoscroll-chk" checked />
-                    </label>
-                    <button class="tool-btn" onclick="clearVerifyTerminal()" title="Clear monitor output" style="padding:2px 7px; font-size:0.68rem;">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                      <span>Clear</span>
-                    </button>
-                    <button class="tool-btn" id="btn-verify-abort" onclick="abortVerification()" style="border-color:#ef4444; color:#ef4444; display:none; padding:2px 7px; font-size:0.68rem;" title="Abort test, restore default demo, and discard">
-                      <span>Cancel Test</span>
-                    </button>
-                    <button class="btn-primary-action" id="btn-verify-commit" onclick="commitVerificationNow()" style="background:linear-gradient(135deg, #10b981 0%, #059669 100%); display:none; padding:3px 9px; font-size:0.70rem;" title="Commit and permanently save program to library now">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                      <span>Save Now</span>
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Progress bar for 10s countdown (shown during active test) -->
-                <div class="verify-progress-track" id="verify-progress-track" style="opacity: 0.25;">
-                  <div class="verify-progress-fill" id="verify-progress-fill" style="width: 0%;"></div>
-                </div>
-
-                <!-- Output Screen (Styled identically to main terminal) -->
-                <div id="verify-terminal-screen" class="verify-terminal-screen" tabindex="0"></div>
-
-                <!-- Bottom Command Input Bar -->
-                <div class="monitor-input-bar">
-                  <div class="mode-badge" id="verify-mode-badge" onclick="cycleVerifyInputMode()" title="Click to toggle Direct / Line mode" style="font-size:0.65rem; padding:3px 6px;">
-                    Mode: Direct
-                  </div>
-                  <div class="input-wrapper">
-                    <input type="text" id="verify-cmd-input" placeholder="Click monitor for direct keys, or type here..." autocomplete="off" style="padding:5px 8px; font-size:0.74rem;" />
-                  </div>
-                  <button class="btn-send" onclick="sendVerifyInputBox()" style="padding:5px 10px; font-size:0.72rem;">Send</button>
-                </div>
-              </div>
+          <div style="display:flex; gap:10px; align-items:flex-end;">
+            <div style="flex:1;">
+              <label class="flasher-label-prominent" for="write-prog-name" style="font-size:0.68rem; margin-bottom:2px;">Program Title (max 15 chars)</label>
+              <input type="text" id="write-prog-name" class="flasher-input-hero" placeholder="e.g. Mandelbrot" maxlength="15" value="MyProgram" style="padding:5px 8px; font-size:0.75rem;" />
+            </div>
+            <div class="write-file-dropzone" id="write-file-dropzone" onclick="document.getElementById('write-file-input').click()" ondragover="handleWriteDragOver(event)" ondragleave="handleWriteDragLeave(event)" ondrop="handleWriteDrop(event)" style="padding:5px 10px; flex:1.5;">
+              <span style="font-weight:600; font-size:0.70rem; color:var(--text-main);">Drop .b file here or Browse</span>
+              <input type="file" id="write-file-input" accept=".b,.bf,.txt" style="display:none;" onchange="handleWriteFileInput(event)">
+            </div>
+          </div>
+          <div>
+            <textarea id="write-code-area" class="write-editor-textarea" style="height:70px; min-height:50px; max-height:160px; resize:vertical; font-size:0.72rem; padding:6px 8px;" placeholder="Paste Brainfuck source code here..." oninput="updateWriteCodeStats()"></textarea>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; gap:8px; align-items:center;">
+              <span style="font-size:0.68rem; color:var(--text-muted);" id="write-editor-meta">0 chars | 0 lines</span>
+              <span style="font-size:0.68rem; color:var(--text-dim);" id="write-stats">0 Bytes | 0 BF Ops</span>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="btn-primary-action" onclick="executeWriteLiveRun()" style="padding:4px 10px; font-size:0.72rem;" title="Stream code directly to Brainfuino ROM">
+                <span>Run Live</span>
+              </button>
+              <button type="button" class="btn-primary-action" onclick="executeWriteToLibrary(false)" style="padding:4px 10px; font-size:0.72rem; background:linear-gradient(135deg, #10b981 0%, #059669 100%);" title="Flash directly to persistent library slot">
+                <span>Save to Library</span>
+              </button>
             </div>
           </div>
         </div>
       </div>
-    </main>
+      <div class="modal-footer" style="padding:8px 16px;">
+        <button type="button" class="btn-primary" onclick="toggleLibraryModal(false)">Close</button>
+      </div>
+    </div>
   </div>
 
   <!-- QGC-Style Toast Notification Container -->

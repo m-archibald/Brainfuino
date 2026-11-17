@@ -170,6 +170,22 @@
       }
     }
 
+    function toggleLibraryModal(open?: boolean) {
+      const modal = document.getElementById('library-modal');
+      if (!modal) return;
+      const shouldOpen = (open !== undefined) ? !!open : (modal.style.display === 'none');
+      modal.style.display = shouldOpen ? 'flex' : 'none';
+      if (shouldOpen && port && dynamicLibPrograms.length === 0) {
+        queryDynamicLibrary();
+      }
+    }
+
+    function handleLibraryModalBackdropClick(event?: Event) {
+      if (event && (event.target === event.currentTarget || (event as any).target?.id === 'library-modal')) {
+        toggleLibraryModal(false);
+      }
+    }
+
     document.addEventListener('click', (e: MouseEvent) => {
       const panel = document.querySelector('.connection-panel');
       if (panel && !panel.contains(e.target as Node)) {
@@ -181,6 +197,7 @@
       if (e.key === 'Escape') {
         closeConnectDropdown();
         closeUsbHelpModal();
+        toggleLibraryModal(false);
       }
     });
 
@@ -249,8 +266,8 @@
     function switchTab(tabId, updateHash = true) {
       let normalized = 'terminal';
       if (tabId === 'flash' || tabId === 'flashing') normalized = 'flashing';
-      else if (tabId === 'upload' || tabId === 'write') normalized = 'write';
       else if (tabId === 'settings' || tabId === 'controls') normalized = 'settings';
+      else normalized = 'terminal';
 
       currentTab = normalized;
 
@@ -260,7 +277,6 @@
 
       const tabs = [
         { id: 'terminal', btn: 'tab-btn-terminal', content: 'tab-content-terminal' },
-        { id: 'write', btn: 'tab-btn-upload', content: 'tab-content-upload' },
         { id: 'settings', btn: 'tab-btn-settings', content: 'tab-content-settings' },
         { id: 'flashing', btn: 'tab-btn-flash', content: 'tab-content-flash' }
       ];
@@ -270,36 +286,21 @@
         const content = document.getElementById(t.content) || document.getElementById(`tab-content-${t.id}`) || (t.id === 'settings' ? document.getElementById('tab-content-controls') : null);
         if (btn) btn.classList.toggle('active', t.id === normalized);
         if (content) {
-          if (t.id === normalized) {
-            content.style.display = (t.id === 'write' ? 'flex' : 'block');
-          } else {
-            content.style.display = 'none';
-          }
+          content.style.display = (t.id === normalized ? 'block' : 'none');
         }
       });
 
       const sidebarEl = document.querySelector('.sidebar');
-      if (sidebarEl) sidebarEl.classList.toggle('write-tab-active', normalized === 'write');
+      if (sidebarEl) sidebarEl.classList.remove('write-tab-active');
 
       const viewTerminal = document.getElementById('view-terminal');
       const viewControls = document.getElementById('view-controls');
       const viewFlashing = document.getElementById('view-flashing');
-      const viewWrite = document.getElementById('view-write');
 
-      if (normalized === 'write') {
-        if (viewTerminal) viewTerminal.style.display = 'none';
-        if (viewControls) viewControls.style.display = 'none';
-        if (viewFlashing) viewFlashing.style.display = 'none';
-        if (viewWrite) viewWrite.style.display = 'flex';
-        renderGitHubProgramCatalog();
-        if (port && dynamicLibPrograms.length === 0) {
-          queryDynamicLibrary();
-        }
-      } else if (normalized === 'settings') {
+      if (normalized === 'settings') {
         if (viewTerminal) viewTerminal.style.display = 'none';
         if (viewControls) viewControls.style.display = 'flex';
         if (viewFlashing) viewFlashing.style.display = 'none';
-        if (viewWrite) viewWrite.style.display = 'none';
         if (port && dynamicMenuSchema.length === 0) {
           fetchDynamicMenu();
         }
@@ -307,7 +308,6 @@
         if (viewTerminal) viewTerminal.style.display = 'none';
         if (viewControls) viewControls.style.display = 'none';
         if (viewFlashing) viewFlashing.style.display = 'flex';
-        if (viewWrite) viewWrite.style.display = 'none';
         if (!flasherReleasesLoaded) {
           fetchGitHubReleases();
         }
@@ -316,7 +316,11 @@
         if (viewTerminal) viewTerminal.style.display = 'flex';
         if (viewControls) viewControls.style.display = 'none';
         if (viewFlashing) viewFlashing.style.display = 'none';
-        if (viewWrite) viewWrite.style.display = 'none';
+        renderGitHubProgramCatalog();
+        if (port && dynamicLibPrograms.length === 0) {
+          queryDynamicLibrary();
+        }
+        terminalScreen.focus();
       }
     }
 
@@ -324,9 +328,7 @@
       const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase();
       if (hash === 'settings' || hash === 'controls') {
         switchTab('settings', false);
-      } else if (hash === 'upload' || hash === 'write') {
-        switchTab('write', false);
-      } else if (hash === 'flashing' || hash === 'flash') {
+      } else if (hash === 'flash' || hash === 'flashing') {
         switchTab('flashing', false);
       } else {
         switchTab('terminal', false);
@@ -3393,31 +3395,60 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
     }
 
     async function loadGitHubProgram(path, name, filename) {
-      updateWriteLibStatus(`Fetching '${name}' from GitHub...`, true);
-      const nameInput = document.getElementById('write-prog-name');
-      const area = document.getElementById('write-code-area');
+      postSystemMessage(`Fetching '${name}'...`, 'info', 1500);
+      const nameInput = document.getElementById('write-prog-name') as HTMLInputElement;
+      const area = document.getElementById('write-code-area') as HTMLTextAreaElement;
       if (nameInput) {
         nameInput.value = filename.replace(/\.b(f)?$/i, '').slice(0, 15);
       }
 
+      let code = '';
       try {
         const cdnUrl = `https://raw.githubusercontent.com/m-archibald/Brainfuino/master/programs/${path}`;
         const resp = await fetch(cdnUrl);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const code = await resp.text();
-        if (area) area.value = code;
-        updateWriteCodeStats();
-        updateWriteLibStatus(`Loaded '${name}' (${code.length} B) from GitHub`, false);
+        code = await resp.text();
       } catch (err) {
         if (PROGRAM_CACHE[path]) {
-          if (area) area.value = PROGRAM_CACHE[path];
-          updateWriteCodeStats();
-          updateWriteLibStatus(`Loaded '${name}' from local cache`, false);
+          code = PROGRAM_CACHE[path];
         } else {
-          updateWriteLibStatus(`Failed to load '${name}' (${err.message})`, false);
-          alert(`Could not fetch ${path} from GitHub raw CDN: ${err.message}\n\nYou can also drag & drop the .b file into the File Loader in the left sidebar.`);
+          postSystemMessage(`Failed to fetch '${name}': ${(err as Error).message}`, 'error');
+          alert(`Could not fetch ${path} from GitHub raw CDN: ${(err as Error).message}\n\nYou can also drag & drop the .b file into the Terminal.`);
+          return;
         }
       }
+
+      if (area) area.value = code;
+      if (typeof updateWriteCodeStats === 'function') updateWriteCodeStats();
+
+      if (!port || !writer) {
+        postSystemMessage(`Loaded '${name}' (${code.length} B). Connect Brainfuino to run.`, 'info');
+        appendTextToTerminal(terminalScreen, `\r\n\x1b[33m[LOADED] '${name}' (${code.length} B) loaded into memory. Connect Brainfuino to run.\x1b[0m\r\n`, mainTerminalState);
+        return;
+      }
+
+      // If connected: stream directly to Brainfuino ROM and execute live!
+      postSystemMessage(`Streaming '${name}' (${code.length} B) to Brainfuino ROM...`, 'info');
+      appendTextToTerminal(terminalScreen, `\r\n\x1b[36m[WRITE] Streaming '${name}' (${code.length} B) to Brainfuino ROM...\x1b[0m\r\n`, mainTerminalState);
+
+      await sendCmd('!SET:12=1\r\n');
+      await new Promise(r => setTimeout(r, 40));
+
+      await sendCmd('!RST\r\n');
+      await new Promise(r => setTimeout(r, 80));
+
+      const enc = new TextEncoder();
+      const chunkSize = 128;
+      for (let i = 0; i < code.length; i += chunkSize) {
+        const chunk = code.slice(i, i + chunkSize);
+        await writer.write(enc.encode(chunk));
+        await new Promise(r => setTimeout(r, 4));
+      }
+      await writer.write(enc.encode('\r\n'));
+
+      postSystemMessage(`Program '${name}' running on Brainfuino!`, 'success');
+      appendTextToTerminal(terminalScreen, `\x1b[32m[DONE] '${name}' flashed and executing on soft-processor!\x1b[0m\r\n`, mainTerminalState);
+      terminalScreen.focus();
     }
 
     // --- Drag & Drop for Main Terminal View ---
@@ -3653,19 +3684,37 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
       const usageBadge = document.getElementById('lib-usage-badge');
       const storageFill = document.getElementById('lib-storage-fill');
       const storageText = document.getElementById('lib-storage-text');
+      const sbSlotsCount = document.getElementById('sidebar-lib-slots-count');
+      const sbStorageFill = document.getElementById('sidebar-lib-storage-fill');
+      const sbStorageText = document.getElementById('sidebar-lib-storage-text');
+      const quickSelect = document.getElementById('quick-lib-select') as HTMLSelectElement;
+      const modalBtnLabel = document.getElementById('lib-modal-btn-label');
+
+      if (modalBtnLabel) {
+        modalBtnLabel.textContent = `Library (${dynamicLibPrograms.length})`;
+      }
+
       if (!tbody) return;
+
+      const usedKb = (libUsedBytes / 1024).toFixed(1);
+      const capKb = (libTotalCapacity / 1024).toFixed(1);
+      const pct = Math.min(100, Math.round((libUsedBytes / libTotalCapacity) * 100));
 
       if (dynamicLibPrograms.length === 0) {
         tbody.innerHTML = `
           <tr>
             <td colspan="5" style="text-align:center; padding:24px; color:var(--text-muted);">
-              No programs installed in Flash Library. Write your first program above!
+              No programs installed in Flash Library. Click "Sync" or save your first program!
             </td>
           </tr>`;
         if (slotsCount) slotsCount.textContent = '0 / 64 Slots';
         if (usageBadge) usageBadge.textContent = '0 B / 44 kB';
         if (storageFill) storageFill.style.width = '0%';
         if (storageText) storageText.textContent = '0.0 kB used (0%)';
+        if (sbSlotsCount) sbSlotsCount.textContent = '0 / 64 Slots';
+        if (sbStorageFill) sbStorageFill.style.width = '0%';
+        if (sbStorageText) sbStorageText.textContent = '0%';
+        if (quickSelect) quickSelect.innerHTML = '<option value="">No programs synced</option>';
         return;
       }
 
@@ -3684,7 +3733,7 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
             <span>Run</span>
           </button>
-          <button class="lib-btn-action" onclick="dumpLibrarySlot(${p.slot})" title="Dump program source into editor">
+          <button class="lib-btn-action" onclick="dumpLibrarySlot(${p.slot})" title="Dump program source into terminal">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
             <span>Dump</span>
           </button>
@@ -3714,14 +3763,32 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
 
       tbody.innerHTML = html;
 
-      const usedKb = (libUsedBytes / 1024).toFixed(1);
-      const capKb = (libTotalCapacity / 1024).toFixed(1);
-      const pct = Math.min(100, Math.round((libUsedBytes / libTotalCapacity) * 100));
-
       if (slotsCount) slotsCount.textContent = `${dynamicLibPrograms.length} / 64 Slots`;
       if (usageBadge) usageBadge.textContent = `${usedKb} kB / ${capKb} kB`;
       if (storageFill) storageFill.style.width = `${pct}%`;
       if (storageText) storageText.textContent = `${usedKb} kB used (${pct}%)`;
+
+      if (sbSlotsCount) sbSlotsCount.textContent = `${dynamicLibPrograms.length} / 64 Slots`;
+      if (sbStorageFill) sbStorageFill.style.width = `${pct}%`;
+      if (sbStorageText) sbStorageText.textContent = `${pct}% (${usedKb} kB)`;
+
+      if (quickSelect) {
+        quickSelect.innerHTML = dynamicLibPrograms.map(p => 
+          `<option value="${p.slot}">Slot ${String(p.slot + 1).padStart(2, '0')}: ${escapeHtml(p.name)}</option>`
+        ).join('');
+      }
+    }
+
+    function runSelectedQuickLibrarySlot() {
+      const select = document.getElementById('quick-lib-select') as HTMLSelectElement;
+      if (!select || !select.value) {
+        alert('Please sync the library or select a program slot first.');
+        return;
+      }
+      const slot = parseInt(select.value, 10);
+      if (!isNaN(slot)) {
+        runLibrarySlot(slot);
+      }
     }
 
     function runLibrarySlot(slot) {
@@ -3729,21 +3796,13 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
         alert('Please connect Brainfuino first.');
         return;
       }
+      toggleLibraryModal(false);
       sendCmd(`!LIB:RUN:${slot}\r\n`);
-      updateWriteLibStatus(`Launching slot ${slot} on soft-processor...`, true);
-      const badge = document.getElementById('verify-countdown-badge');
-      if (badge) {
-        badge.textContent = `SLOT ${slot + 1} RUNNING`;
-        badge.style.color = '#38bdf8';
-      }
-      const dot = document.getElementById('verify-status-dot');
-      if (dot) {
-        dot.className = 'status-strip-dot active';
-      }
-      clearVerifyTerminal();
-      appendVerifyTerminalText(`--- Launching Library Slot ${slot + 1} on Soft-Processor ---\r\n`);
-      const vScreen = document.getElementById('verify-terminal-screen');
-      if (vScreen) vScreen.focus();
+      const prog = dynamicLibPrograms.find(p => p.slot === slot);
+      const name = prog ? prog.name : `Slot ${slot + 1}`;
+      postSystemMessage(`Launching '${name}' on Brainfuino...`, 'info', 2500);
+      appendTextToTerminal(terminalScreen, `\r\n\x1b[35m[LIB] Launching '${name}' (Slot ${slot + 1}) on soft-processor...\x1b[0m\r\n`, mainTerminalState);
+      terminalScreen.focus();
     }
 
     function dumpLibrarySlot(slot) {
@@ -3751,8 +3810,10 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
         alert('Please connect Brainfuino first.');
         return;
       }
+      toggleLibraryModal(false);
       sendCmd(`!LIB:DUMP:${slot}\r\n`);
-      updateWriteLibStatus(`Requesting dump of slot ${slot}...`, true);
+      postSystemMessage(`Requesting dump of Slot ${slot + 1}...`, 'info', 2000);
+      terminalScreen.focus();
     }
 
     function deleteLibrarySlot(slot, name) {
@@ -3764,11 +3825,12 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
         return;
       }
       sendCmd(`!LIB:DEL:${slot}\r\n`);
-      updateWriteLibStatus(`Deleting slot ${slot}...`, true);
+      postSystemMessage(`Deleted '${name}' from Library. Refreshing...`, 'info', 2000);
+      setTimeout(() => queryDynamicLibrary(), 600);
     }
 
     async function executeWriteLiveRun() {
-      const area = document.getElementById('write-code-area');
+      const area = document.getElementById('write-code-area') as HTMLTextAreaElement;
       if (!area || !area.value.trim()) {
         alert('Please enter or select Brainfuck code to write.');
         return;
@@ -3779,18 +3841,12 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
       }
 
       const code = area.value;
-      updateWriteLibStatus('Sending code to Brainfuino RAM/ROM (Live Run)...', true);
-      const badge = document.getElementById('verify-countdown-badge');
-      if (badge) {
-        badge.textContent = 'LIVE RUNNING';
-        badge.style.color = '#38bdf8';
-      }
-      const dot = document.getElementById('verify-status-dot');
-      if (dot) {
-        dot.className = 'status-strip-dot active';
-      }
-      clearVerifyTerminal();
-      appendVerifyTerminalText(`--- Live Run: Writing and executing on Soft-Processor (${code.length} bytes) ---\r\n`);
+      const nameInput = document.getElementById('write-prog-name') as HTMLInputElement;
+      const progName = (nameInput && nameInput.value.trim()) ? nameInput.value.trim() : 'Code';
+      toggleLibraryModal(false);
+
+      postSystemMessage(`Streaming '${progName}' (${code.length} B) to Brainfuino ROM...`, 'info');
+      appendTextToTerminal(terminalScreen, `\r\n\x1b[36m[WRITE] Streaming '${progName}' (${code.length} B) to Brainfuino ROM...\x1b[0m\r\n`, mainTerminalState);
 
       // Ensure Auto-Program on Paste is enabled on companion MCU
       await sendCmd('!SET:12=1\r\n');
@@ -3809,14 +3865,14 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
       }
       await writer.write(enc.encode('\r\n'));
 
-      updateWriteLibStatus('Program written! Running live on Brainfuino.', false);
-      const vScreen = document.getElementById('verify-terminal-screen');
-      if (vScreen) vScreen.focus();
+      postSystemMessage(`Program '${progName}' running on Brainfuino!`, 'success');
+      appendTextToTerminal(terminalScreen, `\x1b[32m[DONE] '${progName}' flashed and executing on soft-processor!\x1b[0m\r\n`, mainTerminalState);
+      terminalScreen.focus();
     }
 
-    async function executeWriteToLibrary(withTest = true) {
-      const area = document.getElementById('write-code-area');
-      const nameInput = document.getElementById('write-prog-name');
+    async function executeWriteToLibrary(withTest = false) {
+      const area = document.getElementById('write-code-area') as HTMLTextAreaElement;
+      const nameInput = document.getElementById('write-prog-name') as HTMLInputElement;
       if (!area || !area.value.trim()) {
         alert('Please enter or select Brainfuck code to write.');
         return;
@@ -3830,7 +3886,8 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
       progName = progName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 15);
       const code = area.value;
 
-      updateWriteLibStatus(`Initiating Library write for '${progName}'...`, true);
+      postSystemMessage(`Saving '${progName}' to Library (${code.length} B)...`, 'info');
+      appendTextToTerminal(terminalScreen, `\r\n\x1b[35m[LIB] Saving '${progName}' (${code.length} B) to flash slot...\x1b[0m\r\n`, mainTerminalState);
 
       // Cleanly exit or abort any active text menu on the device
       await sendCmd('\x1b');
@@ -3847,7 +3904,6 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
         await sendCmd(`!LIB:ADD_NOVERIFY:${progName}\r\n`);
       }
 
-      // Wait up to 500ms for direct !LIB:ADD:READY handshake
       try {
         directReady = await Promise.race([
           readyPromise,
@@ -3859,8 +3915,6 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
       libAddReadyResolver = null;
 
       if (directReady) {
-        // Modern firmware direct write protocol
-        updateWriteLibStatus(`Streaming code payload (${code.length} B)...`, true);
         const enc = new TextEncoder();
         const chunkSize = 128;
         for (let i = 0; i < code.length; i += chunkSize) {
@@ -3869,24 +3923,11 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
           await new Promise(r => setTimeout(r, 4));
         }
         await writer.write(enc.encode('\r\n'));
-
-        if (withTest) {
-          updateWriteLibStatus('Code uploaded. Testing on Brainfuino before save...', true);
-        } else {
-          updateWriteLibStatus('Code uploaded. Saving directly to Library...', true);
-        }
+        postSystemMessage(`Program '${progName}' saved to Library!`, 'success');
+        appendTextToTerminal(terminalScreen, `\x1b[32m[DONE] '${progName}' saved to Library!\x1b[0m\r\n`, mainTerminalState);
       } else {
-        // Older firmware fallback:
-        // Hardware did not respond to !LIB:ADD:READY.
-        // It may be in the interactive menu or awaiting program name.
-        updateWriteLibStatus(`Direct handshake timed out. Using interactive menu fallback for '${progName}'...`, true);
-
-        // Explicitly supply the program name so it is NEVER populated from comments in the code!
         await sendCmd(`${progName}\r\n`);
         await new Promise(r => setTimeout(r, 350));
-
-        // Stream code payload
-        updateWriteLibStatus(`Streaming code payload (${code.length} B)...`, true);
         const enc = new TextEncoder();
         const chunkSize = 128;
         for (let i = 0; i < code.length; i += chunkSize) {
@@ -3896,11 +3937,11 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
         }
         await writer.write(enc.encode('\r\n'));
         await new Promise(r => setTimeout(r, 300));
-
-        // Answer verification prompt: 'y' for test, 'n' for direct
         await sendCmd(withTest ? 'y\r\n' : 'n\r\n');
-        updateWriteLibStatus(withTest ? 'Uploaded. Running verification test...' : 'Uploaded. Saving to Library...', true);
+        postSystemMessage(`Program '${progName}' saved to Library!`, 'success');
       }
+
+      setTimeout(() => queryDynamicLibrary(), 600);
     }
 
     // --- Execution & Verification Monitor (Permanent Card in Right Column) ---
@@ -4320,6 +4361,9 @@ Object.assign(window, {
   updateWriteCodeStats,
   executeWriteLiveRun,
   executeWriteToLibrary,
+  toggleLibraryModal,
+  handleLibraryModalBackdropClick,
+  runSelectedQuickLibrarySlot,
   clearVerifyTerminal,
   abortVerification,
   commitVerificationNow,

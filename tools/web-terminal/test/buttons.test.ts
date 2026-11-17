@@ -153,34 +153,32 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
   });
 
   describe('Tab Navigation Buttons', () => {
-    it('switches between Terminal, Write/Program Suite, Settings, and Flasher views', () => {
+    it('switches between Terminal, Settings, and Flasher views', () => {
       const viewTerminal = document.getElementById('view-terminal')!;
-      const viewWrite = document.getElementById('view-write')!;
       const viewControls = document.getElementById('view-controls')!;
       const viewFlashing = document.getElementById('view-flashing')!;
 
-      // 1. Switch to Write / Program Suite
-      win.switchTab('write');
-      expect(viewWrite.style.display).toBe('flex');
-      expect(viewTerminal.style.display).toBe('none');
-      expect(viewControls.style.display).toBe('none');
-      expect(viewFlashing.style.display).toBe('none');
-
-      // 2. Switch to Settings
+      // 1. Switch to Settings
       win.switchTab('settings');
       expect(viewControls.style.display).toBe('flex');
-      expect(viewWrite.style.display).toBe('none');
       expect(viewTerminal.style.display).toBe('none');
+      expect(viewFlashing.style.display).toBe('none');
 
-      // 3. Switch to Flasher
+      // 2. Switch to Flasher
       win.switchTab('flash');
       expect(viewFlashing.style.display).toBe('flex');
       expect(viewControls.style.display).toBe('none');
+      expect(viewTerminal.style.display).toBe('none');
 
-      // 4. Switch back to Terminal
+      // 3. Switch back to Terminal
       win.switchTab('terminal');
       expect(viewTerminal.style.display).toBe('flex');
+      expect(viewControls.style.display).toBe('none');
       expect(viewFlashing.style.display).toBe('none');
+
+      // 4. Legacy 'write' request safely maps to terminal
+      win.switchTab('write');
+      expect(viewTerminal.style.display).toBe('flex');
     });
   });
 
@@ -298,6 +296,8 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
       expect(typeof win.runLibrarySlot).toBe('function');
       expect(typeof win.dumpLibrarySlot).toBe('function');
       expect(typeof win.deleteLibrarySlot).toBe('function');
+      expect(typeof win.toggleLibraryModal).toBe('function');
+      expect(typeof win.runSelectedQuickLibrarySlot).toBe('function');
 
       // Calling when disconnected triggers alert without uncaught exception
       win.runLibrarySlot(0);
@@ -308,6 +308,18 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
 
       win.deleteLibrarySlot(0, 'test');
       expect(window.alert).toHaveBeenCalledWith('Please connect Brainfuino first.');
+    });
+
+    it('manages Hardware Program Library modal', () => {
+      const modal = document.getElementById('library-modal')!;
+      expect(modal).not.toBeNull();
+      expect(modal.style.display).toBe('none');
+
+      win.toggleLibraryModal(true);
+      expect(modal.style.display).toBe('flex');
+
+      win.toggleLibraryModal(false);
+      expect(modal.style.display).toBe('none');
     });
   });
 
