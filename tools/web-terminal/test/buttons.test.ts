@@ -57,7 +57,6 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
         'runLibrarySlot',
         'dumpLibrarySlot',
         'deleteLibrarySlot',
-        'fetchDynamicMenu',
         'toggleTheme',
         'attemptAutoConnect',
         'isAutoConnectEnabled',
@@ -68,8 +67,6 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
         'toggleFullscreen',
         'cycleInputMode',
         'sendInputBox',
-        'filterDynamicSettings',
-        'loadDefaultPreviewSchema',
         'onReleaseSelectChange',
         'setFlasherTarget',
         'setFpgaBoardRev',
@@ -159,30 +156,21 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
   });
 
   describe('Tab Navigation Buttons', () => {
-    it('switches between Terminal, Settings, and Flasher views', () => {
+    it('switches between Terminal and Flasher views', () => {
       const viewTerminal = document.getElementById('view-terminal')!;
-      const viewControls = document.getElementById('view-controls')!;
       const viewFlashing = document.getElementById('view-flashing')!;
 
-      // 1. Switch to Settings
-      win.switchTab('settings');
-      expect(viewControls.style.display).toBe('flex');
-      expect(viewTerminal.style.display).toBe('none');
-      expect(viewFlashing.style.display).toBe('none');
-
-      // 2. Switch to Flasher
+      // 1. Switch to Flasher
       win.switchTab('flash');
       expect(viewFlashing.style.display).toBe('flex');
-      expect(viewControls.style.display).toBe('none');
       expect(viewTerminal.style.display).toBe('none');
 
-      // 3. Switch back to Terminal
+      // 2. Switch back to Terminal
       win.switchTab('terminal');
       expect(viewTerminal.style.display).toBe('flex');
-      expect(viewControls.style.display).toBe('none');
       expect(viewFlashing.style.display).toBe('none');
 
-      // 4. Legacy 'write' request safely maps to terminal
+      // 3. Legacy 'write' request safely maps to terminal
       win.switchTab('write');
       expect(viewTerminal.style.display).toBe('flex');
     });
@@ -390,26 +378,7 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
     });
   });
 
-  describe('Dynamic Settings Schema & Clock Adjustment Buttons', () => {
-    it('loads default preview schema into settings view', () => {
-      win.switchTab('settings');
-      win.loadDefaultPreviewSchema();
-
-      const grid = document.getElementById('settings-cards-grid')!;
-      expect(grid).not.toBeNull();
-      expect(grid.children.length).toBeGreaterThan(0);
-    });
-
-    it('filters settings cards via filterDynamicSettings', () => {
-      const searchInput = document.getElementById('settings-search-input') as HTMLInputElement;
-      expect(searchInput).not.toBeNull();
-      searchInput.value = 'baud';
-      win.filterDynamicSettings('baud');
-
-      const cards = document.querySelectorAll('.settings-card');
-      expect(cards.length).toBeGreaterThan(0);
-    });
-
+  describe('Clock Adjustment & Toolbar Buttons', () => {
     it('handles clock speed adjustments safely when disconnected', () => {
       // stepClockUp, stepClockDown, queryClockSpeed should run without throwing
       expect(() => win.queryClockSpeed()).not.toThrow();

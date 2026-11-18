@@ -205,7 +205,6 @@ volatile int8_t  lib_capacity_delete_slot = -1;
 
 volatile uint8_t dfu_requested;
 volatile uint8_t reset_requested;
-volatile uint8_t dynamic_schema_requested = 0;
 volatile uint8_t dynamic_lib_requested = 0;
 volatile int8_t  cmd_lib_run_slot = -1;
 volatile int8_t  cmd_lib_dump_slot = -1;
@@ -1609,81 +1608,6 @@ void menu_exit(uint8_t save){
 	LED_GPIO_Port->BRR = LED_Pin;
 }
 
-void menu_export_dynamic_schema(void){
-	CDC_Print("!MENU:START:17\r\n");
-	// Folders (Category groupings)
-	CDC_Print("0;FOLDER;0;Execution & Clock\r\n");
-	CDC_Print("1;FOLDER;0;Auto-Programming\r\n");
-	CDC_Print("2;FOLDER;0;Input & Step Control\r\n");
-	CDC_Print("3;FOLDER;0;System Commands\r\n");
-
-	// Folder 0: Execution & Clock
-	// Field 10: Clock Frequency (SELECT)
-	CDC_Printf("10;SELECT;0;FPGA Clock Frequency;%u;", (unsigned int)freq);
-	for (uint8_t i = 0; i < FREQ_COUNT; i++){
-		CDC_Printf("%s%s", get_freq_name(i), (i + 1 < FREQ_COUNT) ? ";" : "\r\n");
-	}
-
-	// Field 11: Speed Hotkey Mode (SELECT)
-	CDC_Printf("11;SELECT;0;Run Mode Hotkeys;%u;NONE;PgUp/PgDn;Up/Down;+ / -\r\n", (unsigned int)cfg_speed_hotkey_mode);
-
-	// Folder 1: Auto-Programming
-	// Field 12: Auto-Program on Paste (TOGGLE)
-	CDC_Printf("12;TOGGLE;1;Auto-Program on Paste;%u;DISABLED;ENABLED\r\n", (unsigned int)cfg_auto_prog_run_mode);
-
-	// Field 13: Paste Upload Threshold (SELECT)
-	uint8_t thresh_idx = 0;
-	if (cfg_auto_prog_min_bytes == 8) thresh_idx = 1;
-	else if (cfg_auto_prog_min_bytes == 16) thresh_idx = 2;
-	else if (cfg_auto_prog_min_bytes == 32) thresh_idx = 3;
-	else if (cfg_auto_prog_min_bytes == 64) thresh_idx = 4;
-	CDC_Printf("13;SELECT;1;Paste Threshold;%u;4 Bytes;8 Bytes;16 Bytes;32 Bytes;64 Bytes\r\n", (unsigned int)thresh_idx);
-
-	// Field 14: Auto-Reset after Flash (TOGGLE)
-	CDC_Printf("14;TOGGLE;1;Auto-Reset after Flash;%u;DISABLED;ENABLED\r\n", (unsigned int)cfg_auto_reset_after_pgm);
-
-	// Field 15: Append Loop [-]+[] (TOGGLE)
-	CDC_Printf("15;TOGGLE;1;Append Loop [-]+[];%u;DISABLED;ENABLED\r\n", (unsigned int)cfg_append_endless_loop);
-
-	// Field 16: Prune non-BF on Paste (TOGGLE)
-	CDC_Printf("16;TOGGLE;1;Prune non-BF on Paste;%u;DISABLED;ENABLED\r\n", (unsigned int)cfg_prune_on_paste);
-
-	// Field 17: Prune non-BF in Library (TOGGLE)
-	CDC_Printf("17;TOGGLE;1;Prune non-BF in Library;%u;DISABLED;ENABLED\r\n", (unsigned int)cfg_prune_in_library);
-
-	// Folder 2: Input & Step Control
-	// Field 18: Serial CR to LF (TOGGLE)
-	CDC_Printf("18;TOGGLE;2;Serial Input CR to LF;%u;DISABLED;ENABLED\r\n", (unsigned int)cfg_cr_to_lf);
-
-	// Field 19: Manual Stepping Mode (TOGGLE)
-	CDC_Printf("19;TOGGLE;2;Manual Stepping Mode;%u;DISABLED;ENABLED\r\n", (unsigned int)cfg_manual_step_enabled);
-
-	// Field 20: Step Advance Ticks (SELECT)
-	CDC_Printf("20;SELECT;2;Step Advance Ticks;%u;1 Tick;10 Ticks;100 Ticks;1,000 Ticks;10,000 Ticks;100,000 Ticks\r\n",
-	           (unsigned int)(cfg_manual_step_ticks <= 5 ? cfg_manual_step_ticks : 2));
-
-	// Field 21: Step Trigger Key (SELECT)
-	CDC_Printf("21;SELECT;2;Step Trigger Key;%u;Spacebar;Tab;Enter\r\n",
-	           (unsigned int)(cfg_manual_step_key <= 2 ? cfg_manual_step_key : 0));
-
-	// Folder 3: System Commands
-	CDC_Print("30;COMMAND;3;Reboot to USB DFU\r\n");
-	CDC_Print("31;COMMAND;3;Restore Factory Demo\r\n");
-	CDC_Print("32;COMMAND;3;Soft Reset FPGA\r\n");
-
-	// Folder 4: Display & Terminal
-	CDC_Print("4;FOLDER;0;Display & Terminal\r\n");
-	CDC_Printf("22;SELECT;4;Companion MCU Output Color;%u;", (unsigned int)cfg_mcu_color_idx);
-	for (uint8_t i = 0; i < MCU_COLOR_COUNT; i++){
-		CDC_Printf("%s%s", mcu_colors[i].name, (i + 1 < MCU_COLOR_COUNT) ? ";" : "\r\n");
-	}
-	CDC_Printf("23;SELECT;4;Custom Red (0-5);%u;0;1;2;3;4;5\r\n", (unsigned int)cfg_mcu_custom_r);
-	CDC_Printf("24;SELECT;4;Custom Green (0-5);%u;0;1;2;3;4;5\r\n", (unsigned int)cfg_mcu_custom_g);
-	CDC_Printf("25;SELECT;4;Custom Blue (0-5);%u;0;1;2;3;4;5\r\n", (unsigned int)cfg_mcu_custom_b);
-
-	CDC_Print("!MENU:END\r\n");
-}
-
 void lib_export_dynamic_schema(void){
 	uint8_t count = 0;
 	if (lib_toc[0].crc32 == TOC_MAGIC) count++;
@@ -1754,12 +1678,6 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 	// Program ROM Dump (only !DUMP)
 	if (is_cmd_ci(buff, len, "!DUMP")){
 		code_dump = 1;
-		return 1;
-	}
-
-	// ExpressLRS-style Dynamic Parameter Schema Query (!MENU*)
-	if (is_cmd_ci(buff, len, "!MENU*")){
-		dynamic_schema_requested = 1;
 		return 1;
 	}
 
@@ -1858,102 +1776,6 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 	// Standard VT100 Interactive Menu
 	if (is_prefix_ci(buff, len, "!MENU") || is_prefix_ci(buff, len, "!CONFIG")){
 		menu_enter();
-		return 1;
-	}
-
-	// Dynamic Parameter Value Mutation (!SET:<id>=<val>)
-	if (len >= 6 && is_prefix_ci(buff, len, "!SET:")){
-		uint32_t id = 0, val = 0;
-		const char *p = (const char *)buff + 5;
-		while (*p >= '0' && *p <= '9'){
-			id = id * 10 + (*p - '0');
-			p++;
-		}
-		if (*p == '='){
-			p++;
-			while (*p >= '0' && *p <= '9'){
-				val = val * 10 + (*p - '0');
-				p++;
-			}
-			switch(id){
-				case 10:
-					if (val < FREQ_COUNT) set_freq((uint8_t)val);
-					break;
-				case 11:
-					cfg_speed_hotkey_mode = (uint8_t)(val % 4);
-					break;
-				case 12:
-					cfg_auto_prog_run_mode = val ? 1 : 0;
-					break;
-				case 13:
-					{
-						uint8_t th_table[] = { 4, 8, 16, 32, 64 };
-						cfg_auto_prog_min_bytes = (val < 5) ? th_table[val] : 4;
-					}
-					break;
-				case 14:
-					cfg_auto_reset_after_pgm = val ? 1 : 0;
-					break;
-				case 15:
-					cfg_append_endless_loop = val ? 1 : 0;
-					break;
-				case 22:
-					cfg_mcu_color_idx = (uint8_t)(val % MCU_COLOR_COUNT);
-					break;
-				case 23:
-					cfg_mcu_custom_r = (uint8_t)(val % 6);
-					break;
-				case 24:
-					cfg_mcu_custom_g = (uint8_t)(val % 6);
-					break;
-				case 25:
-					cfg_mcu_custom_b = (uint8_t)(val % 6);
-					break;
-				case 16:
-					cfg_prune_on_paste = val ? 1 : 0;
-					break;
-				case 17:
-					cfg_prune_in_library = val ? 1 : 0;
-					break;
-				case 18:
-					cfg_cr_to_lf = val ? 1 : 0;
-					break;
-				case 19:
-					cfg_manual_step_enabled = val ? 1 : 0;
-					set_freq(freq);
-					break;
-				case 20:
-					if (val <= 5) cfg_manual_step_ticks = (uint8_t)val;
-					break;
-				case 21:
-					if (val <= 2) cfg_manual_step_key = (uint8_t)val;
-					break;
-				default:
-					break;
-			}
-			settings_dirty = 1;
-			settings_dirty_tick = HAL_GetTick();
-			CDC_Printf("!SET:OK:%lu=%lu\r\n", (unsigned long)id, (unsigned long)val);
-			return 1;
-		}
-	}
-
-	// Dynamic Parameter Command Execution (!CMD:<id>)
-	if (len >= 6 && is_prefix_ci(buff, len, "!CMD:")){
-		uint32_t cid = 0;
-		const char *p = (const char *)buff + 5;
-		while (*p >= '0' && *p <= '9'){
-			cid = cid * 10 + (*p - '0');
-			p++;
-		}
-		CDC_Printf("!CMD:OK:%lu\r\n", (unsigned long)cid);
-		if (cid == 30){
-			dfu_requested = 1;
-		} else if (cid == 31){
-			cmd_restore_requested = 1;
-		} else if (cid == 32){
-			reset_requested = 1;
-		}
 		return 1;
 	}
 
@@ -2688,12 +2510,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 
   while (1){
-	  // Check for dynamic schema query request (!MENU*) in Thread Mode
-	  if (dynamic_schema_requested){
-		  dynamic_schema_requested = 0;
-		  menu_export_dynamic_schema();
-	  }
-
 	  // Check for dynamic library query request (!LIB*) in Thread Mode
 	  if (dynamic_lib_requested){
 		  dynamic_lib_requested = 0;

@@ -25,56 +25,6 @@ describe('Machine Protocol & Firmware State Synchronizer Suite', () => {
     win = window as any;
   });
 
-  describe('Dynamic Settings Menu Protocol (!MENU:*)', () => {
-    it('parses dynamic menu stream into interactive settings cards and sync badge', () => {
-      win.switchTab('settings');
-
-      // Feed machine lines simulating STM32 Companion firmware dynamic menu dump
-      win.processMachineLine('!MENU:START:4');
-      win.processMachineLine('0;FOLDER;0;Execution & Clock;;');
-      win.processMachineLine('10;SELECT;0;FPGA Clock Frequency;2;10 Hz;500 Hz;1 MHz;12 MHz');
-      win.processMachineLine('11;TOGGLE;0;Direct Execution Mode;1;');
-      win.processMachineLine('12;COMMAND;0;Reboot to DFU;;');
-      win.processMachineLine('!MENU:END');
-
-      const headerBadge = document.getElementById('dyn-header-badge');
-      expect(headerBadge?.textContent).toBe('SYNCED (3)');
-      expect(headerBadge?.className).toContain('synced');
-
-      const grid = document.getElementById('settings-cards-grid');
-      expect(grid?.children.length).toBeGreaterThan(0);
-
-      const selectItem = document.getElementById('dyn-item-10') as HTMLSelectElement;
-      expect(selectItem).not.toBeNull();
-      expect(selectItem.value).toBe('2');
-
-      const toggleItem = document.getElementById('dyn-item-11') as HTMLInputElement;
-      expect(toggleItem).not.toBeNull();
-      expect(toggleItem.checked).toBe(true);
-
-      const cmdBtn = document.getElementById('dyn-item-12') as HTMLButtonElement;
-      expect(cmdBtn).not.toBeNull();
-      expect(cmdBtn.textContent?.trim()).toBe('Reboot to DFU');
-    });
-
-    it('handles !SET:OK confirmation and flashes affected setting row', () => {
-      win.processMachineLine('!SET:OK:10=3');
-
-      const row = document.getElementById('setting-row-10');
-      expect(row?.classList.contains('setting-flash')).toBe(true);
-
-      const clkDisplay = document.getElementById('clock-speed-val');
-      expect(clkDisplay?.textContent).toBe('100 Hz'); // Index 3 is 100 Hz
-    });
-
-    it('handles !CMD:OK execution confirmation', () => {
-      win.processMachineLine('!CMD:OK:12');
-
-      const statusEl = document.getElementById('settings-strip-msg');
-      expect(statusEl?.textContent).toContain('Executed: Reboot to DFU');
-    });
-  });
-
   describe('Dynamic Program Library Protocol (!LIB:*)', () => {
     it('parses program library schema and updates storage meter and slot count', () => {
       win.switchTab('write');

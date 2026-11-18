@@ -290,18 +290,17 @@
       currentTab = normalized;
 
       if (updateHash) {
-        history.replaceState(null, '', '#' + (normalized === 'terminal' ? '' : (normalized === 'flashing' ? 'flash' : normalized)));
+        history.replaceState(null, '', '#' + (normalized === 'terminal' ? '' : normalized));
       }
 
       const tabs = [
         { id: 'terminal', btn: 'tab-btn-terminal', content: 'tab-content-terminal' },
-        { id: 'settings', btn: 'tab-btn-settings', content: 'tab-content-settings' },
         { id: 'flashing', btn: 'tab-btn-flash', content: 'tab-content-flash' }
       ];
 
       tabs.forEach(t => {
-        const btn = document.getElementById(t.btn) || document.getElementById(`tab-btn-${t.id}`) || (t.id === 'settings' ? document.getElementById('tab-btn-controls') : null);
-        const content = document.getElementById(t.content) || document.getElementById(`tab-content-${t.id}`) || (t.id === 'settings' ? document.getElementById('tab-content-controls') : null);
+        const btn = document.getElementById(t.btn) || document.getElementById(`tab-btn-${t.id}`);
+        const content = document.getElementById(t.content) || document.getElementById(`tab-content-${t.id}`);
         if (btn) btn.classList.toggle('active', t.id === normalized);
         if (content) {
           content.style.display = (t.id === normalized ? 'block' : 'none');
@@ -312,19 +311,10 @@
       if (sidebarEl) sidebarEl.classList.remove('write-tab-active');
 
       const viewTerminal = document.getElementById('view-terminal');
-      const viewControls = document.getElementById('view-controls');
       const viewFlashing = document.getElementById('view-flashing');
 
-      if (normalized === 'settings') {
+      if (normalized === 'flashing') {
         if (viewTerminal) viewTerminal.style.display = 'none';
-        if (viewControls) viewControls.style.display = 'flex';
-        if (viewFlashing) viewFlashing.style.display = 'none';
-        if (port && dynamicMenuSchema.length === 0) {
-          fetchDynamicMenu();
-        }
-      } else if (normalized === 'flashing') {
-        if (viewTerminal) viewTerminal.style.display = 'none';
-        if (viewControls) viewControls.style.display = 'none';
         if (viewFlashing) viewFlashing.style.display = 'flex';
         if (!flasherReleasesLoaded) {
           fetchGitHubReleases();
@@ -332,7 +322,6 @@
         updateFlasherDeviceStatus();
       } else {
         if (viewTerminal) viewTerminal.style.display = 'flex';
-        if (viewControls) viewControls.style.display = 'none';
         if (viewFlashing) viewFlashing.style.display = 'none';
         renderGitHubProgramCatalog();
         if (port && dynamicLibPrograms.length === 0) {
@@ -569,11 +558,6 @@
         updateConnectionUI(true);
         postSystemMessage('Connected to Brainfuino (115200 baud)', 'success');
         readSerialLoop();
-
-        // If on settings tab, query dynamic menu
-        if (currentTab === 'settings') {
-          fetchDynamicMenu();
-        }
       } catch (err) {
         console.warn('Failed to open serial port:', err);
         port = null;
@@ -763,14 +747,8 @@
         const valEl = document.getElementById('clock-speed-val');
         if (valEl) {
           valEl.textContent = CLOCK_FREQUENCIES[currentClkIdx];
-        postSystemMessage(`FPGA Clock: ${CLOCK_FREQUENCIES[currentClkIdx]}`, 'info');
+          postSystemMessage(`FPGA Clock: ${CLOCK_FREQUENCIES[currentClkIdx]}`, 'info');
         }
-        const dynClkSelect = document.getElementById('dyn-item-10');
-        if (dynClkSelect && parseInt(dynClkSelect.value, 10) !== idx) {
-          dynClkSelect.value = String(idx);
-        }
-        const schemaItem = dynamicMenuSchema.find(i => i.id === 10);
-        if (schemaItem) schemaItem.val = String(idx);
       }
     }
 
@@ -792,150 +770,10 @@
       await sendCmd('!clk\r\n');
     }
 
-    // --- Dynamic Parameters & Machine Protocol ---
-    let dynamicMenuSchema = [];
-    let isParsingDynamicMenu = false;
+    // --- Machine Protocol ---
     let machineLineBuffer = '';
 
-    const PARAM_DESCRIPTIONS = {
-      10: 'Core execution clock frequency driving the FPGA soft-processor.',
-      11: 'Keyboard shortcut scheme to step clock frequency in run mode.',
-      12: 'Automatically assemble and flash Brainfuck programs detected on serial paste.',
-      13: 'Minimum byte length of serial paste required to trigger auto-programming.',
-      14: 'Automatically issue soft reset to FPGA immediately after flash completes.',
-      15: 'Append infinite halt loop [-]+[] to prevent program falling off flash.',
-      16: 'Filter out commentary and whitespace from pasted source code.',
-      17: 'Filter non-Brainfuck characters before storing into onboard ROM library.',
-      18: 'Normalize incoming serial CR (0x0D) to standard LF (0x0A) newlines.',
-      19: 'Enable single-step or burst-step hardware execution mode.',
-      20: 'Number of clock cycles to pulse per manual step trigger.',
-      21: 'Hardware or keyboard keystroke assigned to trigger manual execution step.',
-      30: 'Reboot companion STM32 microcontroller into USB System ROM DFU bootloader mode.',
-      31: 'Erase user flash and re-flash factory Brainfuino animated logo demo.',
-      32: 'Trigger hardware reset line (BF_RST) to restart the soft-processor core.'
-    };
-
-    function getCategoryIconSvg(title) {
-      const lower = title.toLowerCase();
-      if (lower.includes('clock') || lower.includes('execution')) {
-        return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>';
-      }
-      if (lower.includes('program') || lower.includes('flash') || lower.includes('paste')) {
-        return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>';
-      }
-      if (lower.includes('step') || lower.includes('input')) {
-        return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="M6 8h.001M10 8h.001M14 8h.001M18 8h.001M8 12h.001M12 12h.001M16 12h.001M7 16h10"></path></svg>';
-      }
-      return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line></svg>';
-    }
-
-    function fetchDynamicMenu() {
-      if (!port || !writer) {
-        updateSettingsStatus('Serial port not connected. Connect device or load preview.', false);
-        return;
-      }
-      const syncBtn = document.getElementById('settings-sync-btn');
-      if (syncBtn) syncBtn.disabled = true;
-
-      const headerBadge = document.getElementById('dyn-header-badge');
-      if (headerBadge) {
-        headerBadge.textContent = 'SYNCING...';
-        headerBadge.className = 'settings-badge syncing';
-      }
-
-      updateSettingsStatus('Querying Brainfuino parameters (!MENU*)...', true);
-      sendCmd('!MENU*\r\n');
-
-      setTimeout(() => {
-        if (syncBtn) syncBtn.disabled = false;
-      }, 1200);
-    }
-
-    function updateSettingsStatus(msg, isActive = true) {
-      const stripMsg = document.getElementById('settings-strip-msg');
-      const stripDot = document.getElementById('settings-strip-dot');
-      if (stripMsg) stripMsg.textContent = msg;
-      if (stripDot) stripDot.classList.toggle('active', isActive);
-
-      const dynStatus = document.getElementById('dyn-status');
-      if (dynStatus) dynStatus.textContent = msg;
-    }
-
     function processMachineLine(line) {
-      if (line.startsWith('!MENU:START:')) {
-        isParsingDynamicMenu = true;
-        dynamicMenuSchema = [];
-        updateSettingsStatus('Receiving parameters from hardware...', true);
-        const headerBadge = document.getElementById('dyn-header-badge');
-        if (headerBadge) {
-          headerBadge.textContent = 'RECEIVING...';
-          headerBadge.className = 'settings-badge syncing';
-        }
-        return;
-      }
-      if (line.startsWith('!MENU:END')) {
-        isParsingDynamicMenu = false;
-        renderDynamicMenu();
-        const nonFolderCount = dynamicMenuSchema.filter(i => i.type !== 'FOLDER').length;
-        const headerBadge = document.getElementById('dyn-header-badge');
-        if (headerBadge) {
-          headerBadge.textContent = `SYNCED (${nonFolderCount})`;
-          headerBadge.className = 'settings-badge synced';
-        }
-        updateSettingsStatus(`Parameters synced with hardware (${nonFolderCount} items loaded)`, true);
-        return;
-      }
-      if (isParsingDynamicMenu) {
-        // Format: ID;TYPE;PARENT_ID;LABEL;[CURRENT_VAL];[OPTIONS...]
-        const parts = line.split(';');
-        if (parts.length >= 4) {
-          const id = parseInt(parts[0], 10);
-          const type = parts[1].trim().toUpperCase();
-          const parentId = parseInt(parts[2], 10);
-          const label = parts[3].trim();
-          const val = parts.length >= 5 ? parts[4].trim() : '';
-          const options = parts.length >= 6 ? parts.slice(5).map(o => o.trim()).filter(o => o.length > 0) : [];
-          dynamicMenuSchema.push({ id, type, parentId, label, val, options });
-        }
-        return;
-      }
-      if (line.startsWith('!SET:OK:')) {
-        // Format: !SET:OK:<id>=<val>
-        const match = /!SET:OK:(\d+)=(.*)/.exec(line);
-        if (match) {
-          const id = parseInt(match[1], 10);
-          const val = match[2];
-          const item = dynamicMenuSchema.find(i => i.id === id);
-          if (item) item.val = val;
-          if (id === 10) {
-            updateClockDisplay(parseInt(val, 10));
-          }
-          updateSettingsStatus(`Saved: ${item ? item.label : id} = ${val}`, true);
-
-          const row = document.getElementById(`setting-row-${id}`);
-          if (row) {
-            row.classList.add('setting-flash');
-            setTimeout(() => row.classList.remove('setting-flash'), 1200);
-          }
-        }
-        return;
-      }
-      if (line.startsWith('!CMD:OK:')) {
-        const match = /!CMD:OK:(\d+)/.exec(line);
-        if (match) {
-          const id = parseInt(match[1], 10);
-          const item = dynamicMenuSchema.find(i => i.id === id);
-          updateSettingsStatus(`Executed: ${item ? item.label : id}`, true);
-
-          const row = document.getElementById(`setting-row-${id}`);
-          if (row) {
-            row.classList.add('setting-flash');
-            setTimeout(() => row.classList.remove('setting-flash'), 1200);
-          }
-        }
-        return;
-      }
-
       // --- Dynamic Program Library Protocol (!LIB*) ---
       if (line.startsWith('!LIB:START:')) {
         // Format: !LIB:START:<count>:<used_bytes>:<total_capacity>
@@ -1056,299 +894,6 @@
         switchTab('write');
         return;
       }
-    }
-
-    function renderDynamicMenu() {
-      const grid = document.getElementById('settings-cards-grid');
-      const emptyState = document.getElementById('settings-empty-state');
-      const sidebarNav = document.getElementById('sidebar-categories-nav');
-      const sidebarSec = document.getElementById('sidebar-categories-section');
-      const metaCount = document.getElementById('meta-param-count');
-      const metaState = document.getElementById('meta-sync-state');
-      const stripStats = document.getElementById('settings-strip-stats');
-
-      if (!grid) return;
-
-      if (dynamicMenuSchema.length === 0) {
-        if (emptyState) emptyState.style.display = 'flex';
-        grid.style.display = 'none';
-        if (sidebarSec) sidebarSec.style.display = 'none';
-        if (metaCount) metaCount.textContent = '0';
-        if (metaState) metaState.textContent = 'Disconnected';
-        if (stripStats) stripStats.textContent = 'Schema items: 0';
-        return;
-      }
-
-      if (emptyState) emptyState.style.display = 'none';
-      grid.style.display = 'flex';
-      grid.innerHTML = '';
-
-      if (sidebarNav) sidebarNav.innerHTML = '';
-      if (sidebarSec) sidebarSec.style.display = 'block';
-
-      // Setup responsive masonry columns (fill shortest column first)
-      const containerWidth = grid.clientWidth || (window.innerWidth - 280);
-      let numCols = 3;
-      if (containerWidth < 720) {
-        numCols = 1;
-      } else if (containerWidth < 1100) {
-        numCols = 2;
-      }
-      lastDynCols = numCols;
-
-      const columns = [];
-      for (let c = 0; c < numCols; c++) {
-        const colDiv = document.createElement('div');
-        colDiv.className = 'settings-grid-col';
-        grid.appendChild(colDiv);
-        columns.push({ el: colDiv, height: 0 });
-      }
-
-      // Separate folders vs fields
-      const declaredFolders = dynamicMenuSchema.filter(i => i.type === 'FOLDER');
-      const folderMap = new Map();
-      declaredFolders.forEach(f => folderMap.set(f.id, f));
-
-      // Auto-create category card for any items whose parentId isn't explicitly defined
-      const nonFolderItems = dynamicMenuSchema.filter(i => i.type !== 'FOLDER');
-      nonFolderItems.forEach(item => {
-        if (!folderMap.has(item.parentId)) {
-          folderMap.set(item.parentId, {
-            id: item.parentId,
-            type: 'FOLDER',
-            label: item.parentId === 0 ? 'General Configuration' : `Category ${item.parentId}`
-          });
-        }
-      });
-
-      const folderList = Array.from(folderMap.values());
-
-      let totalParams = 0;
-
-      folderList.forEach(folder => {
-        const children = dynamicMenuSchema.filter(i => i.parentId === folder.id && i.type !== 'FOLDER');
-        totalParams += children.length;
-
-        // 1. Render Category Nav Link in Sidebar
-        if (sidebarNav) {
-          const link = document.createElement('a');
-          link.className = 'sidebar-cat-link';
-          link.href = `#card-folder-${folder.id}`;
-          link.innerHTML = `
-            <span>${folder.label}</span>
-            <span class="meta-val">${children.length}</span>
-          `;
-          link.onclick = (e) => {
-            e.preventDefault();
-            const targetCard = document.getElementById(`card-folder-${folder.id}`);
-            if (targetCard) {
-              targetCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-          };
-          sidebarNav.appendChild(link);
-        }
-
-        // 2. Render Card for Main View
-        const card = document.createElement('div');
-        card.className = 'settings-card';
-        card.id = `card-folder-${folder.id}`;
-
-        const cardHeader = document.createElement('div');
-        cardHeader.className = 'settings-card-header';
-        cardHeader.innerHTML = `
-          <div class="settings-card-title-group">
-            <span class="settings-card-icon">${getCategoryIconSvg(folder.label)}</span>
-            <h3 class="settings-card-title">${folder.label}</h3>
-          </div>
-          <span class="settings-card-count">${children.length} items</span>
-        `;
-
-        const cardBody = document.createElement('div');
-        cardBody.className = 'settings-card-body';
-
-        children.forEach(item => {
-          const row = document.createElement('div');
-          row.className = 'settings-item-row';
-          row.id = `setting-row-${item.id}`;
-          const desc = PARAM_DESCRIPTIONS[item.id] || `Hardware register #${item.id}`;
-          row.setAttribute('data-search-text', `${folder.label} ${item.label} ${desc}`.toLowerCase());
-
-          const infoDiv = document.createElement('div');
-          infoDiv.className = 'settings-item-info';
-          infoDiv.innerHTML = `
-            <div class="settings-item-label">${item.label}</div>
-            <div class="settings-item-desc">${desc}</div>
-          `;
-
-          const ctrlDiv = document.createElement('div');
-          ctrlDiv.className = 'settings-item-ctrl';
-
-          if (item.type === 'TOGGLE') {
-            const isTrue = item.val === '1' || item.val.toLowerCase() === 'true' || item.val.toLowerCase() === 'on' || item.val.toLowerCase() === 'enabled';
-            ctrlDiv.innerHTML = `
-              <label class="dyn-switch-wrap" title="Click to toggle ${item.label}">
-                <input type="checkbox" id="dyn-item-${item.id}" ${isTrue ? 'checked' : ''} />
-                <span class="dyn-switch-slider"></span>
-                <span class="dyn-switch-label" id="dyn-lbl-${item.id}">${isTrue ? 'ENABLED' : 'DISABLED'}</span>
-              </label>
-            `;
-            const chk = ctrlDiv.querySelector(`#dyn-item-${item.id}`);
-            const lbl = ctrlDiv.querySelector(`#dyn-lbl-${item.id}`);
-            chk.onchange = () => {
-              const nextVal = chk.checked ? '1' : '0';
-              item.val = nextVal;
-              lbl.textContent = chk.checked ? 'ENABLED' : 'DISABLED';
-              sendSetParam(item.id, nextVal);
-            };
-          } else if (item.type === 'SELECT') {
-            let optHtml = '';
-            item.options.forEach((opt, idx) => {
-              const selected = (item.val == idx || item.val.toLowerCase() === opt.toLowerCase()) ? 'selected' : '';
-              optHtml += `<option value="${idx}" ${selected}>${opt}</option>`;
-            });
-            ctrlDiv.innerHTML = `
-              <select class="dyn-select-lg" id="dyn-item-${item.id}">
-                ${optHtml}
-              </select>
-            `;
-            const sel = ctrlDiv.querySelector(`#dyn-item-${item.id}`);
-            if (sel) sel.value = String(item.val);
-            sel.onchange = () => {
-              item.val = sel.value;
-              sendSetParam(item.id, sel.value);
-              if (item.id === 10) {
-                updateClockDisplay(parseInt(sel.value, 10));
-              }
-            };
-          } else if (item.type === 'COMMAND') {
-            const isDanger = item.label.toLowerCase().includes('dfu') || item.label.toLowerCase().includes('restore') || item.label.toLowerCase().includes('reset');
-            ctrlDiv.innerHTML = `
-              <button class="dyn-cmd-btn-lg ${isDanger ? 'btn-danger' : ''}" id="dyn-item-${item.id}">
-                ${item.label}
-              </button>
-            `;
-            const btn = ctrlDiv.querySelector(`#dyn-item-${item.id}`);
-            btn.onclick = () => {
-              sendCmdParam(item.id);
-            };
-          }
-
-          row.appendChild(infoDiv);
-          row.appendChild(ctrlDiv);
-          cardBody.appendChild(row);
-        });
-
-        card.appendChild(cardHeader);
-        card.appendChild(cardBody);
-
-        // Approximate card height = header (~48px) + items * 44px
-        const approxHeight = 48 + children.length * 44;
-
-        // Distribute to the column with minimum accumulated height
-        let targetCol = columns[0];
-        for (let c = 1; c < columns.length; c++) {
-          if (columns[c].height < targetCol.height) {
-            targetCol = columns[c];
-          }
-        }
-        targetCol.el.appendChild(card);
-        targetCol.height += approxHeight;
-      });
-
-      if (metaCount) metaCount.textContent = String(totalParams);
-      if (metaState) metaState.textContent = 'Synced';
-      if (stripStats) stripStats.textContent = `Schema items: ${totalParams}`;
-    }
-
-    let lastDynCols = 0;
-    let dynResizeTimer = null;
-    window.addEventListener('resize', () => {
-      clearTimeout(dynResizeTimer);
-      dynResizeTimer = setTimeout(() => {
-        const grid = document.getElementById('settings-cards-grid');
-        if (!grid || grid.style.display === 'none' || dynamicMenuSchema.length === 0) return;
-        const containerWidth = grid.clientWidth || (window.innerWidth - 280);
-        let newCols = 3;
-        if (containerWidth < 720) newCols = 1;
-        else if (containerWidth < 1100) newCols = 2;
-        if (newCols !== lastDynCols) {
-          renderDynamicMenu();
-        }
-      }, 150);
-    });
-
-    function filterDynamicSettings(query) {
-      const q = query.trim().toLowerCase();
-      const cards = document.querySelectorAll('.settings-card');
-
-      cards.forEach(card => {
-        const rows = card.querySelectorAll('.settings-item-row');
-        let visibleRows = 0;
-
-        rows.forEach(row => {
-          const text = row.getAttribute('data-search-text') || '';
-          const matches = !q || text.includes(q);
-          row.style.display = matches ? 'flex' : 'none';
-          if (matches) visibleRows++;
-        });
-
-        card.style.display = (visibleRows > 0) ? 'block' : 'none';
-      });
-    }
-
-    function sendSetParam(id, val) {
-      sendCmd(`!SET:${id}=${val}\r\n`);
-      updateSettingsStatus(`Sending !SET:${id}=${val}...`, true);
-    }
-
-    function sendCmdParam(id) {
-      sendCmd(`!CMD:${id}\r\n`);
-      updateSettingsStatus(`Sending !CMD:${id}...`, true);
-    }
-
-    function handleEmptyStateSync() {
-      if (!port) {
-        toggleConnect();
-      } else {
-        fetchDynamicMenu();
-      }
-    }
-
-    function loadDefaultPreviewSchema() {
-      // Standard schema matching companion-STM32-firmware dynamic export
-      dynamicMenuSchema = [
-        { id: 0, type: 'FOLDER', parentId: 0, label: 'Execution & Clock', val: '', options: [] },
-        { id: 1, type: 'FOLDER', parentId: 0, label: 'Auto-Programming', val: '', options: [] },
-        { id: 2, type: 'FOLDER', parentId: 0, label: 'Input & Step Control', val: '', options: [] },
-        { id: 3, type: 'FOLDER', parentId: 0, label: 'System Commands', val: '', options: [] },
-
-        { id: 10, type: 'SELECT', parentId: 0, label: 'FPGA Clock Frequency', val: String(currentClkIdx), options: CLOCK_FREQUENCIES },
-        { id: 11, type: 'SELECT', parentId: 0, label: 'Run Mode Hotkeys', val: '1', options: ['NONE', 'PgUp/PgDn', 'Up/Down', '+ / -'] },
-
-        { id: 12, type: 'TOGGLE', parentId: 1, label: 'Auto-Program on Paste', val: '1', options: ['DISABLED', 'ENABLED'] },
-        { id: 13, type: 'SELECT', parentId: 1, label: 'Paste Threshold', val: '1', options: ['4 Bytes', '8 Bytes', '16 Bytes', '32 Bytes', '64 Bytes'] },
-        { id: 14, type: 'TOGGLE', parentId: 1, label: 'Auto-Reset after Flash', val: '1', options: ['DISABLED', 'ENABLED'] },
-        { id: 15, type: 'TOGGLE', parentId: 1, label: 'Append Loop [-]+[]', val: '1', options: ['DISABLED', 'ENABLED'] },
-        { id: 16, type: 'TOGGLE', parentId: 1, label: 'Prune non-BF on Paste', val: '1', options: ['DISABLED', 'ENABLED'] },
-        { id: 17, type: 'TOGGLE', parentId: 1, label: 'Prune non-BF in Library', val: '1', options: ['DISABLED', 'ENABLED'] },
-
-        { id: 18, type: 'TOGGLE', parentId: 2, label: 'Serial Input CR to LF', val: '1', options: ['DISABLED', 'ENABLED'] },
-        { id: 19, type: 'TOGGLE', parentId: 2, label: 'Manual Stepping Mode', val: '0', options: ['DISABLED', 'ENABLED'] },
-        { id: 20, type: 'SELECT', parentId: 2, label: 'Step Advance Ticks', val: '2', options: ['1 Tick', '10 Ticks', '100 Ticks', '1,000 Ticks', '10,000 Ticks', '100,000 Ticks'] },
-        { id: 21, type: 'SELECT', parentId: 2, label: 'Step Trigger Key', val: '0', options: ['Spacebar', 'Tab', 'Enter'] },
-
-        { id: 30, type: 'COMMAND', parentId: 3, label: 'Reboot to USB DFU', val: '', options: [] },
-        { id: 31, type: 'COMMAND', parentId: 3, label: 'Restore Factory Demo', val: '', options: [] },
-        { id: 32, type: 'COMMAND', parentId: 3, label: 'Soft Reset FPGA', val: '', options: [] }
-      ];
-
-      renderDynamicMenu();
-      const headerBadge = document.getElementById('dyn-header-badge');
-      if (headerBadge) {
-        headerBadge.textContent = 'PREVIEW ACTIVE';
-        headerBadge.className = 'settings-badge synced';
-      }
-      updateSettingsStatus('Loaded standard hardware preview schema (13 parameters)', true);
     }
 
     // --- High-Performance Stream Queue & Batching ---
@@ -4496,7 +4041,6 @@ Object.assign(window, {
   runLibrarySlot,
   dumpLibrarySlot,
   deleteLibrarySlot,
-  fetchDynamicMenu,
   toggleTheme,
   attemptAutoConnect,
   isAutoConnectEnabled,
@@ -4507,8 +4051,6 @@ Object.assign(window, {
   toggleFullscreen,
   cycleInputMode,
   sendInputBox,
-  filterDynamicSettings,
-  loadDefaultPreviewSchema,
   onReleaseSelectChange,
   setFlasherTarget,
   setFpgaBoardRev,

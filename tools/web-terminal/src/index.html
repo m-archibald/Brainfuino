@@ -68,12 +68,6 @@
             <span>Terminal</span>
           </div>
         </button>
-        <button class="nav-tab" id="tab-btn-settings" onclick="switchTab('settings')">
-          <div class="nav-tab-left">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
-            <span>Settings</span>
-          </div>
-        </button>
         <button class="nav-tab" id="tab-btn-flash" onclick="switchTab('flashing')">
           <div class="nav-tab-left">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
@@ -276,49 +270,6 @@
           </button>
         </div>
       </div>
-
-
-      <!-- Tab Content 4: Settings -->
-      <div id="tab-content-settings" style="display:none; padding:12px; font-size:0.75rem;">
-        <div class="sidebar-section">
-          <h4>Settings</h4>
-          <p style="font-size:0.70rem; color:var(--text-muted); line-height:1.4; margin-bottom:10px;">
-            Hardware settings are rendered dynamically in the main view from Brainfuino schema.
-          </p>
-          <button class="action-btn" style="width:100%; margin-bottom:6px; display:flex; align-items:center; justify-content:center; gap:6px;" onclick="fetchDynamicMenu()">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-            <span>Sync Settings</span>
-          </button>
-        </div>
-
-        <div class="sidebar-section" id="sidebar-categories-section" style="display:none;">
-          <h4>Categories</h4>
-          <div id="sidebar-categories-nav" class="sidebar-categories-list"></div>
-        </div>
-
-        <div class="sidebar-section">
-          <h4>Schema Metadata</h4>
-          <div class="meta-row">
-            <span class="meta-label">Protocol:</span>
-            <span class="meta-val">Machine v1.0</span>
-          </div>
-          <div class="meta-row">
-            <span class="meta-label">Parameters:</span>
-            <span class="meta-val" id="meta-param-count">0</span>
-          </div>
-          <div class="meta-row">
-            <span class="meta-label">Status:</span>
-            <span class="meta-val" id="meta-sync-state">Idle</span>
-          </div>
-        </div>
-
-        <div class="sidebar-section">
-          <h4>Quick Switch</h4>
-          <button class="action-btn" style="width:100%;" onclick="switchTab('terminal')">
-            Return to Terminal
-          </button>
-        </div>
-      </div>
     </aside>
 
     <!-- Right Main Panel: White Terminal Area & Rendered Settings Page -->
@@ -348,6 +299,10 @@
             <button class="tool-btn" onclick="toggleLibraryModal(true)" id="btn-library-modal" title="Hardware Program Library (64 slots)">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
               <span id="lib-modal-btn-label">Library</span>
+            </button>
+            <button class="tool-btn" onclick="sendCmd('!MENU\r\n')" id="btn-settings-menu" title="Open Interactive Hardware Settings Menu (!MENU)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
+              <span>Menu</span>
             </button>
             <button class="tool-btn" onclick="toggleTheme()" id="theme-btn" title="Toggle Light / Dark theme">
               <svg id="theme-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
@@ -386,71 +341,7 @@
         </div>
       </div>
 
-      <!-- VIEW 2: RENDERED SETTINGS PAGE (DYNAMIC CONTROLS) -->
-      <div id="view-controls" class="main-viewport-view" style="display: none;">
-        <div class="settings-page-header">
-          <div class="settings-header-left">
-            <div class="settings-title-row">
-              <h2 class="settings-title">HARDWARE SETTINGS & PARAMETERS</h2>
-              <span class="settings-badge" id="dyn-header-badge">READY</span>
-            </div>
-            <div class="settings-subtitle">Hardware configuration schema negotiated dynamically (!MENU*)</div>
-          </div>
-          <div class="settings-header-right">
-            <div class="settings-search-wrap">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-              <input type="text" id="settings-search-input" placeholder="Filter parameters..." oninput="filterDynamicSettings(this.value)" autocomplete="off" />
-            </div>
-            <button class="tool-btn settings-sync-btn" id="settings-sync-btn" onclick="fetchDynamicMenu()" title="Sync parameters from Brainfuino">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-              <span id="settings-sync-label">Sync Settings</span>
-            </button>
-            <button class="tool-btn" onclick="toggleTheme()" id="theme-btn-settings" title="Toggle Light / Dark theme">
-              <svg id="theme-icon-settings" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-              <span id="theme-btn-settings-label">Dark Mode</span>
-            </button>
-            <button class="tool-btn" onclick="switchTab('terminal')" title="Return to Serial Terminal">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
-              <span>Terminal</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Real-time Status Notification Strip -->
-        <div class="settings-status-strip" id="settings-status-strip">
-          <div class="status-strip-left">
-            <span class="status-strip-dot" id="settings-strip-dot"></span>
-            <span id="settings-strip-msg">Hardware parameters ready. Connect to serial or click Sync to refresh.</span>
-          </div>
-          <div class="status-strip-right" id="settings-strip-stats">Schema items: 0</div>
-        </div>
-
-        <!-- Scrollable Settings Canvas -->
-        <div class="settings-content-scroll" id="settings-content-scroll">
-          <!-- Empty State Card -->
-          <div class="settings-empty-state" id="settings-empty-state">
-            <div class="empty-state-icon">
-              <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
-            </div>
-            <h3>Dynamic Hardware Settings</h3>
-            <p>Brainfuino exposes its entire configuration dynamically using a machine protocol over serial (!MENU*). No hardcoded parameter definitions are required in the client.</p>
-            <div class="empty-state-actions">
-              <button class="btn-primary-action" onclick="fetchDynamicMenu()">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-                <span>Query Brainfuino (!MENU*)</span>
-              </button>
-              <button class="btn-secondary-action" onclick="loadDefaultPreviewSchema()">
-                <span>Load Live Schema Preview</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Dynamic Parameter Cards Grid -->
-          <div class="settings-cards-grid" id="settings-cards-grid" style="display: none;"></div>
-        </div>
-      </div>
-
-      <!-- VIEW 3: IN-CIRCUIT FIRMWARE & BITSTREAM FLASHER -->
+      <!-- VIEW 2: IN-CIRCUIT FIRMWARE & BITSTREAM FLASHER -->
       <div id="view-flashing" class="main-viewport-view" style="display: none;">
         <div class="flasher-page-header">
           <div class="settings-header-left">
