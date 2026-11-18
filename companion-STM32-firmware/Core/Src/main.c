@@ -4292,11 +4292,11 @@ void Execute_DFU_Jump(void){
 	while (TxBusy() && --timeout);
 	for (volatile int i = 0; i < 500000; i++);
 
-	// De-initialize USB peripheral and stack
+	// 1. De-initialize USB peripheral and stack
 	USBD_Stop(&hUsbDeviceFS);
 	USBD_DeInit(&hUsbDeviceFS);
 
-	// Physically drive USB DP (PA12) LOW for 200 ms to trigger host disconnect
+	// 2. Physically drive USB DP (PA12) LOW for 250 ms so the host PC registers USB disconnect
 	__HAL_RCC_GPIOA_CLK_ENABLE();
 	GPIO_InitTypeDef GPIO_InitStruct = {0};
 	GPIO_InitStruct.Pin = GPIO_PIN_12;
@@ -4305,37 +4305,14 @@ void Execute_DFU_Jump(void){
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
-	for (volatile int i = 0; i < 1000000; i++);
-
-	// De-initialize GPIO pin
+	for (volatile int i = 0; i < 2000000; i++);
 	HAL_GPIO_DeInit(GPIOA, GPIO_PIN_12);
 
-	// De-initialize HAL and RCC to return all peripheral clocks to reset state
-	HAL_RCC_DeInit();
-	HAL_DeInit();
-
-	// Disable all interrupts and stop SysTick
-	__disable_irq();
-	SysTick->CTRL = 0;
-	SysTick->LOAD = 0;
-	SysTick->VAL = 0;
-
-	// Remap System Memory to 0x00000000 via SYSCFG
-	__HAL_RCC_SYSCFG_CLK_ENABLE();
-	SYSCFG->CFGR1 = (SYSCFG->CFGR1 & ~SYSCFG_CFGR1_MEM_MODE) | SYSCFG_CFGR1_MEM_MODE_0;
-
-	// Set magic flag in SRAM as secondary backup
+	// 3. Set magic flag in SRAM (survives NVIC_SystemReset)
 	DFU_MAGIC_ADDR = DFU_MAGIC_VALUE;
 
-	// Direct jump to ST ROM Bootloader (STM32F072 System Memory at 0x1FFFC800)
-	uint32_t bootloader_address = 0x1FFFC800;
-	uint32_t initial_msp = *((volatile uint32_t *)bootloader_address);
-	uint32_t bootloader_reset = *((volatile uint32_t *)(bootloader_address + 4));
-
-	__set_MSP(initial_msp);
-	void (*SysMemBootJump)(void) = (void (*)(void))bootloader_reset;
-	SysMemBootJump();
-
+	// 4. Trigger genuine hardware system reset into ST ROM bootloader via startup asm
+	NVIC_SystemReset();
 	while (1);
 }
 

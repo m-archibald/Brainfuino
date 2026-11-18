@@ -36,23 +36,29 @@ def find_com_port(preferred="COM32"):
 
 def is_dfu_connected(programmer_cli):
     try:
-        res = subprocess.run([programmer_cli, "-l", "usb"], capture_output=True, text=True, timeout=5)
-        out = res.stdout + res.stderr
-        return "0x0483:0xdf11" in out.lower() or "dfu interface" in out.lower() and "device" in out.lower() and "no stm32 device" not in out.lower()
+        res = subprocess.run([programmer_cli, "-l", "usb"], capture_output=True, timeout=5)
+        out = (res.stdout or b'').decode('cp1252', errors='replace') + (res.stderr or b'').decode('cp1252', errors='replace')
+        out_lower = out.lower()
+        if "no stm32 device" in out_lower or "mode: 0" in out_lower:
+            return False
+        return "total number of available stm32 device in dfu mode:" in out_lower or "stm32  bootloader" in out_lower or "0x0483:0xdf11" in out_lower
     except Exception:
         return False
 
 
 def wait_for_dfu(programmer_cli, timeout=8.0):
+    # Quiet delay to let host USB controller complete disconnect/re-enumeration cleanly
+    time.sleep(1.8)
     start = time.time()
     while time.time() - start < timeout:
         if is_dfu_connected(programmer_cli):
             return True
-        time.sleep(0.3)
+        time.sleep(0.4)
     return False
 
 
 def wait_for_com_port(port_name, timeout=8.0):
+    time.sleep(1.2)
     start = time.time()
     while time.time() - start < timeout:
         ports = [p.device.upper() for p in serial.tools.list_ports.comports()]
@@ -64,10 +70,10 @@ def wait_for_com_port(port_name, timeout=8.0):
 
 def trigger_dfu(port_name):
     try:
-        with serial.Serial(port_name, 115200, timeout=0.5, write_timeout=0.5) as s:
-            s.write(b"!DFU!\r\n")
-            s.flush()
-            time.sleep(0.2)
+        s = serial.Serial(port_name, 115200, timeout=0.2, write_timeout=0.2)
+        s.write(b"!DFU!\r\n")
+        s.flush()
+        s.close()
         return True, "Triggered via serial command !DFU!"
     except serial.SerialException as e:
         err_msg = str(e)
@@ -78,8 +84,8 @@ def trigger_dfu(port_name):
 
 def flash_device(programmer_cli, hex_path):
     cmd = [programmer_cli, "-c", "port=usb1", "-w", hex_path, "-v", "-g", "0x08000000"]
-    res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-    stdout = res.stdout + res.stderr
+    res = subprocess.run(cmd, capture_output=True, timeout=30)
+    stdout = (res.stdout or b'').decode('cp1252', errors='replace') + (res.stderr or b'').decode('cp1252', errors='replace')
     success = (res.returncode == 0) and ("Download verified successfully" in stdout or "File download complete" in stdout)
     return success, stdout
 
