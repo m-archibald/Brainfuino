@@ -1,372 +1,109 @@
-# Brainfuck Code Examples & Demos
+# Brainfuck Program Examples & Catalog
 
-These tested Brainfuck examples are verified for native execution on the Brainfuino. Copy and paste them into your serial terminal to run them!
-
----
-
-## 1. Official Brainfuino Text Art Banner
-
-[:material-download: Download `banner.b`](../programs/basic/banner.b){ .md-button .md-button--small }
-
-This program outputs the official Brainfuino ASCII logo to the serial terminal. With the companion STM32's **Append Endless Loop** feature enabled (on by default), the hardware automatically halts the program counter at EOF without needing manual halt loops. Paste this code directly into your serial terminal (e.g. Tera Term or PuTTY) at 9600 or 115200 baud:
-
-```brainfuck title="Brainfuino Text Art Banner Generator"
-++++++++++[>+++++++++>++++++++++++>++++++>+++++>++++++++>+++++++++++>++++<<<<<<<-]>+>+++>>>>>--------..<<<<<<++++....>>>>>>............<<<<<<.>>>>>>........<<<<<<..>>>>>>.......<<<<<<.>>>>>>.............<<<<<<<+++++++++++++.---.>>>>>>>.<<<<<+.>>>>>.<<<<<<..>>>>>>.+++++++++.---------.<<<<<<.>>>>>>.<<<<<<..>>>>>>.<<<<<<..>>>>>>.<<<<<<.>>>>>>++++++++.<<<<<<.>>>>>>+.<<<<<<.>>>>>>---------.<<<<<<..>>>>>>..+++++++++++++++.---------------.<<<<<<.>.<.>>>>>>...<<<<<<.>>>>>>++++++++.<<<<<<.>>>>>>+.<<<<<<.>>>>>>---------.<<<<<<..>>>>>>...<<<<<<...>>>>>>..<<<<<<<+++.---.>>>>>>>.<<<<<.>>>>>..<<<<<<.>>>>>>.<<<<<<---.>.>>>>>.+++++++.<<<<<<+++..>>>>>>++++++++.---------------.<<<<<<.+.>>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.+++++++.<<<<<<-.>>>>>>-------.<<<<<<---.>.>>>>>.<<<<<.<+++.>.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.+++++++.<<<<<<.>>>>>>-------.<<<<<<---.>>>>>>.+++++++++++++++.---------------.<<<<<<+++.>>>>>>.<<<<<<---.>>>>>>.<<<<<<<+++.---.>>>>>>>.<<<<<.>>>>>.<<<<<.<+++.>>>>>>+++++++++.---------.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.++++++++.<<<<<<.>.>>>>>--------.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>..<<<<<<.>.>>>>>.<<<<<.<.>.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.<<<<<.>>>>>.++++++++.<<<<<<.>>>>>>+.---------.<<<<<.<<+++.---.>>>>>>>.<<<<<.<....>>>>>>+++++++++++++++.<<<<<.<.>.>>>>>---------------..<<<<<<---.+++..>>>>>>++++++++++++.<<<<<<.>.<.>.<.>.>>>>>------------.<<<<<.<.>.<.>.>>>>>..<<<<<<---.+++..>>>>>>++++++++++++.<<<<<<.>.<.>.<.>.>>>>>------------.<<<<<.<.>.<---.+++...>>>>>>+++++++++++++++.---------------.<<<<<<<+++.---.>>>>>>>..................................................<<<<<<<+++.---.
-```
-
-**Terminal Output:**
-<pre class="ascii-banner">
-  ____            _        __       _             
- | __ ) _ __ __ _(_)_ __  / _|_   _(_)_ __   ___  
- |  _ \| '__/ _` | | '_ \| |_| | | | | '_ \ / _ \ 
- | |_) | | | (_| | | | | |  _| |_| | | | | | (_) |
- |____/|_|  \__,_|_|_| |_|_|  \__,_|_|_| |_|\___/ 
-</pre>
+A curated collection of tested, hardware-verified Brainfuck programs for the **Brainfuino**. All programs are 100% ASCII-based and execute natively on the Lattice MachXO2 FPGA soft-processor and 128 kB parallel tape SRAM.
 
 ---
 
-## 2. Classic "Hello World!"
+## Quick Run
 
-[:material-download: Download `hello.b`](../programs/basic/hello.b){ .md-button .md-button--small }
+The fastest way to run any of these programs is via the browser:
 
-The quintessential Brainfuck program, taken from the [cwfitzgerald/brainfuck-benchmark](https://github.com/cwfitzgerald/brainfuck-benchmark/blob/master/benches/hello.b) suite. It sets up an initial counter to multiply values into cell targets before printing each ASCII character. Because none of the comment letters contain Brainfuck operator characters, the commented source can be pasted or flashed directly into memory.
+<div class="grid cards" markdown="1">
 
-```brainfuck title="Hello World (Benchmark Edition)"
-+++++ +++++             initialize counter (cell #0) to 10
-[                       use loop to set the next four cells to 70/100/30/10
-    > +++++ ++              add  7 to cell #1
-    > +++++ +++++           add 10 to cell #2 
-    > +++                   add  3 to cell #3
-    > +                     add  1 to cell #4
-    <<<< -                  decrement counter (cell #0)
-]                   
-> ++ .                  print 'H'
-> + .                   print 'e'
-+++++ ++ .              print 'l'
-.                       print 'l'
-+++ .                   print 'o'
-> ++ .                  print ' '
-<< +++++ +++++ +++++ .  print 'W'
-> .                     print 'o'
-+++ .                   print 'r'
------ - .               print 'l'
------ --- .             print 'd'
-> + .                   print '!'
-> .                     print '\n'
-```
+-   [:octicons-link-external-16: **Launch Web Terminal**](../web-terminal.html){ .md-button .md-button--primary target="_blank" }
 
-*Source: [cwfitzgerald/brainfuck-benchmark](https://github.com/cwfitzgerald/brainfuck-benchmark/blob/master/benches/hello.b)*
+    ---
 
-**Terminal Output:**
-```text
-Hello World!
-```
-
----
-
-## 3. Interactive Character Echo
-
-[:material-download: Download `echo.b`](../programs/basic/echo.b){ .md-button .md-button--small }
-
-Reads an incoming character from the serial terminal and echoes it back immediately.
-
-```brainfuck title="Echo Program"
-,[.,]
-```
-
-**Explanation:**
-1. `,`: Waits for incoming serial byte and stores it in the current cell.
-2. `[`: If the character is non-zero, enters the loop.
-3. `.`: Outputs the character back to the terminal.
-4. `,`: Reads the next character from the input buffer.
-5. `]`: Loops back to check if the next character is non-zero.
-
----
-
-## 4. Sierpinski Triangle Generator
-
-[:material-download: Download `sierpinski.b`](../programs/fractals/sierpinski.b){ .md-button .md-button--small }
-
-An iconic Brainfuck fractal program authored by **NYYRIKKI** (2002) formatted in the shape of a Sierpinski triangle. It computes and renders a 32-line Sierpinski fractal pattern across an 80-column display (the EOF halt loop is automatically appended by the firmware):
-
-```brainfuck title="Sierpinski Triangle by NYYRIKKI (2002)"
-[ This program prints Sierpinski triangle on 80-column display. ]
-                                >    
-                               + +    
-                              +   +    
-                             [ < + +    
-                            +       +    
-                           + +     + +    
-                          >   -   ]   >    
-                         + + + + + + + +    
-                        [               >    
-                       + +             + +    
-                      <   -           ]   >    
-                     > + + >         > > + >    
-                    >       >       +       <    
-                   < <     < <     < <     < <    
-                  <   [   -   [   -   >   +   <    
-                 ] > [ - < + > > > . < < ] > > >    
-                [                               [    
-               - >                             + +    
-              +   +                           +   +    
-             + + [ >                         + + + +    
-            <       -                       ]       >    
-           . <     < [                     - >     + <    
-          ]   +   >   [                   -   >   +   +    
-         + + + + + + + +                 < < + > ] > . [    
-        -               ]               >               ]    
-       ] +             < <             < [             - [    
-      -   >           +   <           ]   +           >   [    
-     - < + >         > > - [         - > + <         ] + + >    
-    [       -       <       -       >       ]       <       <    
-   < ]     < <     < <     ] +     + +     + +     + +     + +    
-  +   .   +   +   +   .   [   -   ]   <   ]   +   +   +   +   +    
- * * * * * M a d e * B y : * N Y Y R I K K I * 2 0 0 2 * * * * *    
-```
-
----
-
----
-
-## 5. Mandelbrot Fractal Viewer
-
-[:material-download: Download `mandelbrot.b` (11.6 kB)](../programs/fractals/mandelbrot.b){ .md-button .md-button--primary }
-
-Authored by **Erik Bosman** (2004), this is one of the most famous Brainfuck benchmark programs in existence. It computes and renders a 2D ASCII visualization of the Mandelbrot set directly over serial. It rigorously stresses nested loop pipelines, 16-bit register arithmetic, and high-frequency character transmission.
-
-* **Author:** Erik Bosman (2004)
-* **Source:** [kostya/benchmarks/mandel.b](https://github.com/kostya/benchmarks/blob/master/brainfuck/mandel.b) / [frerich/brainfuck samples/mandelbrot.bf](https://github.com/frerich/brainfuck/blob/master/samples/mandelbrot.bf)
-
-**Terminal Output Preview:**
-```text
-                                                 ****                                   
-                                               ********                                 
-                                              **********                                
-                                              **********                                
-                                               ********                                 
-                                           ***************                              
-                                       ***********************                          
-                                     ***************************                        
-                                   *******************************                      
-                                   *******************************                      
-                                 ***********************************                    
-                                *************************************                   
-                                *************************************                   
-...
-```
-
-??? example "View Brainfuck Source (`mandelbrot.b` - 11,669 bytes)"
-    Because `mandelbrot.b` is 11.6 kB, it is recommended to download the file directly or run it via the Python runner:
-    ```bash
-    python programs/pi/run_pi.py programs/fractals/mandelbrot.b --count 200
-    ```
-
----
-
-## 6. Decimal Fibonacci Sequence Generator
-
-[:material-download: Download `fibonacci.b`](../programs/math/fibonacci.b){ .md-button .md-button--small }
-
-Authored by **Daniel B. Cristofani**, this program computes and outputs an unbounded stream of multi-precision decimal Fibonacci numbers (0, 1, 1, 2, 3, 5, 8, 13, 21, 34, ...) with newline separation. Unlike naive implementations that overflow 8-bit cells after the 13th number (233), this program maintains multi-cell decimal registers to scale indefinitely across the tape.
-
-* **Author:** Daniel B. Cristofani
-* **Source:** [Daniel B. Cristofani's `fib.b` (brainfuck.org)](http://www.brainfuck.org/fib.b)
-
-```brainfuck title="Decimal Fibonacci Generator by Daniel B. Cristofani"
->++++++++++>+>+[
-    [+++++[>++++++++<-]>.<++++++[>--------<-]+<<<]>.>>[
-        [-]<[>+<-]>>[<<+>+>-]<[>+<-[>+<-[>+<-[>+<-[>+<-[>+<-
-            [>+<-[>+<-[>+<-[>[-]>+>+<<<-[>+<-]]]]]]]]]]]+>>>
-    ]<<<
-]
-```
-
-**Terminal Output:**
-```text
-0
-1
-1
-2
-3
-5
-8
-13
-21
-34
-55
-89
-144
-233
-377
-610
-...
-```
-
----
-
-## 7. Streaming Golden Ratio Generator
-
-[:material-download: Download `golden.b`](../programs/math/golden.b){ .md-button .md-button--small }
-
-Authored by **Daniel B. Cristofani** (2019), this program computes and streams the decimal digits of the Golden Ratio (φ = (1 + √5)/2 ≈ 1.6180339887..., [OEIS A001622](https://oeis.org/A001622)) continuously in pure Brainfuck.
-
-* **Author:** Daniel B. Cristofani (2019)
-* **Source:** [Daniel B. Cristofani's `golden.b` (brainfuck.org)](http://www.brainfuck.org/golden.b)
-
-```brainfuck title="Golden Ratio Generator by Daniel B. Cristofani (2019)"
-+>>>>>>>++>+>+>+>++<[
-    +[
-        --[++>>--]->--[
-            +[
-                +<+[-<<+]++<<[-[->-[>>-]++<[<<]++<<-]+<<]>>>>-<<<<
-                <++<-<<++++++[<++++++++>-]<.---<[->.[-]+++++>]>[[-]>>]
-            ]+>>--
-        ]+<+[-<+<+]++>>
-    ]<<<<[[<<]>>[-[+++<<-]+>>-]++[<<]<<<<<+>]
-    >[->>[[>>>[>>]+[-[->>+>>>>-[-[+++<<[-]]+>>-]++[<<]]+<<]<-]<]]>>>>>>>
-]
-```
-
-**Terminal Output:**
-```text
-1.618033988749894848204586834365638117720309...
-```
-
----
-
-## 8. Arbitrary-Precision Factorials
-
-[:material-download: Download `factorial.b`](../programs/math/factorial.b){ .md-button .md-button--small }
-
-Authored by **Daniel B. Cristofani** (2019), this program computes and emits consecutive factorials (1!, 2!, 3!, 4!, ..., [OEIS A000142](https://oeis.org/A000142)) in multi-precision decimal format. It uses an optimized long-multiplication and carry algorithm.
-
-* **Author:** Daniel B. Cristofani (2019)
-* **Source:** [Daniel B. Cristofani's `factorial2.b` (brainfuck.org)](http://www.brainfuck.org/factorial2.b)
-
-```brainfuck title="Arbitrary-Precision Factorials by Daniel B. Cristofani (2019)"
->>>>++>+[
-    [
-        >[>>]<[>+>]<<[>->>+<<<-]>+[
-            [+>>[<<+>>-]>]+[-<<+<]>-[
-                -[<+>>+<-]++++++[>++++++++<-]+>.[-]<<[
-                    >>>[[<<+>+>-]>>>]<<<<[[>+<-]<-<<]>-
-                ]>>>[
-                    <<-[<<+>>-]<+++++++++<[
-                        >[->+>]>>>[<<[<+>-]>>>+>>[-<]<[>]>+<]<<<<<<-
-                    ]>[-]>+>>[<<<+>>>-]>>>
-                ]<<<+[-[+>>]<<<]>[<<<]>
-            ]>>>[<[>>>]<<<[[>>>+<<<-]<<<]>>>>>>>-[<]>>>[<<]<<[>+>]<]<<
-        ]++>>
-    ]<<++++++++.+
-]
-```
-
-**Terminal Output:**
-```text
-1
-1
-2
-6
-24
-120
-720
-5040
-40320
-362880
-3628800
-...
-```
-
----
-
-## 9. Interactive Conway's Game of Life
-
-[:material-download: Download `life.b`](../programs/games/life.b){ .md-button .md-button--small }
-
-John Horton Conway's Game of Life 2D cellular automaton running on a 10×10 toroidal grid. Authored by **Daniel B. Cristofani** (2021), this program duplicates the interactive interface of the classic program by **Linus Åkesson** (2007). Enter cell coordinates (e.g. `be` to toggle row `b`, column `e`), type `q` to quit, or send a bare newline (`\n`) to advance to the next generation!
-
-* **Author:** Daniel B. Cristofani (2021) based on interface by Linus Åkesson (2007)
-* **Source:** [Daniel B. Cristofani's `life.b` (brainfuck.org)](http://www.brainfuck.org/life.b) / [Linus Åkesson's Game of Life](http://www.linusakesson.net/programming/brainfuck/index.php)
-
-```brainfuck title="Conway's Game of Life (10x10 Toroidal)"
->>>->+>+++++>++++++++++[[>>>+<<<-]>+++++>+>>+[<<+>>>>>+<<<-]<-]>>>>[
-  [>>>+>+<<<<-]+++>>+[<+>>>+>+<<<-]>>[>[[>>>+<<<-]<]<<++>+>>>>>>-]<-
-]+++>+>[[-]<+<[>+++++++++++++++++<-]<+]>>[
-  [+++++++++.-------->>>]+[-<<<]>>>[>>,----------[>]<]<<[
-    <<<[
-      >--[<->>+>-<<-]<[[>>>]+>-[+>>+>-]+[<<<]<-]>++>[<+>-]
-      >[[>>>]+[<<<]>>>-]+[->>>]<-[++>]>[------<]>+++[<<<]>
-    ]<
-  ]>[
-    -[+>>+>-]+>>+>>>+>[<<<]>->+>[
-      >[->+>+++>>++[>>>]+++<<<++<<<++[>>>]>>>]<<<[>[>>>]+>>>]
-      <<<<<<<[<<++<+[-<<<+]->++>>>++>>>++<<<<]<<<+[-<<<+]+>->>->>
-    ]<<+<<+<<<+<<-[+<+<<-]+<+[
-      ->+>[-<-<<[<<<]>[>>[>>>]<<+<[<<<]>-]]
-      <[<[<[<<<]>+>>[>>>]<<-]<[<<<]]>>>->>>[>>>]+>
-    ]>+[-<<[-]<]-[
-      [>>>]<[<<[<<<]>>>>>+>[>>>]<-]>>>[>[>>>]<<<<+>[<<<]>>-]>
-    ]<<<<<<[---<-----[-[-[<->>+++<+++++++[-]]]]<+<+]>
-  ]>>
-]
-```
-
-**Terminal Output:**
-```text
- abcdefghij
-a----------
-b----------
-c----------
-d----------
-e----------
-f----------
-g----------
-h----------
-i----------
-j----------
->
-```
-
----
-
-## 10. Unbounded Streaming π Spigot (128 kB SRAM)
-
-[:material-download: Download `pi_stream.b` (20.2 kB)](../programs/pi/pi_stream.b){ .md-button .md-button--primary }
-[:material-book-open-page-variant: Read Full Technical Deep-Dive →](pi-spigot.md){ .md-button }
-
-An unbounded streaming π spigot executing directly on bare FPGA silicon. Based on Jeremy Gibbons' Linear Fractional Transformation (LFT) spigot algorithm, it features a **pure Brainfuck dynamic on-demand self-expanding tape engine**:
-- **Instantaneous Boot**: Starts with only 4 active slots (64 bytes), emitting early digits in **< 0.05 seconds** (2,033× faster than fixed-allocation startup).
-- **Dynamic Growth**: Dynamically activates new 16-byte register slots across the full 128 kB SRAM tape (8,000 slots) whenever arithmetic carries propagate.
-- **Hardware Verified**: Emits continuous digits (`3.141592653...`) at 12 MHz on bare silicon.
-
-* **Algorithm:** Jeremy Gibbons (2004), *Unbounded Spigot Algorithms for the Digits of Pi*
-* **Architecture:** [Brainfuino Dynamic Tape Spigot Specification](pi-spigot.md)
-
-**Terminal Output:**
-```text
-=======================================================
->>> FPGA SOFT-PROCESSOR LAUNCHED ON SILICON!
->>> Streaming Pi digits in real-time:
-=======================================================
-3.141592653...
-```
-
-??? example "View Brainfuck Code Preview (`pi_stream.b` - 20,261 bytes)"
-    Because `pi_stream.b` is 20 kB, it is recommended to download the file directly or use the automated Python runner:
-    ```bash
-    python programs/pi/run_pi.py programs/pi/pi_stream.b --count 10
-    ```
-    For the complete source code, mathematical proofs, and architectural details, see the [Streaming π Spigot Deep-Dive](pi-spigot.md).
-
----
-
-??? tip "Brainfuck Programs, Compilers & Formal Verification"
-    Looking for more Brainfuck programs, compilers, or formal proofs?
+    **1-Click Execution**
     
-    * **[Daniel B. Cristofani (brainfuck.org)](http://brainfuck.org/):** Archive of classic Brainfuck algorithms, quines, games, and reference implementations.
-    * **[Linus Åkesson (linusakesson.net)](http://www.linusakesson.net/programming/brainfuck/index.php):** Creator of the original Brainfuck Game of Life and Mandelbrot viewer explorations.
-    * **[bfcoq (Thalia Archibald)](https://github.com/thaliaarchi/bfcoq):** A formally verified Brainfuck compiler and Turing-completeness proof written in the Coq theorem prover.
-    * **[Thalia's Research (thalia.dev)](https://thalia.dev/):** Compilers, programming language theory, and explorations of unexpected Turing completeness.
-    * **[Brainfuck Community Archive](https://esolangs.org/wiki/Brainfuck):** Comprehensive reference collection of classic Brainfuck algorithms, games, fractals, and interpreters.
+    Open the Web Terminal, select any program from the **Program Suite** sidebar, and click **Run**. You can also drag and drop any `.b` file straight into the terminal!
 
+</div>
+
+---
+
+## 🎮 Interactive Games
+
+These programs use the `,` input command to respond to your keyboard in real time:
+
+| Program | Source File | Author / Origin | Description |
+| :--- | :--- | :--- | :--- |
+| **Tic-Tac-Toe (AI)** | [`games/tictactoe_ai.b`](../programs/games/tictactoe_ai.b) | Mitxela | Play against an AI opponent with ASCII grid updates (`X`, `O`, `-`). |
+| **Tic-Tac-Toe** | [`games/tictactoe.b`](../programs/games/tictactoe.b) | Daniel B. Cristofani | Two-player or solo game using a standard 1–9 numeric keypad grid. |
+| **Guess the Number** | [`games/guess.b`](../programs/games/guess.b) | Mitxela | Secret number guessing game with interactive "Higher" / "Lower" feedback. |
+| **Conway's Game of Life** | [`games/life.b`](../programs/games/life.b) | Cristofani / Åkesson | 2D cellular automaton with coordinate cell toggling and generation stepping. |
+| **Towers of Hanoi** | [`games/hanoi.b`](../programs/games/hanoi.b) | Clifford Wolf | Animates the recursive disk movements of Towers of Hanoi using ANSI terminal escapes. |
+| **Particle Bounce** | [`games/bounce.b`](../programs/games/bounce.b) | Daniel B. Cristofani | 2D particle simulation and physics automaton in ASCII space. |
+
+---
+
+## 🎨 Fractals & ASCII Art
+
+Autonomous visualization programs that render complex patterns in terminal text:
+
+| Program | Source File | Author / Origin | Description |
+| :--- | :--- | :--- | :--- |
+| **Mandelbrot Fractal** | [`fractals/mandelbrot.b`](../programs/fractals/mandelbrot.b) | Erik Bosman | Famous ASCII Mandelbrot set renderer testing deep loops and register math. |
+| **Sierpinski Triangle** | [`fractals/sierpinski.b`](../programs/fractals/sierpinski.b) | Daniel B. Cristofani | Ultra-compact recursive fractal triangle generator. |
+| **Christmas Tree** | [`fractals/xmastree.b`](../programs/fractals/xmastree.b) | Daniel B. Cristofani | Renders a decorated holiday pine tree in ASCII art. |
+| **Text Pyramid** | [`fractals/pyramid.b`](../programs/fractals/pyramid.b) | Antosser | Generates a centered, symmetrical expanding character pyramid. |
+| **Twinkle Twinkle** | [`fractals/twinkle.b`](../programs/fractals/twinkle.b) | C.W. Fitzgerald | Renders the full lyrics and rhythmic punctuation of the classic song. |
+
+---
+
+## 🔢 Math, Sequences & Calculators
+
+High-precision mathematical algorithms executing multi-precision arithmetic on the hardware tape:
+
+| Program | Source File | Author / Origin | Description |
+| :--- | :--- | :--- | :--- |
+| **Prime Sieve** | [`math/prime.b`](../programs/math/prime.b) | Urban Müller | Computes and prints prime numbers in decimal text continuously. |
+| **Calculator** | [`math/calculator.b`](../programs/math/calculator.b) | Antosser | Interactive four-function calculator (type `12+34=` to evaluate). |
+| **Prime Factorizer** | [`math/factor.b`](../programs/math/factor.b) | Brian Raiter | Enter any decimal number to compute and display its prime factors. |
+| **Fibonacci Sequence** | [`math/fibonacci.b`](../programs/math/fibonacci.b) | Daniel B. Cristofani | Generates an unbounded decimal Fibonacci sequence using multi-precision tape math. |
+| **Golden Ratio ($\phi$)** | [`math/golden.b`](../programs/math/golden.b) | Daniel B. Cristofani | Computes continued fraction digits of the Golden Ratio (`1.6180339887...`). |
+| **Euler's Constant ($e$)** | [`math/e.b`](../programs/math/e.b) | Daniel B. Cristofani | Computes digits of $e$ (`2.718281828459...`) via Taylor series expansion. |
+| **FizzBuzz** | [`math/fizzbuzz.b`](../programs/math/fizzbuzz.b) | none1 | Solves the classic programmer challenge (`1, 2, Fizz, 4, Buzz, ...`) up to 100 in ASCII. |
+| **Collatz Conjecture** | [`math/collatz.b`](../programs/math/collatz.b) | Daniel B. Cristofani | Computes the $3n + 1$ hailstone trajectory until reaching 1. |
+| **Factorials** | [`math/factorial.b`](../programs/math/factorial.b) | Daniel B. Cristofani | Arbitrary-precision factorial generator emitting 1!, 2!, 3!, ... in decimal. |
+| **Kolakoski Sequence** | [`math/kolakoski.b`](../programs/math/kolakoski.b) | none1 | Generates the infinite self-generating run-length sequence of 1s and 2s. |
+| **Thue-Morse Sequence**| [`math/thuemorse.b`](../programs/math/thuemorse.b) | Daniel B. Cristofani | Generates the infinite fair-sharing binary sequence (`01101001...`). |
+| **Streaming $\pi$ Spigot** | [`pi/pi_stream.b`](../programs/pi/pi_stream.b) | Brainfuino Project | Dynamic self-expanding $\pi$ spigot ([read full architectural guide](pi-spigot.md)). |
+
+---
+
+## 🔤 Text Utilities & Ciphers
+
+Interactive utilities demonstrating string parsing and algorithmic text conversion:
+
+| Program | Source File | Author / Origin | Description |
+| :--- | :--- | :--- | :--- |
+| **ROT13 Cipher** | [`ciphers/rot13.b`](../programs/ciphers/rot13.b) | Daniel B. Cristofani | Real-time Caesar-13 letter substitution cipher: type text to encode/decode. |
+| **Atbash Cipher** | [`ciphers/atbash.b`](../programs/ciphers/atbash.b) | Keymaker | Biblical substitution cipher (A $\leftrightarrow$ Z, B $\leftrightarrow$ Y) translating keystrokes live. |
+| **Morse Code Translator**| [`ciphers/morse.b`](../programs/ciphers/morse.b) | Keymaker | Translates typed English text into Morse code dots and dashes (`.... .-..`). |
+| **Dvorak Keymapper** | [`ciphers/dvorak.b`](../programs/ciphers/dvorak.b) | Daniel B. Cristofani | Translates QWERTY keystrokes into the Dvorak keyboard layout on the fly. |
+| **Word Counter (`wc`)** | [`ciphers/wc.b`](../programs/ciphers/wc.b) | Daniel B. Cristofani | UNIX `wc` utility clone: counts characters, words, and newlines from input. |
+| **Pig Latin Translator**| [`ciphers/piglatin.b`](../programs/ciphers/piglatin.b) | Thalia Archibald | Translates input words into Pig Latin. |
+
+---
+
+## 🍺 Classics & Humor
+
+| Program | Source File | Author / Origin | Description |
+| :--- | :--- | :--- | :--- |
+| **Brainfuino Banner** | [`basic/banner.b`](../programs/basic/banner.b) | Brainfuino Project | Official ASCII logo text banner and hardware diagnostic check. |
+| **Hello World** | [`basic/hello.b`](../programs/basic/hello.b) | C.W. Fitzgerald | Canonical benchmark edition of Hello World with non-interfering comments. |
+| **Serial Echo** | [`basic/echo.b`](../programs/basic/echo.b) | Urban Müller | Single-cell echo test `, [ . , ]` validating bidirectional USB serial I/O. |
+| **99 Bottles of Beer** | [`classics/bottles.b`](../programs/classics/bottles.b) | C.W. Fitzgerald | Generates all 99 verses of the recursive ballad with correct pluralization. |
+
+---
+
+## 🪞 Quines (Self-Reproducing Programs)
+
+These programs output their own exact Brainfuck source code character-by-character:
+
+| Program | Source File | Author / Origin | Description |
+| :--- | :--- | :--- | :--- |
+| **Brian Raiter Quine** | [`quines/quine_raiter.b`](../programs/quines/quine_raiter.b) | Brian Raiter | The classic 822-byte quine that prints its own exact Brainfuck source code. |
+| **Daniel Cristofani Quine**| [`quines/quine_400.b`](../programs/quines/quine_400.b) | Daniel B. Cristofani | Ultra-compact 400-byte self-reproducing quine. |
+| **Ryan Kusnery Quine** | [`quines/quine_kusnery.b`](../programs/quines/quine_kusnery.b) | Ryan Kusnery | Elegantly structured self-replicating program. |

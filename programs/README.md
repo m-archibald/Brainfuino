@@ -1,96 +1,88 @@
-# Brainfuino Example Programs Catalog
+# Brainfuino Program Catalog
 
-A collection of tested, hardware-verified Brainfuck programs for the **Brainfuino** native hardware Brainfuck computer (Lattice MachXO2 FPGA soft-processor + STM32 coprocessor).
-
----
-
-## Directory Structure
-
-```text
-programs/
-├── basic/
-│   ├── banner.b          # Official Brainfuino ASCII text art banner (1.3 kB)
-│   ├── hello.b           # Classic benchmark Hello World with comments (0.8 kB)
-│   └── echo.b            # Interactive character echo via serial UART (5 bytes)
-├── fractals/
-│   ├── sierpinski.b      # 80-column Sierpinski triangle by NYYRIKKI (1.3 kB)
-│   └── mandelbrot.b      # ASCII Mandelbrot set renderer by Erik Bosman (11.6 kB)
-├── math/
-│   ├── fibonacci.b       # Unbounded decimal Fibonacci generator by Daniel B. Cristofani (247 B)
-│   ├── golden.b          # Infinite streaming Golden Ratio by Daniel B. Cristofani (375 B)
-│   └── factorial.b       # Arbitrary-precision factorial generator by Daniel B. Cristofani (554 B)
-├── games/
-│   └── life.b            # Conway's Game of Life by Daniel B. Cristofani / Linus Åkesson (760 B)
-└── pi/
-    ├── pi_stream.b       # Dynamic self-expanding streaming Pi spigot (20.2 kB)
-    ├── generate_pi_stream.py # Pure Brainfuck spigot code generator
-    └── run_pi.py         # Hardware flasher & real-time digit validation runner
-```
+A collection of tested, hardware-verified Brainfuck programs for the **Brainfuino** native hardware computer. All programs run in raw ASCII on the Lattice MachXO2 FPGA soft-processor and 128 kB parallel tape SRAM.
 
 ---
 
-## How to Flash to Hardware
+## How to Run on Hardware
 
-### Method 1: Paste directly into Serial Terminal
-For short-to-medium programs (`banner.b`, `hello.b`, `echo.b`, `sierpinski.b`, `fibonacci.b`, `golden.b`, `factorial.b`, `life.b`):
-1. Connect Brainfuino via USB CDC serial (`COM22` on Windows, `/dev/ttyACM0` on Linux) at **115200 baud**.
-2. Copy and paste the raw Brainfuck code directly into your terminal emulator (Tera Term, PuTTY, minicom).
-3. The companion STM32 automatically buffers the incoming code, flashes it to memory, and launches execution on the FPGA soft-processor.
-
-### Method 2: Flash via Python Hardware Runner
-For large programs like `pi_stream.b` or `mandelbrot.b`:
-```bash
-python programs/pi/run_pi.py programs/fractals/mandelbrot.b --count 20 --timeout 120
-python programs/pi/run_pi.py programs/pi/pi_stream.b --count 10 --timeout 60
-```
+* **Web Serial Terminal (1-Click):** Open the [Web Serial Terminal](https://m-archibald.github.io/Brainfuino/web-terminal.html), pick any program from the **Program Suite** sidebar, and click **Run**. You can also drag and drop any `.b` file straight into the terminal!
+* **Direct Paste:** Copy the raw Brainfuck code from any file below and paste it into the Web Terminal, PuTTY, or Tera Term.
 
 ---
 
-## Program Details & Verified Sources
+## 🎮 Interactive Games
 
-### 1. Basic Demos (`programs/basic/`)
-* **`banner.b`** (1,348 bytes)
-    * **Description:** Emits the official Brainfuino ASCII text banner over serial.
-    * **Author:** Brainfuino Project
-* **`hello.b`** (779 bytes)
-    * **Description:** Canonical benchmark edition of Hello World featuring comments that skip non-operator characters.
-    * **Source:** [cwfitzgerald/brainfuck-benchmark](https://github.com/cwfitzgerald/brainfuck-benchmark/blob/master/benches/hello.b)
-* **`echo.b`** (5 bytes)
-    * **Description:** Character echo loop `, [ . , ]` testing bidirectional serial UART I/O.
-    * **Author:** Urban Müller (1993)
+| File | Program | Author / Provenance | Mode | Description |
+| :--- | :--- | :--- | :---: | :--- |
+| [`games/tictactoe_ai.b`](games/tictactoe_ai.b) | **Tic-Tac-Toe (AI)** | Mitxela | Interactive | Play against an AI opponent with ASCII grid updates (`X`, `O`, `-`). |
+| [`games/tictactoe.b`](games/tictactoe.b) | **Tic-Tac-Toe** | Daniel B. Cristofani | Interactive | Two-player or solo game using a standard 1–9 numeric keypad grid. |
+| [`games/guess.b`](games/guess.b) | **Guess the Number** | Mitxela | Interactive | Secret number guessing game with interactive "Higher" / "Lower" feedback. |
+| [`games/life.b`](games/life.b) | **Conway's Game of Life** | Cristofani / Åkesson | Interactive | 2D cellular automaton with coordinate cell toggling and generation stepping. |
+| [`games/hanoi.b`](games/hanoi.b) | **Towers of Hanoi** | Clifford Wolf | Autonomous | Animates the recursive disk movements of Towers of Hanoi using ANSI terminal escapes. |
+| [`games/bounce.b`](games/bounce.b) | **Particle Bounce** | Daniel B. Cristofani | Autonomous | 2D particle simulation and physics automaton in ASCII space. |
 
-### 2. Fractals (`programs/fractals/`)
-* **`sierpinski.b`** (1,327 bytes)
-    * **Description:** Computes and renders a 32-line Sierpinski fractal pattern across an 80-column display.
-    * **Author:** NYYRIKKI (2002)
-    * **Source:** [Brainfuck Community Archive](https://esolangs.org/wiki/Brainfuck#Sierpinski_triangle)
-* **`mandelbrot.b`** (11,669 bytes)
-    * **Description:** ASCII Mandelbrot set renderer testing deep nested loops, 16-bit register arithmetic, and high-frequency output throttling.
-    * **Author:** Erik Bosman (2004)
-    * **Source:** [kostya/benchmarks/mandel.b](https://github.com/kostya/benchmarks/blob/master/brainfuck/mandel.b) / [frerich/brainfuck](https://github.com/frerich/brainfuck/blob/master/samples/mandelbrot.bf)
+---
 
-### 3. Mathematical Sequences (`programs/math/`)
-* **`fibonacci.b`** (247 bytes)
-    * **Description:** Generates and outputs an unbounded stream of multi-precision decimal Fibonacci numbers (0, 1, 1, 2, 3, 5, 8, 13, 21, 34, ...).
-    * **Author:** Daniel B. Cristofani
-    * **Source:** [Daniel B. Cristofani's fib.b (brainfuck.org)](http://www.brainfuck.org/fib.b)
-* **`golden.b`** (375 bytes)
-    * **Description:** Computes and streams the digits of the Golden Ratio (φ = 1.6180339887...) continuously in decimal.
-    * **Author:** Daniel B. Cristofani (2019)
-    * **Source:** [Daniel B. Cristofani's golden.b (brainfuck.org)](http://www.brainfuck.org/golden.b)
-* **`factorial.b`** (554 bytes)
-    * **Description:** Arbitrary-precision factorial generator emitting 1!, 2!, 3!, 4!, ... in decimal with newline separation.
-    * **Author:** Daniel B. Cristofani (2019)
-    * **Source:** [Daniel B. Cristofani's factorial2.b (brainfuck.org)](http://www.brainfuck.org/factorial2.b)
+## 🎨 Visuals & ASCII Art
 
-### 4. Interactive Games (`programs/games/`)
-* **`life.b`** (760 bytes)
-    * **Description:** John Horton Conway's Game of Life 2D cellular automaton with a 10×10 toroidal grid. Enter coordinates (e.g. `be`) to toggle cells, or send a bare newline to advance generations.
-    * **Author:** Daniel B. Cristofani (2021) based on the interface by Linus Åkesson (2007)
-    * **Source:** [Daniel B. Cristofani's life.b (brainfuck.org)](http://www.brainfuck.org/life.b) / [Linus Åkesson's Game of Life](http://www.linusakesson.net/programming/brainfuck/index.php)
+| File | Program | Author / Provenance | Mode | Description |
+| :--- | :--- | :--- | :---: | :--- |
+| [`fractals/mandelbrot.b`](fractals/mandelbrot.b) | **Mandelbrot Fractal** | Erik Bosman | Autonomous | Famous ASCII Mandelbrot set renderer testing deep loops and register math. |
+| [`fractals/sierpinski.b`](fractals/sierpinski.b) | **Sierpinski Triangle** | Daniel B. Cristofani | Autonomous | Ultra-compact recursive fractal triangle generator. |
+| [`fractals/xmastree.b`](fractals/xmastree.b) | **Christmas Tree** | Daniel B. Cristofani | Autonomous | Renders a decorated holiday pine tree in ASCII art. |
+| [`fractals/pyramid.b`](fractals/pyramid.b) | **Text Pyramid** | Antosser | Autonomous | Generates a centered, symmetrical expanding character pyramid. |
+| [`fractals/twinkle.b`](fractals/twinkle.b) | **Twinkle Twinkle** | C.W. Fitzgerald | Autonomous | Renders the full lyrics and rhythmic punctuation of the classic song. |
 
-### 5. Streaming π Spigot (`programs/pi/`)
-* **`pi_stream.b`** (20,261 bytes)
-    * **Description:** Unbounded streaming π spigot based on Jeremy Gibbons' Linear Fractional Transformation (LFT) matrix algorithm.
-    * **Dynamic On-Demand Tape:** Starts with 4 active slots (64 bytes) for sub-millisecond boot and dynamically expands across 128 kB SRAM (up to 8,000 slots) on carry propagation.
-    * **Source:** [Brainfuino Pi Spigot Architecture](../documentation/docs/brainfuck/pi-spigot.md)
+---
+
+## 🔢 Math, Sequences & Calculators
+
+| File | Program | Author / Provenance | Mode | Description |
+| :--- | :--- | :--- | :---: | :--- |
+| [`math/prime.b`](math/prime.b) | **Prime Sieve** | Urban Müller | Autonomous | Generates and prints prime numbers in decimal text continuously. |
+| [`math/calculator.b`](math/calculator.b) | **Calculator** | Antosser | Interactive | Interactive four-function calculator (type `12+34=` to evaluate). |
+| [`math/factor.b`](math/factor.b) | **Prime Factorizer** | Brian Raiter | Interactive | Enter any decimal number to compute and display its prime factors. |
+| [`math/fibonacci.b`](math/fibonacci.b) | **Fibonacci Sequence** | Daniel B. Cristofani | Autonomous | Generates an unbounded decimal Fibonacci sequence using multi-precision tape math. |
+| [`math/golden.b`](math/golden.b) | **Golden Ratio ($\phi$)** | Daniel B. Cristofani | Autonomous | Computes continued fraction digits of the Golden Ratio (`1.6180339887...`). |
+| [`math/e.b`](math/e.b) | **Euler's Constant ($e$)** | Daniel B. Cristofani | Autonomous | Computes digits of $e$ (`2.718281828459...`) via Taylor series expansion. |
+| [`math/fizzbuzz.b`](math/fizzbuzz.b) | **FizzBuzz** | none1 | Autonomous | Solves the classic programmer challenge (`1, 2, Fizz, 4, Buzz, ...`) up to 100 in ASCII. |
+| [`math/collatz.b`](math/collatz.b) | **Collatz Conjecture** | Daniel B. Cristofani | Autonomous | Computes the $3n + 1$ hailstone trajectory until reaching 1. |
+| [`math/factorial.b`](math/factorial.b) | **Factorials** | Daniel B. Cristofani | Autonomous | Arbitrary-precision factorial generator emitting 1!, 2!, 3!, ... in decimal. |
+| [`math/kolakoski.b`](math/kolakoski.b) | **Kolakoski Sequence** | none1 | Autonomous | Generates the infinite self-generating run-length sequence of 1s and 2s. |
+| [`math/thuemorse.b`](math/thuemorse.b) | **Thue-Morse Sequence**| Daniel B. Cristofani | Autonomous | Generates the infinite fair-sharing binary sequence (`01101001...`). |
+| [`pi/pi_stream.b`](pi/pi_stream.b) | **Streaming $\pi$ Spigot** | Brainfuino Project | Autonomous | Infinite streaming $\pi$ spigot dynamically expanding across 128 kB SRAM. |
+
+---
+
+## 🔤 Text Utilities & Ciphers
+
+| File | Program | Author / Provenance | Mode | Description |
+| :--- | :--- | :--- | :---: | :--- |
+| [`ciphers/rot13.b`](ciphers/rot13.b) | **ROT13 Cipher** | Daniel B. Cristofani | Interactive | Real-time Caesar-13 letter substitution cipher: type text to encode/decode. |
+| [`ciphers/atbash.b`](ciphers/atbash.b) | **Atbash Cipher** | Keymaker | Interactive | Biblical substitution cipher (A $\leftrightarrow$ Z, B $\leftrightarrow$ Y) translating keystrokes live. |
+| [`ciphers/morse.b`](ciphers/morse.b) | **Morse Code Translator**| Keymaker | Interactive | Translates typed English text into Morse code dots and dashes (`.... .-..`). |
+| [`ciphers/dvorak.b`](ciphers/dvorak.b) | **Dvorak Keymapper** | Daniel B. Cristofani | Interactive | Translates QWERTY keystrokes into the Dvorak keyboard layout on the fly. |
+| [`ciphers/wc.b`](ciphers/wc.b) | **Word Counter (`wc`)** | Daniel B. Cristofani | Interactive | UNIX `wc` utility clone: counts characters, words, and newlines from input. |
+| [`ciphers/piglatin.b`](ciphers/piglatin.b) | **Pig Latin Translator**| Thalia Archibald | Interactive | Translates input words into Pig Latin. |
+
+---
+
+## 🍺 Classics & Humor
+
+| File | Program | Author / Provenance | Mode | Description |
+| :--- | :--- | :--- | :---: | :--- |
+| [`basic/banner.b`](basic/banner.b) | **Brainfuino Banner** | Brainfuino Project | Autonomous | Official ASCII logo text banner and hardware diagnostic check. |
+| [`basic/hello.b`](basic/hello.b) | **Hello World** | C.W. Fitzgerald | Autonomous | Canonical benchmark edition of Hello World with non-interfering comments. |
+| [`basic/echo.b`](basic/echo.b) | **Serial Echo** | Urban Müller | Interactive | Single-cell echo test `, [ . , ]` validating bidirectional USB serial I/O. |
+| [`classics/bottles.b`](classics/bottles.b) | **99 Bottles of Beer** | C.W. Fitzgerald | Autonomous | Generates all 99 verses of the recursive ballad with correct pluralization. |
+
+---
+
+## 🪞 Quines (Self-Reproducing Programs)
+
+| File | Program | Author / Provenance | Mode | Description |
+| :--- | :--- | :--- | :---: | :--- |
+| [`quines/quine_raiter.b`](quines/quine_raiter.b) | **Brian Raiter Quine** | Brian Raiter | Autonomous | The classic 822-byte quine that prints its own exact Brainfuck source code. |
+| [`quines/quine_400.b`](quines/quine_400.b) | **Daniel Cristofani Quine** | Daniel B. Cristofani | Autonomous | Ultra-compact 400-byte self-reproducing quine. |
+| [`quines/quine_kusnery.b`](quines/quine_kusnery.b) | **Ryan Kusnery Quine** | Ryan Kusnery | Autonomous | Elegantly formatted self-replicating program. |

@@ -2872,39 +2872,69 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
 
     const GITHUB_PROGRAMS_SUITE = [
       {
-        category: "Basic",
+        category: "Basic & Diagnostics",
         programs: [
-          { name: "Brainfuino Banner", filename: "banner.b", path: "basic/banner.b", size: "1.7 kB", desc: "ASCII banner and hardware diagnostic" },
-          { name: "Hello World", filename: "hello.b", path: "basic/hello.b", size: "840 B", desc: "Classic Hello World demonstration" },
-          { name: "Serial Echo", filename: "echo.b", path: "basic/echo.b", size: "6 B", desc: "Single cell echo test" }
+          { name: "Brainfuino Banner", filename: "banner.b", path: "basic/banner.b", size: "1.6 kB", desc: "ASCII banner and hardware diagnostic check" },
+          { name: "Hello World", filename: "hello.b", path: "basic/hello.b", size: "861 B", desc: "Canonical Hello World benchmark" },
+          { name: "Serial Echo", filename: "echo.b", path: "basic/echo.b", size: "7 B", desc: "Single cell echo test validating bidirectional serial I/O" },
+          { name: "99 Bottles of Beer", filename: "bottles.b", path: "classics/bottles.b", size: "2.7 kB", desc: "Recursive ballad verse generator" }
         ]
       },
       {
-        category: "Fractals",
+        category: "Interactive Games & Automata",
         programs: [
-          { name: "Mandelbrot Fractal", filename: "mandelbrot.b", path: "fractals/mandelbrot.b", size: "11.8 kB", desc: "ASCII Mandelbrot set generator" },
-          { name: "Sierpinski Triangle", filename: "sierpinski.b", path: "fractals/sierpinski.b", size: "1.8 kB", desc: "Recursive cellular triangle" }
+          { name: "Tic-Tac-Toe (AI)", filename: "tictactoe_ai.b", path: "games/tictactoe_ai.b", size: "6.9 kB", desc: "Interactive game against an AI opponent" },
+          { name: "Tic-Tac-Toe", filename: "tictactoe.b", path: "games/tictactoe.b", size: "1.8 kB", desc: "Two-player keypad grid Tic-Tac-Toe" },
+          { name: "Guess the Number", filename: "guess.b", path: "games/guess.b", size: "660 B", desc: "Secret number guessing game with Higher/Lower hints" },
+          { name: "Game of Life", filename: "life.b", path: "games/life.b", size: "830 B", desc: "Conway's cellular automaton with coordinate editing" },
+          { name: "Towers of Hanoi", filename: "hanoi.b", path: "games/hanoi.b", size: "54.0 kB", desc: "Recursive disk animation with ANSI escapes" },
+          { name: "Particle Bounce", filename: "bounce.b", path: "games/bounce.b", size: "5.7 kB", desc: "2D particle simulation and physics automaton" }
         ]
       },
       {
-        category: "Games",
+        category: "Visuals & ASCII Art",
         programs: [
-          { name: "Game of Life", filename: "life.b", path: "games/life.b", size: "810 B", desc: "Conway's cellular automaton" }
+          { name: "Mandelbrot Fractal", filename: "mandelbrot.b", path: "fractals/mandelbrot.b", size: "11.5 kB", desc: "Deep loops ASCII Mandelbrot set renderer" },
+          { name: "Sierpinski Triangle", filename: "sierpinski.b", path: "fractals/sierpinski.b", size: "1.8 kB", desc: "Recursive fractal triangle generator" },
+          { name: "Christmas Tree", filename: "xmastree.b", path: "fractals/xmastree.b", size: "235 B", desc: "Decorated holiday pine tree in ASCII" },
+          { name: "Text Pyramid", filename: "pyramid.b", path: "fractals/pyramid.b", size: "252 B", desc: "Symmetrical expanding character pyramid" },
+          { name: "Twinkle Twinkle", filename: "twinkle.b", path: "fractals/twinkle.b", size: "6.1 kB", desc: "Lyrics and rhythmic punctuation generator" }
         ]
       },
       {
-        category: "Math",
+        category: "Math & Sequences",
         programs: [
-          { name: "Fibonacci Sequence", filename: "fibonacci.b", path: "math/fibonacci.b", size: "352 B", desc: "Sequence calculation up to 255" },
-          { name: "Factorials", filename: "factorial.b", path: "math/factorial.b", size: "854 B", desc: "Integer factorial calculation" },
-          { name: "Euler's Number e", filename: "e.b", path: "math/e.b", size: "1.5 kB", desc: "High precision calculation of e" },
-          { name: "Golden Ratio", filename: "golden.b", path: "math/golden.b", size: "636 B", desc: "Golden ratio convergence" }
+          { name: "Prime Sieve", filename: "prime.b", path: "math/prime.b", size: "4.2 kB", desc: "Continuous prime number decimal generator" },
+          { name: "Calculator", filename: "calculator.b", path: "math/calculator.b", size: "5.6 kB", desc: "Interactive four-function calculator (e.g. 12+34=)" },
+          { name: "Prime Factorizer", filename: "factor.b", path: "math/factor.b", size: "5.9 kB", desc: "Computes prime factors of decimal input" },
+          { name: "Fibonacci Sequence", filename: "fibonacci.b", path: "math/fibonacci.b", size: "360 B", desc: "Unbounded decimal Fibonacci numbers on tape" },
+          { name: "Golden Ratio (phi)", filename: "golden.b", path: "math/golden.b", size: "654 B", desc: "Continued fraction approximation of 1.618033..." },
+          { name: "Euler's Number e", filename: "e.b", path: "math/e.b", size: "1.5 kB", desc: "Taylor series expansion of e" },
+          { name: "FizzBuzz", filename: "fizzbuzz.b", path: "math/fizzbuzz.b", size: "3.1 kB", desc: "Classic 1 to 100 FizzBuzz program in ASCII" },
+          { name: "Collatz Conjecture", filename: "collatz.b", path: "math/collatz.b", size: "1.6 kB", desc: "3n + 1 hailstone sequence trajectory" },
+          { name: "Factorials", filename: "factorial.b", path: "math/factorial.b", size: "877 B", desc: "Arbitrary-precision 1!, 2!, 3!, ... generator" },
+          { name: "Kolakoski Sequence", filename: "kolakoski.b", path: "math/kolakoski.b", size: "989 B", desc: "Infinite self-generating run-length sequence" },
+          { name: "Thue-Morse Sequence", filename: "thuemorse.b", path: "math/thuemorse.b", size: "304 B", desc: "Infinite binary fair-sharing sequence" },
+          { name: "Streaming Pi Digits", filename: "pi_stream.b", path: "pi/pi_stream.b", size: "19.8 kB", desc: "Infinite dynamic spigot expanding across 128 kB SRAM" }
         ]
       },
       {
-        category: "Pi",
+        category: "Text Utilities & Ciphers",
         programs: [
-          { name: "Streaming Pi Digits", filename: "pi_stream.b", path: "pi/pi_stream.b", size: "20.3 kB", desc: "Infinite spigot algorithm for Pi" }
+          { name: "ROT13 Cipher", filename: "rot13.b", path: "ciphers/rot13.b", size: "1.0 kB", desc: "Real-time Caesar-13 letter substitution cipher" },
+          { name: "Atbash Cipher", filename: "atbash.b", path: "ciphers/atbash.b", size: "436 B", desc: "Biblical substitution cipher (A <-> Z)" },
+          { name: "Morse Code Translator", filename: "morse.b", path: "ciphers/morse.b", size: "2.1 kB", desc: "Translates typed English text to Morse code" },
+          { name: "Dvorak Keymapper", filename: "dvorak.b", path: "ciphers/dvorak.b", size: "1004 B", desc: "Translates QWERTY keystrokes into Dvorak layout" },
+          { name: "Word Counter (wc)", filename: "wc.b", path: "ciphers/wc.b", size: "545 B", desc: "Counts characters, words, and newlines from input" },
+          { name: "Pig Latin Translator", filename: "piglatin.b", path: "ciphers/piglatin.b", size: "259 B", desc: "Translates input words into Pig Latin" }
+        ]
+      },
+      {
+        category: "Quines (Self-Reproducing)",
+        programs: [
+          { name: "Brian Raiter Quine", filename: "quine_raiter.b", path: "quines/quine_raiter.b", size: "822 B", desc: "Classic 822-byte self-reproducing quine" },
+          { name: "Daniel Cristofani Quine", filename: "quine_400.b", path: "quines/quine_400.b", size: "567 B", desc: "Ultra-compact 400-byte self-reproducing quine" },
+          { name: "Ryan Kusnery Quine", filename: "quine_kusnery.b", path: "quines/quine_kusnery.b", size: "1.7 kB", desc: "Elegantly formatted self-replicating program" }
         ]
       }
     ];

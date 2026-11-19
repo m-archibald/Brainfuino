@@ -13,9 +13,17 @@ export default defineConfig({
       closeBundle() {
         const distFile = path.resolve(__dirname, 'dist/index.html');
         const rootIndex = path.resolve(__dirname, 'index.html');
+        const docWebTerminal = path.resolve(__dirname, '../../documentation/docs/web-terminal.html');
+        const docToolsTerminal = path.resolve(__dirname, '../../documentation/docs/tools/web-terminal.html');
         if (fs.existsSync(distFile)) {
           fs.copyFileSync(distFile, rootIndex);
-          console.log('[copy-bundles] Updated single production index.html at tools/web-terminal/index.html');
+          if (fs.existsSync(path.dirname(docWebTerminal))) {
+            fs.copyFileSync(distFile, docWebTerminal);
+          }
+          if (fs.existsSync(path.dirname(docToolsTerminal))) {
+            fs.copyFileSync(distFile, docToolsTerminal);
+          }
+          console.log('[copy-bundles] Updated production bundles at tools/web-terminal/index.html and documentation/docs/');
         }
       }
     }
