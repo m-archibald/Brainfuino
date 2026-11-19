@@ -60,5 +60,5 @@ Once your manufactured boards arrive:
     * Write `brainfuino_v1.1.jed` (or `brainfuino_v1.0.jed` for Rev 1.0) into the MachXO2 internal flash. Both bitstreams are available in [`brainfuck_uP-FPGA-softprocessor/bitstreams/`](https://github.com/m-archibald/Brainfuino/tree/main/brainfuck_uP-FPGA-softprocessor/bitstreams).
 
 5. **Serial Test:**
-    * Unplug the programmers, reconnect via USB-C, and verify that the virtual COM port opens and responds in PuTTY!
+    * Unplug the programmers, reconnect via USB-C, and verify that the virtual COM port opens and responds in the [Web Serial Terminal](../web-terminal.html) (or any serial terminal of your choice)!
 

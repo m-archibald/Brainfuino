@@ -24,12 +24,12 @@ stateDiagram-v2
         CleanPassthrough --> ReadFPGAOutput: FPGA asserts portWR
     }
     
-    STATE_RUN --> STATE_PROGRAM: Hold Button (>= 3 seconds)
+    STATE_RUN --> STATE_PROGRAM: Hold Button (1s – 3s)
     
     state STATE_PROGRAM {
         HoldReset: Assert BF_RST low
         StatusLED: Turn ON Red LED
-        RAMBuffer: Buffer paste (or stream to Flash if > 8 kB)
+        RAMBuffer: Buffer paste (or stream to Flash if > 4 kB)
         EraseROM: Erase parallel Flash sectors
         FastWriteROM: Direct register write to Flash with progress %
         VerifyROM: Read-back verification against RAM
@@ -40,7 +40,9 @@ stateDiagram-v2
         FastWriteROM --> VerifyROM
     }
     
-    STATE_PROGRAM --> STATE_RUN: Short Press Button (< 3 seconds)
+    STATE_PROGRAM --> STATE_RUN: Short Press Button (< 1s)
+    STATE_RUN --> ConfigMenu: Hold Button (3s – 8s)
+    STATE_RUN --> RestoreDemo: Hold Button (>= 8s)
 ```
 
 ---
@@ -131,7 +133,7 @@ When Manual Stepping Mode is enabled, the STM32 halts the continuous clock signa
 Configuration menu preferences (active clock frequency, manual stepping mode, step multiplier, step trigger key, auto-program on paste, upload threshold, auto-reset, endless loop injection, and run mode speed hotkeys) are preserved across power cycles:
 
 * **Flash Emulation Sector:** Stored in the top 2 kB page of the STM32F072's internal Flash memory: Page 63 (`0x0801F800` – `0x0801FFFF`), located above application code.
-* **Integrity Validation:** Validated via a 32-bit magic word (`0xBF072C01`) and an additive checksum. If the page is unwritten or corrupted, safe defaults are loaded.
-* **Delayed Wear Mitigation:** Runtime hotkey speed changes (`PgUp`/`PgDn` or numeric keys) start a non-blocking 3-second debounce timer. Settings only commit to internal Flash once the user stops adjusting speeds, preventing unnecessary flash write cycles during rapid frequency adjustments.
+* **Integrity Validation:** Validated via a 32-bit magic word (`0xBF072C04`) and an additive checksum. If the page is unwritten or corrupted, safe defaults are loaded.
+* **Delayed Wear Mitigation:** Runtime hotkey speed changes (`PgUp`/`PgDn` or `!CLK+`/`!CLK-`) start a non-blocking 3-second debounce timer. Settings only commit to internal Flash once the user stops adjusting speeds, preventing unnecessary flash write cycles during rapid frequency adjustments.
 * **Seamless Boot Restoration:** `settings_load()` executes during system initialization before `state = STATE_RUN`, guaranteeing the user's preferred clock speed and settings apply immediately on power-up.
 

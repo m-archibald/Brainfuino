@@ -65,19 +65,34 @@ Hardware functionality and menu workflows can be verified end-to-end against a l
 
 ## Flashing the Microcontroller
 
-There are three methods to flash the firmware onto the STM32F072:
+There are several convenient methods to flash firmware onto the STM32F072:
 
-### Method 1: Automated Software USB DFU (Recommended)
+### Method 1: WebUSB Browser Flasher (1-Click, Zero Install)
 
-Thanks to an SRAM persistence flag (`0xDEADBEEF` at `0x20003FF0`), the STM32 companion coprocessor can soft-reboot directly into ST's built-in factory ROM DFU bootloader without touching hardware jumpers:
+The fastest and easiest way to flash firmware is right inside your browser with the [Web Serial Terminal](../web-terminal.html#flash):
 
-1. Connect Brainfuino to your PC via USB-C.
-2. Run `pwsh companion-STM32-firmware/build.ps1 -Flash`.
-3. Or manually send `!DFU!` over any serial terminal (at 115200 baud). The board will disconnect its USB CDC port, re-enumerate as an ST DFU Device (`0483:df11`), and await firmware download via STM32CubeProgrammer.
+1. Connect Brainfuino to your PC with a USB-C data cable.
+2. Open the [Web Serial Terminal](../web-terminal.html#flash) and navigate to the **Flasher** tab.
+3. Under **Target Component**, select **STM32 Coprocessor MCU**.
+4. Select a release binary from the dropdown (or drag and drop your freshly compiled `BrainfuinoMCU.hex`).
+5. Click **Flash Firmware**:
+    * If connected via serial, the terminal automatically sends `!DFU!` to soft-reboot the STM32 into factory DFU mode.
+    * The browser prompts to authorize the **STM32 BOOTLOADER** (`0483:df11`).
+    * The WebUSB flasher erases flash pages, writes the new binary, verifies checksums, and reboots Brainfuino back into run mode—all in under 5 seconds!
 
 ---
 
-### Method 2: Manual Hardware Boot Jumper DFU
+### Method 2: Automated Command-Line Script (`build.ps1 -Flash`)
+
+For automated terminal workflows:
+
+1. Connect Brainfuino to your PC via USB-C.
+2. Run `pwsh companion-STM32-firmware/build.ps1 -Flash`.
+3. The script auto-detects the COM port, sends the `!DFU!` token, and uses `STM32_Programmer_CLI` to flash and reboot without touching hardware jumpers.
+
+---
+
+### Method 3: Manual Hardware Boot Jumper DFU (STM32CubeProgrammer)
 
 If you ever flash a corrupt binary that hangs before USB initialization, you can always enter the factory DFU bootloader using the physical hardware header:
 
@@ -120,7 +135,7 @@ If you ever flash a corrupt binary that hangs before USB initialization, you can
 
 ---
 
-### Method 3: Via ST-Link Programmer (Hardware Debugging)
+### Method 4: Via ST-Link Programmer (Hardware Debugging)
 
 If you are actively developing code and want live breakpoints, variable watches, and hardware stepping:
 

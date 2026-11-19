@@ -93,7 +93,7 @@ In an FPGA, flip-flops are physically integrated into every logic slice and are 
 ```
 
 **Advantages of One-Hot in FPGAs:**
-1. **Blazing Speed:** Testing if the CPU is in `STATE_0` requires reading a single register bit (`state[0] == 1`). There is zero decoding latency, allowing clock speeds up to **48 MHz**.
+1. **Blazing Speed:** Testing if the CPU is in `STATE_0` requires reading a single register bit (`state[0] == 1`). There is zero decoding latency, allowing the FPGA core logic to synthesize well beyond 48 MHz (the board operates at up to 12.0 MHz to match parallel Flash ROM access timings).
 2. **Glitch-Free Operation:** In binary encoding, transitioning from `001` to `010` can briefly pass through `000` or `011` due to microsecond path delays, causing electrical glitches. One-hot transitions directly and cleanly.
 3. **Minimal Logic Depth:** Synthesis tools can implement state transitions using direct multiplexer multiplexing rather than wide Boolean equations.
 

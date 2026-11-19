@@ -28,7 +28,7 @@ flowchart TD
 
     ROM <-->|18-bit PC Address and 8-bit Instruction| FPGA
     FPGA <-->|17-bit Data Pointer and 8-bit Tape Bus| RAM
-    STM -->|Clock: 0.5 to 48 MHz| FPGA
+    STM -->|Clock: 10 Hz to 12 MHz| FPGA
     STM <-->|Reset and USB Serial Stream| FPGA
     STM -.->|Sector Erase and Flash Burner| ROM
     FPGA <-->|3.3V Parallel In and Out Buses| TRANS
