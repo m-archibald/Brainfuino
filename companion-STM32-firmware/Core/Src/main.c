@@ -180,23 +180,28 @@ static volatile uint16_t uart_rx_tail = 0;
 typedef struct {
 	uint32_t baud;
 	const char *name;
+	uint16_t pause_watermark;
+	uint16_t resume_watermark;
 } UartBaudEntry;
 
 static const UartBaudEntry uart_baud_table[] = {
-	{ 300,    "300" },
-	{ 600,    "600" },
-	{ 1200,   "1200" },
-	{ 2400,   "2400" },
-	{ 4800,   "4800" },
-	{ 9600,   "9600" },
-	{ 19200,  "19200" },
-	{ 38400,  "38400" },
-	{ 57600,  "57600" },
-	{ 115200, "115200" },
-	{ 230400, "230400" },
-	{ 460800, "460800" },
+	{ 300,    "300",    8,    4 },
+	{ 600,    "600",    16,   8 },
+	{ 1200,   "1200",   24,   12 },
+	{ 2400,   "2400",   48,   24 },
+	{ 4800,   "4800",   64,   32 },
+	{ 9600,   "9600",   96,   48 },
+	{ 19200,  "19200",  192,  96 },
+	{ 38400,  "38400",  384,  192 },
+	{ 57600,  "57600",  576,  288 },
+	{ 115200, "115200", 800,  400 },
+	{ 230400, "230400", 960,  480 },
+	{ 460800, "460800", 1000, 500 },
 };
 #define UART_BAUD_COUNT (sizeof(uart_baud_table) / sizeof(uart_baud_table[0]))
+
+uint16_t uart_pause_watermark = 96;
+uint16_t uart_resume_watermark = 48;
 
 #define SERIAL_INBOX_SIZE 64
 static volatile uint8_t serial_inbox[SERIAL_INBOX_SIZE];
@@ -588,6 +593,8 @@ void uart_init(void){
 	uint32_t target_baud = 9600;
 	if (cfg_uart_baud_idx < UART_BAUD_COUNT){
 		target_baud = uart_baud_table[cfg_uart_baud_idx].baud;
+		uart_pause_watermark = uart_baud_table[cfg_uart_baud_idx].pause_watermark;
+		uart_resume_watermark = uart_baud_table[cfg_uart_baud_idx].resume_watermark;
 	}
 	uint32_t clock_freq;
 	if (target_baud <= 1200){
@@ -1803,6 +1810,12 @@ void menu_exit(uint8_t save){
 		uart_deinit();
 	}
 
+	head = 0;
+	tail = 0;
+	uart_tx_head = 0;
+	uart_tx_tail = 0;
+	mco_throttled = 0;
+
 	// Clear screen and home cursor so menu is cleanly wiped from terminal
 	CDC_Print("\x1b[2J\r\n");
 
@@ -2844,6 +2857,11 @@ int main(void)
 			  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
 			  HAL_Delay(10);
 			  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+			  head = 0;
+			  tail = 0;
+			  uart_tx_head = 0;
+			  uart_tx_tail = 0;
+			  mco_throttled = 0;
 			  serial_inbox_head = 0;
 			  serial_inbox_tail = 0;
 			  serial_input = 0;
@@ -2859,6 +2877,11 @@ int main(void)
 			  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
 			  HAL_Delay(60);
 			  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+			  head = 0;
+			  tail = 0;
+			  uart_tx_head = 0;
+			  uart_tx_tail = 0;
+			  mco_throttled = 0;
 			  manual_step_ticks_pending = 0;
 			  serial_inbox_head = 0;
 			  serial_inbox_tail = 0;
@@ -2940,6 +2963,11 @@ int main(void)
 					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
 					  HAL_Delay(10);
 					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+					  head = 0;
+					  tail = 0;
+					  uart_tx_head = 0;
+					  uart_tx_tail = 0;
+					  mco_throttled = 0;
 					  serial_inbox_head = 0;
 					  serial_inbox_tail = 0;
 					  serial_input = 0;
@@ -2954,6 +2982,11 @@ int main(void)
 					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
 					  HAL_Delay(60);
 					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+					  head = 0;
+					  tail = 0;
+					  uart_tx_head = 0;
+					  uart_tx_tail = 0;
+					  mco_throttled = 0;
 					  manual_step_ticks_pending = 0;
 					  serial_inbox_head = 0;
 					  serial_inbox_tail = 0;
@@ -3378,7 +3411,7 @@ int main(void)
 			  uint16_t u_used = (uart_tx_tail >= uart_tx_head) ? 
 			                    (uart_tx_tail - uart_tx_head) : 
 			                    (UART_TX_BUF_SIZE - (uart_tx_head - uart_tx_tail));
-			  if (u_used >= (UART_TX_BUF_SIZE / 2)){
+			  if (u_used >= uart_resume_watermark){
 				  ready = 0;
 			  }
 		  }
@@ -3467,7 +3500,7 @@ int main(void)
 				  uint16_t u_used = (uart_tx_tail >= uart_tx_head) ? 
 				                    (uart_tx_tail - uart_tx_head) : 
 				                    (UART_TX_BUF_SIZE - (uart_tx_head - uart_tx_tail));
-				  if (u_used >= (UART_TX_BUF_SIZE / 2)){
+				  if (u_used >= uart_resume_watermark){
 					  ready = 0;
 				  }
 			  }
@@ -4378,6 +4411,11 @@ void flashDefaultLogoProgram(void){
 	staging_head = 0;
 	staging_tail = 0;
 	stream_init_done = 0;
+	head = 0;
+	tail = 0;
+	uart_tx_head = 0;
+	uart_tx_tail = 0;
+	mco_throttled = 0;
 }
 
 void Execute_DFU_Jump(void){

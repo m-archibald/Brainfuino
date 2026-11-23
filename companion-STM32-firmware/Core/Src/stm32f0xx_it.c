@@ -68,6 +68,7 @@ extern uint8_t cfg_uart_enabled;
 extern volatile uint8_t  uart_tx_box[UART_TX_BUF_SIZE];
 extern volatile uint16_t uart_tx_head;
 extern volatile uint16_t uart_tx_tail;
+extern uint16_t uart_pause_watermark;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -202,7 +203,7 @@ void EXTI2_3_IRQHandler(void)
         uart_tx_tail = u_next_tail;
         USART2->CR1 |= USART_CR1_TXEIE;
       }
-      if (u_used >= (UART_TX_BUF_SIZE - 16)){
+      if (u_used >= uart_pause_watermark){
         throttle = 1;
       }
     }

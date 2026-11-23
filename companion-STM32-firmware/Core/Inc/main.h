@@ -61,6 +61,8 @@ extern uint8_t cfg_uart_flow_ctl;
 extern volatile uint8_t  uart_tx_box[UART_TX_BUF_SIZE];
 extern volatile uint16_t uart_tx_head;
 extern volatile uint16_t uart_tx_tail;
+extern uint16_t uart_pause_watermark;
+extern uint16_t uart_resume_watermark;
 void uart_init(void);
 void uart_deinit(void);
 void uart_print(const char *str);
