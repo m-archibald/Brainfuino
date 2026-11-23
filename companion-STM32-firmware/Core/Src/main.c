@@ -161,6 +161,43 @@ uint8_t  cfg_prune_on_paste       = 0;   // 0 = Disabled, 1 = Strip non-BF comma
 uint8_t  cfg_prune_in_library     = 1;   // 0 = Disabled, 1 = Strip non-BF commands when saving to library
 uint8_t  cfg_cr_to_lf             = 1;   // 1 = Convert Windows \r (CR) -> \n (LF) in RUN mode
 
+// Hardware Serial (USART2) runtime configuration settings
+uint8_t  cfg_uart_enabled         = 0;   // 0 = Disabled (Default), 1 = Enabled
+uint8_t  cfg_uart_baud_idx        = 5;   // Default index 5 -> 9600 baud
+uint8_t  cfg_uart_flow_ctl        = 1;   // 0 = None, 1 = RTS/CTS (Hardware flow control)
+
+// Hardware Serial TX ring buffer
+volatile uint8_t  uart_tx_box[UART_TX_BUF_SIZE];
+volatile uint16_t uart_tx_head = 0;
+volatile uint16_t uart_tx_tail = 0;
+
+// Hardware Serial RX ring buffer
+#define UART_RX_BUF_SIZE 256
+static volatile uint8_t  uart_rx_buf[UART_RX_BUF_SIZE];
+static volatile uint16_t uart_rx_head = 0;
+static volatile uint16_t uart_rx_tail = 0;
+
+typedef struct {
+	uint32_t baud;
+	const char *name;
+} UartBaudEntry;
+
+static const UartBaudEntry uart_baud_table[] = {
+	{ 300,    "300" },
+	{ 600,    "600" },
+	{ 1200,   "1200" },
+	{ 2400,   "2400" },
+	{ 4800,   "4800" },
+	{ 9600,   "9600" },
+	{ 19200,  "19200" },
+	{ 38400,  "38400" },
+	{ 57600,  "57600" },
+	{ 115200, "115200" },
+	{ 230400, "230400" },
+	{ 460800, "460800" },
+};
+#define UART_BAUD_COUNT (sizeof(uart_baud_table) / sizeof(uart_baud_table[0]))
+
 #define SERIAL_INBOX_SIZE 64
 static volatile uint8_t serial_inbox[SERIAL_INBOX_SIZE];
 static volatile uint8_t serial_inbox_head = 0;
@@ -521,7 +558,142 @@ void speed_step_down(void){
 	}
 }
 
+void uart_write(const uint8_t *data, uint32_t len){
+	if (!cfg_uart_enabled || !data || len == 0) return;
+	for (uint32_t i = 0; i < len; i++){
+		uint16_t next_tail = (uart_tx_tail + 1) % UART_TX_BUF_SIZE;
+		uint32_t timeout = 50000;
+		while ((next_tail == uart_tx_head) && --timeout);
+		if (next_tail != uart_tx_head){
+			uart_tx_box[uart_tx_tail] = data[i];
+			uart_tx_tail = next_tail;
+			USART2->CR1 |= USART_CR1_TXEIE;
+		}
+	}
+}
+
+void uart_print(const char *str){
+	if (!cfg_uart_enabled || !str) return;
+	uart_write((const uint8_t *)str, (uint32_t)strlen(str));
+}
+
+void uart_init(void){
+	// 1. Enable Clocks for GPIOD and USART2
+	RCC->AHBENR |= RCC_AHBENR_GPIODEN;
+	RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
+
+	// 2. Select Clock Source for USART2
+	// If baud <= 1200, use HSI (8 MHz) to avoid 16-bit BRR overflow
+	// If baud > 1200, use PCLK (48 MHz) for highest accuracy
+	uint32_t target_baud = 9600;
+	if (cfg_uart_baud_idx < UART_BAUD_COUNT){
+		target_baud = uart_baud_table[cfg_uart_baud_idx].baud;
+	}
+	uint32_t clock_freq;
+	if (target_baud <= 1200){
+		RCC->CFGR3 = (RCC->CFGR3 & ~RCC_CFGR3_USART2SW) | RCC_CFGR3_USART2SW_HSI;
+		clock_freq = 8000000UL;
+	} else {
+		RCC->CFGR3 = (RCC->CFGR3 & ~RCC_CFGR3_USART2SW) | RCC_CFGR3_USART2SW_PCLK;
+		clock_freq = 48000000UL;
+	}
+
+	// 3. Configure GPIOD Pins for USART2 (AF0)
+	// PD5: TX (AF0), PD6: RX (AF0)
+	GPIOD->MODER = (GPIOD->MODER & ~((3U << (5 * 2)) | (3U << (6 * 2)))) | 
+	               ((2U << (5 * 2)) | (2U << (6 * 2)));
+	GPIOD->AFR[0] &= ~((0xFU << (5 * 4)) | (0xFU << (6 * 4))); // AF0
+	GPIOD->OSPEEDR |= (3U << (5 * 2)) | (3U << (6 * 2));
+	GPIOD->PUPDR = (GPIOD->PUPDR & ~((3U << (5 * 2)) | (3U << (6 * 2)))) | (1U << (6 * 2)); // Pull-up on RX
+
+	// Flow control pins PD3 (CTS), PD4 (RTS)
+	if (cfg_uart_flow_ctl){
+		GPIOD->MODER = (GPIOD->MODER & ~((3U << (3 * 2)) | (3U << (4 * 2)))) | 
+		               ((2U << (3 * 2)) | (2U << (4 * 2)));
+		GPIOD->AFR[0] &= ~((0xFU << (3 * 4)) | (0xFU << (4 * 4))); // AF0
+		GPIOD->OSPEEDR |= (3U << (3 * 2)) | (3U << (4 * 2));
+		GPIOD->PUPDR = (GPIOD->PUPDR & ~((3U << (3 * 2)) | (3U << (4 * 2)))) | (1U << (3 * 2)); // Pull-up on CTS
+	} else {
+		// Return PD3, PD4 to standard input floating
+		GPIOD->MODER &= ~((3U << (3 * 2)) | (3U << (4 * 2)));
+		GPIOD->PUPDR &= ~((3U << (3 * 2)) | (3U << (4 * 2)));
+	}
+
+	// 4. Configure USART2 registers
+	USART2->CR1 = 0; // Disable USART2 during configuration
+	USART2->CR2 = 0; // 1 stop bit
+	if (cfg_uart_flow_ctl){
+		USART2->CR3 = USART_CR3_RTSE | USART_CR3_CTSE;
+	} else {
+		USART2->CR3 = 0;
+	}
+
+	// Compute and set Baud Rate
+	USART2->BRR = (clock_freq + (target_baud / 2)) / target_baud;
+
+	// Enable Receiver, Transmitter, RXNE interrupt, and USART2 peripheral
+	USART2->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE;
+
+	// 5. Enable NVIC for USART2
+	HAL_NVIC_SetPriority(USART2_IRQn, 2, 0);
+	HAL_NVIC_EnableIRQ(USART2_IRQn);
+}
+
+void uart_deinit(void){
+	// Disable NVIC for USART2
+	HAL_NVIC_DisableIRQ(USART2_IRQn);
+
+	// Disable USART2 peripheral and clock
+	USART2->CR1 = 0;
+	USART2->CR2 = 0;
+	USART2->CR3 = 0;
+	RCC->APB1ENR &= ~RCC_APB1ENR_USART2EN;
+
+	// Restore PD3..PD6 to input floating (Parallel Digital In pins)
+	GPIOD->MODER &= ~((3U << (3 * 2)) | (3U << (4 * 2)) | (3U << (5 * 2)) | (3U << (6 * 2)));
+	GPIOD->PUPDR &= ~((3U << (3 * 2)) | (3U << (4 * 2)) | (3U << (5 * 2)) | (3U << (6 * 2)));
+
+	// Clear ring buffers
+	uart_tx_head = 0;
+	uart_tx_tail = 0;
+	uart_rx_head = 0;
+	uart_rx_tail = 0;
+}
+
+void USART2_IRQHandler(void){
+	uint32_t isr = USART2->ISR;
+
+	// RX interrupt
+	if (isr & USART_ISR_RXNE){
+		uint8_t ch = (uint8_t)(USART2->RDR & 0xFF);
+		uint16_t next_tail = (uart_rx_tail + 1) % UART_RX_BUF_SIZE;
+		if (next_tail != uart_rx_head){
+			uart_rx_buf[uart_rx_tail] = ch;
+			uart_rx_tail = next_tail;
+		}
+	}
+
+	// TX empty interrupt
+	if ((USART2->CR1 & USART_CR1_TXEIE) && (isr & USART_ISR_TXE)){
+		if (uart_tx_head != uart_tx_tail){
+			USART2->TDR = uart_tx_box[uart_tx_head];
+			uart_tx_head = (uart_tx_head + 1) % UART_TX_BUF_SIZE;
+		} else {
+			// Buffer empty, disable TXE interrupt
+			USART2->CR1 &= ~USART_CR1_TXEIE;
+		}
+	}
+
+	// Clear error flags (ORE, NE, FE, PE)
+	if (isr & (USART_ISR_ORE | USART_ISR_NE | USART_ISR_FE | USART_ISR_PE)){
+		USART2->ICR = USART_ICR_ORECF | USART_ICR_NCF | USART_ICR_FECF | USART_ICR_PECF;
+	}
+}
+
 void CDC_Print(const char *str){
+	if (cfg_uart_enabled){
+		uart_print(str);
+	}
 	uint32_t len = strlen(str);
 	uint32_t offset = 0;
 	while (offset < len){
@@ -536,6 +708,9 @@ void CDC_Print(const char *str){
 }
 
 void CDC_Write(const uint8_t *data, uint32_t len){
+	if (cfg_uart_enabled){
+		uart_write(data, len);
+	}
 	uint32_t offset = 0;
 	while (offset < len){
 		uint16_t chunk = (len - offset > 64) ? 64 : (uint16_t)(len - offset);
@@ -976,7 +1151,9 @@ static uint8_t get_menu_item_count(void){
 		return 6;
 	} else if (menu_page == MENU_PAGE_SETTINGS){
 		uint8_t custom_extra = (cfg_mcu_color_idx == 17) ? 3 : 0;
-		return 11 + custom_extra + (cfg_manual_step_enabled ? 2 : 0);
+		uint8_t step_extra = cfg_manual_step_enabled ? 2 : 0;
+		uint8_t uart_extra = cfg_uart_enabled ? 2 : 0;
+		return 13 + custom_extra + step_extra + uart_extra;
 	} else if (menu_page == MENU_PAGE_LIBRARY){
 		lib_refresh_display_list();
 		return lib_display_count + 2;
@@ -1063,7 +1240,9 @@ void menu_render_settings(void){
 
 	uint8_t is_custom = (cfg_mcu_color_idx == 17);
 	uint8_t custom_extra = is_custom ? 3 : 0;
-	uint8_t count = 11 + custom_extra + (cfg_manual_step_enabled ? 2 : 0);
+	uint8_t step_extra = cfg_manual_step_enabled ? 2 : 0;
+	uint8_t uart_extra = cfg_uart_enabled ? 2 : 0;
+	uint8_t count = 13 + custom_extra + step_extra + uart_extra;
 	if (menu_cursor >= count) menu_cursor = count - 1;
 
 	for (int i = 0; i < count; i++){
@@ -1137,20 +1316,27 @@ void menu_render_settings(void){
 			if (rem_idx == 1){
 				label = "A. Manual Stepping Mode      ";
 				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_manual_step_enabled ? "ENABLED" : "DISABLED");
-			} else if (rem_idx == 2){
-				if (cfg_manual_step_enabled){
-					label = "T. Step Advance Ticks        ";
-					snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_step_ticks_name(cfg_manual_step_ticks));
+			} else if (cfg_manual_step_enabled && rem_idx == 2){
+				label = "T. Step Advance Ticks        ";
+				snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_step_ticks_name(cfg_manual_step_ticks));
+			} else if (cfg_manual_step_enabled && rem_idx == 3){
+				label = "K. Step Trigger Key          ";
+				snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_step_key_name(cfg_manual_step_key));
+			} else {
+				int uart_idx = rem_idx - (1 + step_extra);
+				if (uart_idx == 1){
+					label = "S. Hardware Serial (PD5/PD6) ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_uart_enabled ? "ENABLED" : "DISABLED");
+				} else if (cfg_uart_enabled && uart_idx == 2){
+					label = "U. Serial Baud Rate          ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", uart_baud_table[cfg_uart_baud_idx].name);
+				} else if (cfg_uart_enabled && uart_idx == 3){
+					label = "F. Serial Flow Control       ";
+					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_uart_flow_ctl ? "RTS/CTS" : "NONE");
 				} else {
 					label = "0. Back to Main Menu         ";
 					snprintf(val_str, sizeof(val_str), "[   BACK   ]");
 				}
-			} else if (rem_idx == 3){
-				label = "K. Step Trigger Key          ";
-				snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_step_key_name(cfg_manual_step_key));
-			} else if (rem_idx == 4){
-				label = "0. Back to Main Menu         ";
-				snprintf(val_str, sizeof(val_str), "[   BACK   ]");
 			}
 		}
 
@@ -1166,6 +1352,11 @@ void menu_render_settings(void){
 	}
 
 	CDC_Print("+--------------------------------------------------+\r\n");
+	if (cfg_uart_enabled){
+		CDC_Print("| * NOTE: Serial uses D11-D13, SDA, SCL.           |\r\n");
+		CDC_Print("|   Parallel Digital In is DISABLED.               |\r\n");
+		CDC_Print("+--------------------------------------------------+\r\n");
+	}
 	CDC_Print("|    Hardware: STM32F072 | Parallel ROM: 256 kB    |\r\n");
 	CDC_Print("+--------------------------------------------------+\r\n");
 	CDC_Print("Select option or use arrows + Enter: ");
@@ -1313,6 +1504,7 @@ void menu_execute_action(uint8_t item, int8_t dir){
 		settings_dirty = 1;
 		uint8_t is_custom = (cfg_mcu_color_idx == 17);
 		uint8_t custom_extra = is_custom ? 3 : 0;
+		uint8_t step_extra = cfg_manual_step_enabled ? 2 : 0;
 
 		if (item <= 8){
 			switch(item){
@@ -1388,28 +1580,39 @@ void menu_execute_action(uint8_t item, int8_t dir){
 			int rem_idx = item - (9 + custom_extra);
 			if (rem_idx == 1){
 				cfg_manual_step_enabled = !cfg_manual_step_enabled;
-			} else if (rem_idx == 2){
-				if (cfg_manual_step_enabled){
-					if (dir > 0){
-						cfg_manual_step_ticks = (cfg_manual_step_ticks + 1) % 6;
-					} else {
-						cfg_manual_step_ticks = (cfg_manual_step_ticks + 5) % 6;
-					}
+			} else if (cfg_manual_step_enabled && rem_idx == 2){
+				if (dir > 0){
+					cfg_manual_step_ticks = (cfg_manual_step_ticks + 1) % 6;
 				} else {
-					menu_page = MENU_PAGE_MAIN;
-					menu_cursor = 1;
-					menu_needs_render = 1;
+					cfg_manual_step_ticks = (cfg_manual_step_ticks + 5) % 6;
 				}
-			} else if (rem_idx == 3){
+			} else if (cfg_manual_step_enabled && rem_idx == 3){
 				if (dir > 0){
 					cfg_manual_step_key = (cfg_manual_step_key + 1) % 3;
 				} else {
 					cfg_manual_step_key = (cfg_manual_step_key + 2) % 3;
 				}
-			} else if (rem_idx == 4){
-				menu_page = MENU_PAGE_MAIN;
-				menu_cursor = 1;
-				menu_needs_render = 1;
+			} else {
+				int uart_idx = rem_idx - (1 + step_extra);
+				if (uart_idx == 1){
+					cfg_uart_enabled = !cfg_uart_enabled;
+					if (cfg_uart_enabled) uart_init();
+					else uart_deinit();
+				} else if (cfg_uart_enabled && uart_idx == 2){
+					if (dir > 0){
+						cfg_uart_baud_idx = (cfg_uart_baud_idx + 1) % UART_BAUD_COUNT;
+					} else {
+						cfg_uart_baud_idx = (cfg_uart_baud_idx + UART_BAUD_COUNT - 1) % UART_BAUD_COUNT;
+					}
+					if (cfg_uart_enabled) uart_init();
+				} else if (cfg_uart_enabled && uart_idx == 3){
+					cfg_uart_flow_ctl = !cfg_uart_flow_ctl;
+					if (cfg_uart_enabled) uart_init();
+				} else {
+					menu_page = MENU_PAGE_MAIN;
+					menu_cursor = 1;
+					menu_needs_render = 1;
+				}
 			}
 		}
 	}
@@ -1431,7 +1634,7 @@ void menu_execute_action(uint8_t item, int8_t dir){
 }
 
 #define SETTINGS_FLASH_ADDR   0x0801F800UL
-#define SETTINGS_MAGIC        0xBF072C04UL
+#define SETTINGS_MAGIC        0xBF072C05UL
 
 typedef struct {
 	uint32_t magic;
@@ -1450,6 +1653,10 @@ typedef struct {
 	uint8_t  mcu_custom_r;
 	uint8_t  mcu_custom_g;
 	uint8_t  mcu_custom_b;
+	uint8_t  uart_enabled;
+	uint8_t  uart_baud_idx;
+	uint8_t  uart_flow_ctl;
+	uint8_t  reserved0;
 	uint32_t auto_prog_min_bytes;
 	uint32_t checksum;
 } PersistentSettings;
@@ -1462,7 +1669,9 @@ static uint32_t calc_settings_checksum(const PersistentSettings *s){
 	       (uint32_t)s->prune_on_paste + (uint32_t)s->prune_in_library +
 	       (uint32_t)s->cr_to_lf + (uint32_t)s->mcu_color_idx +
 	       (uint32_t)s->mcu_custom_r + (uint32_t)s->mcu_custom_g +
-	       (uint32_t)s->mcu_custom_b + s->auto_prog_min_bytes;
+	       (uint32_t)s->mcu_custom_b + (uint32_t)s->uart_enabled +
+	       (uint32_t)s->uart_baud_idx + (uint32_t)s->uart_flow_ctl +
+	       s->auto_prog_min_bytes;
 }
 
 void settings_load(void){
@@ -1486,6 +1695,9 @@ void settings_load(void){
 		cfg_mcu_custom_r = (flash_cfg->mcu_custom_r <= 5) ? flash_cfg->mcu_custom_r : 5;
 		cfg_mcu_custom_g = (flash_cfg->mcu_custom_g <= 5) ? flash_cfg->mcu_custom_g : 2;
 		cfg_mcu_custom_b = (flash_cfg->mcu_custom_b <= 5) ? flash_cfg->mcu_custom_b : 0;
+		cfg_uart_enabled = flash_cfg->uart_enabled ? 1 : 0;
+		cfg_uart_baud_idx = (flash_cfg->uart_baud_idx < UART_BAUD_COUNT) ? flash_cfg->uart_baud_idx : 5;
+		cfg_uart_flow_ctl = flash_cfg->uart_flow_ctl ? 1 : 0;
 
 		if (flash_cfg->auto_prog_min_bytes >= 4 && flash_cfg->auto_prog_min_bytes <= 64){
 			cfg_auto_prog_min_bytes = flash_cfg->auto_prog_min_bytes;
@@ -1508,6 +1720,9 @@ void settings_load(void){
 		cfg_mcu_custom_r = 5;
 		cfg_mcu_custom_g = 2;
 		cfg_mcu_custom_b = 0;
+		cfg_uart_enabled = 0;
+		cfg_uart_baud_idx = 5;
+		cfg_uart_flow_ctl = 1;
 		cfg_auto_prog_min_bytes = 16;
 	}
 }
@@ -1531,6 +1746,9 @@ void settings_save(void){
 	new_cfg.mcu_custom_r = cfg_mcu_custom_r;
 	new_cfg.mcu_custom_g = cfg_mcu_custom_g;
 	new_cfg.mcu_custom_b = cfg_mcu_custom_b;
+	new_cfg.uart_enabled = cfg_uart_enabled;
+	new_cfg.uart_baud_idx = cfg_uart_baud_idx;
+	new_cfg.uart_flow_ctl = cfg_uart_flow_ctl;
 	new_cfg.auto_prog_min_bytes = cfg_auto_prog_min_bytes;
 	new_cfg.checksum = calc_settings_checksum(&new_cfg);
 
@@ -1577,6 +1795,12 @@ void menu_exit(uint8_t save){
 	} else {
 		settings_load();
 		settings_dirty = 0;
+	}
+
+	if (cfg_uart_enabled){
+		uart_init();
+	} else {
+		uart_deinit();
 	}
 
 	// Clear screen and home cursor so menu is cleanly wiped from terminal
@@ -2121,6 +2345,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				return 1;
 			}
 			uint8_t c_extra = (cfg_mcu_color_idx == 17) ? 3 : 0;
+			uint8_t s_extra = cfg_manual_step_enabled ? 2 : 0;
 			if (buff[idx] == 'a' || buff[idx] == 'A'){
 				menu_cursor = 10 + c_extra;
 				menu_action_pending = menu_cursor;
@@ -2135,6 +2360,24 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			}
 			if (cfg_manual_step_enabled && (buff[idx] == 'k' || buff[idx] == 'K')){
 				menu_cursor = 12 + c_extra;
+				menu_action_pending = menu_cursor;
+				menu_action_dir = 1;
+				return 1;
+			}
+			if (buff[idx] == 's' || buff[idx] == 'S'){
+				menu_cursor = 10 + c_extra + 1 + s_extra;
+				menu_action_pending = menu_cursor;
+				menu_action_dir = 1;
+				return 1;
+			}
+			if (cfg_uart_enabled && (buff[idx] == 'u' || buff[idx] == 'U')){
+				menu_cursor = 10 + c_extra + 1 + s_extra + 1;
+				menu_action_pending = menu_cursor;
+				menu_action_dir = 1;
+				return 1;
+			}
+			if (cfg_uart_enabled && (buff[idx] == 'f' || buff[idx] == 'F')){
+				menu_cursor = 10 + c_extra + 1 + s_extra + 2;
 				menu_action_pending = menu_cursor;
 				menu_action_dir = 1;
 				return 1;
@@ -2482,6 +2725,9 @@ int main(void)
 
   // Load persistent settings and library TOC from internal Flash
   settings_load();
+  if (cfg_uart_enabled){
+	  uart_init();
+  }
   lib_init_toc();
   set_freq(freq);
 
@@ -2510,6 +2756,19 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 
   while (1){
+	  // Drain hardware UART RX buffer into CDC_Receive_Callback() for mirrored input handling
+	  if (cfg_uart_enabled && (uart_rx_head != uart_rx_tail)){
+		  uint8_t rx_chunk[32];
+		  uint32_t rx_len = 0;
+		  while ((uart_rx_head != uart_rx_tail) && (rx_len < sizeof(rx_chunk))){
+			  rx_chunk[rx_len++] = uart_rx_buf[uart_rx_head];
+			  uart_rx_head = (uart_rx_head + 1) % UART_RX_BUF_SIZE;
+		  }
+		  if (rx_len > 0){
+			  CDC_Receive_Callback(rx_chunk, rx_len);
+		  }
+	  }
+
 	  // Check for dynamic library query request (!LIB*) in Thread Mode
 	  if (dynamic_lib_requested){
 		  dynamic_lib_requested = 0;
@@ -3114,7 +3373,16 @@ int main(void)
 	  // Check if throttled FPGA clock can resume after buffer drained
 	  if (mco_throttled){
 		  uint16_t used = (tail >= head) ? (tail - head) : (OUTBOX_CAPACITY - (head - tail));
-		  if (used < (OUTBOX_CAPACITY / 2)){
+		  uint8_t ready = (used < (OUTBOX_CAPACITY / 2));
+		  if (cfg_uart_enabled){
+			  uint16_t u_used = (uart_tx_tail >= uart_tx_head) ? 
+			                    (uart_tx_tail - uart_tx_head) : 
+			                    (UART_TX_BUF_SIZE - (uart_tx_head - uart_tx_tail));
+			  if (u_used >= (UART_TX_BUF_SIZE / 2)){
+				  ready = 0;
+			  }
+		  }
+		  if (ready){
 			  mco_throttled = 0;
 			  if (active_is_tim1){
 				  if (!cfg_manual_step_enabled){
@@ -3194,7 +3462,16 @@ int main(void)
 
 		  if (mco_throttled){
 			  uint16_t used = (tail >= head) ? (tail - head) : (OUTBOX_CAPACITY - (head - tail));
-			  if (used < (OUTBOX_CAPACITY / 2)){
+			  uint8_t ready = (used < (OUTBOX_CAPACITY / 2));
+			  if (cfg_uart_enabled){
+				  uint16_t u_used = (uart_tx_tail >= uart_tx_head) ? 
+				                    (uart_tx_tail - uart_tx_head) : 
+				                    (UART_TX_BUF_SIZE - (uart_tx_head - uart_tx_tail));
+				  if (u_used >= (UART_TX_BUF_SIZE / 2)){
+					  ready = 0;
+				  }
+			  }
+			  if (ready){
 				  mco_throttled = 0;
 				  if (active_is_tim1){
 					  if (!cfg_manual_step_enabled){
@@ -3213,7 +3490,10 @@ int main(void)
 	  __disable_irq();
 	  if((state == STATE_RUN) && !serial_input){
 		  __enable_irq();
-		  board_incoming = HAL_GPIO_ReadPin(BRD_INCMG_GPIO_Port, BRD_INCMG_Pin);
+		  board_incoming = 0;
+		  if (!cfg_uart_enabled){
+			  board_incoming = HAL_GPIO_ReadPin(BRD_INCMG_GPIO_Port, BRD_INCMG_Pin);
+		  }
 		  if(board_incoming){
 			  __disable_irq();
 			  writeBFInput((uint8_t)GPIOD->IDR);

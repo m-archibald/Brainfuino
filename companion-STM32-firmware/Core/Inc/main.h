@@ -54,7 +54,17 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+extern uint8_t cfg_uart_enabled;
+extern uint8_t cfg_uart_baud_idx;
+extern uint8_t cfg_uart_flow_ctl;
+#define UART_TX_BUF_SIZE 1024
+extern volatile uint8_t  uart_tx_box[UART_TX_BUF_SIZE];
+extern volatile uint16_t uart_tx_head;
+extern volatile uint16_t uart_tx_tail;
+void uart_init(void);
+void uart_deinit(void);
+void uart_print(const char *str);
+void uart_write(const uint8_t *data, uint32_t len);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

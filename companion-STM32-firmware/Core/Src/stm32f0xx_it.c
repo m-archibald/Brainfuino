@@ -64,6 +64,10 @@ extern volatile uint32_t tail;
 extern volatile uint32_t active_mco_cfg;
 extern volatile uint8_t mco_throttled;
 extern volatile uint8_t active_is_tim1;
+extern uint8_t cfg_uart_enabled;
+extern volatile uint8_t  uart_tx_box[UART_TX_BUF_SIZE];
+extern volatile uint16_t uart_tx_head;
+extern volatile uint16_t uart_tx_tail;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -180,11 +184,30 @@ void EXTI2_3_IRQHandler(void)
     uint8_t data = (uint8_t)GPIOB->IDR;
     uint16_t next_tail = (tail + 1) % 1024;
 
-    // 4. Capacity check
+    // 4. Capacity check & mirroring
     uint16_t used = (tail >= head) ? (tail - head) : (1024 - (head - tail));
-    if (used < (1024 - 8)){
-      outbox[tail] = data;
-      tail = next_tail;
+    outbox[tail] = data;
+    tail = next_tail;
+
+    uint8_t throttle = (used >= (1024 - 8));
+
+    // Mirror FPGA output byte to UART TX buffer if serial enabled
+    if (cfg_uart_enabled){
+      uint16_t u_next_tail = (uart_tx_tail + 1) % UART_TX_BUF_SIZE;
+      uint16_t u_used = (uart_tx_tail >= uart_tx_head) ? 
+                        (uart_tx_tail - uart_tx_head) : 
+                        (UART_TX_BUF_SIZE - (uart_tx_head - uart_tx_tail));
+      if (u_next_tail != uart_tx_head){
+        uart_tx_box[uart_tx_tail] = data;
+        uart_tx_tail = u_next_tail;
+        USART2->CR1 |= USART_CR1_TXEIE;
+      }
+      if (u_used >= (UART_TX_BUF_SIZE - 16)){
+        throttle = 1;
+      }
+    }
+
+    if (!throttle){
       // Re-enable FPGA clock immediately
       if (active_is_tim1){
         TIM1->CR1 |= TIM_CR1_CEN;
@@ -192,9 +215,7 @@ void EXTI2_3_IRQHandler(void)
         RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCO | RCC_CFGR_MCOPRE)) | active_mco_cfg;
       }
     } else {
-      // Outbox nearly full: queue byte and keep FPGA clock paused until USB drains
-      outbox[tail] = data;
-      tail = next_tail;
+      // Outbox or UART buffer nearly full: keep FPGA clock paused until drained
       mco_throttled = 1;
     }
 
