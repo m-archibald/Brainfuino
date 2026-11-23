@@ -165,6 +165,9 @@ uint8_t  cfg_cr_to_lf             = 1;   // 1 = Convert Windows \r (CR) -> \n (L
 uint8_t  cfg_uart_enabled         = 0;   // 0 = Disabled (Default), 1 = Enabled
 uint8_t  cfg_uart_baud_idx        = 5;   // Default index 5 -> 9600 baud
 uint8_t  cfg_uart_flow_ctl        = 1;   // 0 = None, 1 = RTS/CTS (Hardware flow control)
+uint8_t  cfg_cursor_reposition    = 1;   // 1 = In-place cursor reposition (\x1b[H), 0 = Full clear (\x1b[2J)
+static uint8_t menu_first_render  = 1;   // 1 = initial render on menu enter must clear screen
+volatile uint32_t last_key_rx_tick = 0; // Tick when latest key arrived
 
 // Hardware Serial TX ring buffer
 volatile uint8_t  uart_tx_box[UART_TX_BUF_SIZE];
@@ -302,6 +305,9 @@ void initROMWrite(void);
 
 void CDC_Print(const char *str);
 void CDC_Printf(const char *format, ...);
+void menu_buf_reset(void);
+void menu_buf_append(const char *str);
+void menu_buf_flush(void);
 uint8_t TxBusy(void);
 void initROMProgramming(void);
 void setAddrBusFast(uint32_t addr);
@@ -732,21 +738,67 @@ void USART2_IRQHandler(void){
 	}
 }
 
+static uint8_t  menu_buffering = 0;
+static uint16_t menu_buf_len = 0;
+
+void menu_buf_reset(void){
+	menu_buf_len = 0;
+}
+
+void menu_buf_append(const char *str){
+	if (!str) return;
+	uint32_t slen = strlen(str);
+	if (menu_buf_len + slen < sizeof(prog_buffer) - 1){
+		memcpy(prog_buffer + menu_buf_len, str, slen);
+		menu_buf_len += slen;
+		prog_buffer[menu_buf_len] = '\0';
+	}
+}
+
+void menu_buf_flush(void){
+	if (menu_buf_len == 0) return;
+	if (cfg_uart_enabled){
+		uart_write((const uint8_t *)prog_buffer, menu_buf_len);
+	}
+	uint32_t offset = 0;
+	while (offset < menu_buf_len){
+		if (menu_needs_render){
+			// Frame coalescing: a new key arrived while transmitting, abort stale frame!
+			break;
+		}
+		uint16_t chunk = (menu_buf_len - offset > 60) ? 60 : (uint16_t)(menu_buf_len - offset);
+		uint32_t timeout = 200000;
+		while (TxBusy() && --timeout);
+		if (TxBusy()) break;
+		CDC_Transmit_FS((uint8_t *)(prog_buffer + offset), chunk);
+		offset += chunk;
+	}
+	uint32_t timeout = 200000;
+	while (TxBusy() && --timeout);
+	menu_buf_len = 0;
+}
+
 void CDC_Print(const char *str){
+	if (!str) return;
+	if (menu_buffering){
+		menu_buf_append(str);
+		return;
+	}
 	if (cfg_uart_enabled){
 		uart_print(str);
 	}
 	uint32_t len = strlen(str);
 	uint32_t offset = 0;
 	while (offset < len){
-		uint16_t chunk = (len - offset > 64) ? 64 : (uint16_t)(len - offset);
+		uint16_t chunk = (len - offset > 60) ? 60 : (uint16_t)(len - offset);
 		uint32_t timeout = 200000;
 		while (TxBusy() && --timeout);
+		if (TxBusy()) break;
 		CDC_Transmit_FS((uint8_t *)(str + offset), chunk);
-		timeout = 200000;
-		while (TxBusy() && --timeout);
 		offset += chunk;
 	}
+	uint32_t timeout = 200000;
+	while (TxBusy() && --timeout);
 }
 
 void CDC_Write(const uint8_t *data, uint32_t len){
@@ -1196,7 +1248,7 @@ static uint8_t get_menu_item_count(void){
 		uint8_t custom_extra = (cfg_mcu_color_idx == 17) ? 3 : 0;
 		uint8_t step_extra = cfg_manual_step_enabled ? 2 : 0;
 		uint8_t uart_extra = cfg_uart_enabled ? 2 : 0;
-		return 13 + custom_extra + step_extra + uart_extra;
+		return 14 + custom_extra + step_extra + uart_extra;
 	} else if (menu_page == MENU_PAGE_LIBRARY){
 		lib_refresh_display_list();
 		uint8_t start_idx = lib_page * 10;
@@ -1380,8 +1432,14 @@ void menu_render_settings(void){
 					label = "F. Serial Flow Control       ";
 					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_uart_flow_ctl ? "RTS/CTS" : "NONE");
 				} else {
-					label = "0. Back to Main Menu         ";
-					snprintf(val_str, sizeof(val_str), "[   BACK   ]");
+					int extra_idx = uart_idx - (1 + uart_extra);
+					if (extra_idx == 1){
+						label = "R. In-Place Cursor Redraw    ";
+						snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_cursor_reposition ? "ENABLED" : "DISABLED");
+					} else {
+						label = "0. Back to Main Menu         ";
+						snprintf(val_str, sizeof(val_str), "[   BACK   ]");
+					}
 				}
 			}
 		}
@@ -1494,10 +1552,20 @@ void menu_render_confirm_exit(void){
 }
 
 void menu_render(void){
+	menu_needs_render = 0;
 	char color_buf[24];
 	get_mcu_color_ansi(cfg_mcu_color_idx, color_buf, sizeof(color_buf));
 
-	CDC_Print("\x1b[2J\r\n");
+	menu_buffering = 1;
+	menu_buf_reset();
+
+	if (menu_first_render || !cfg_cursor_reposition){
+		CDC_Print("\x1b[2J\r\n");
+		menu_first_render = 0;
+	} else {
+		CDC_Print("\x1b[H");
+	}
+
 	if (color_buf[0] != '\0'){
 		CDC_Print(color_buf);
 	}
@@ -1512,9 +1580,16 @@ void menu_render(void){
 		menu_render_confirm_exit();
 	}
 
+	if (cfg_cursor_reposition){
+		CDC_Print("\x1b[J");
+	}
+
 	if (color_buf[0] != '\0'){
 		CDC_Print("\x1b[0m");
 	}
+
+	menu_buffering = 0;
+	menu_buf_flush();
 }
 
 void menu_execute_action(uint8_t item, int8_t dir){
@@ -1553,6 +1628,7 @@ void menu_execute_action(uint8_t item, int8_t dir){
 		uint8_t is_custom = (cfg_mcu_color_idx == 17);
 		uint8_t custom_extra = is_custom ? 3 : 0;
 		uint8_t step_extra = cfg_manual_step_enabled ? 2 : 0;
+		uint8_t uart_extra = cfg_uart_enabled ? 2 : 0;
 
 		if (item <= 8){
 			switch(item){
@@ -1657,9 +1733,14 @@ void menu_execute_action(uint8_t item, int8_t dir){
 					cfg_uart_flow_ctl = !cfg_uart_flow_ctl;
 					if (cfg_uart_enabled) uart_init();
 				} else {
-					menu_page = MENU_PAGE_MAIN;
-					menu_cursor = 1;
-					menu_needs_render = 1;
+					int extra_idx = uart_idx - (1 + uart_extra);
+					if (extra_idx == 1){
+						cfg_cursor_reposition = !cfg_cursor_reposition;
+					} else {
+						menu_page = MENU_PAGE_MAIN;
+						menu_cursor = 1;
+						menu_needs_render = 1;
+					}
 				}
 			}
 		}
@@ -1702,7 +1783,7 @@ typedef struct {
 	uint8_t  uart_enabled;
 	uint8_t  uart_baud_idx;
 	uint8_t  uart_flow_ctl;
-	uint8_t  reserved0;
+	uint8_t  cursor_reposition;
 	uint32_t auto_prog_min_bytes;
 	uint32_t checksum;
 } PersistentSettings;
@@ -1717,6 +1798,7 @@ static uint32_t calc_settings_checksum(const PersistentSettings *s){
 	       (uint32_t)s->mcu_custom_r + (uint32_t)s->mcu_custom_g +
 	       (uint32_t)s->mcu_custom_b + (uint32_t)s->uart_enabled +
 	       (uint32_t)s->uart_baud_idx + (uint32_t)s->uart_flow_ctl +
+	       (uint32_t)s->cursor_reposition +
 	       s->auto_prog_min_bytes;
 }
 
@@ -1744,6 +1826,7 @@ void settings_load(void){
 		cfg_uart_enabled = flash_cfg->uart_enabled ? 1 : 0;
 		cfg_uart_baud_idx = (flash_cfg->uart_baud_idx < UART_BAUD_COUNT) ? flash_cfg->uart_baud_idx : 5;
 		cfg_uart_flow_ctl = flash_cfg->uart_flow_ctl ? 1 : 0;
+		cfg_cursor_reposition = flash_cfg->cursor_reposition ? 1 : 0;
 
 		if (flash_cfg->auto_prog_min_bytes >= 4 && flash_cfg->auto_prog_min_bytes <= 64){
 			cfg_auto_prog_min_bytes = flash_cfg->auto_prog_min_bytes;
@@ -1769,6 +1852,7 @@ void settings_load(void){
 		cfg_uart_enabled = 0;
 		cfg_uart_baud_idx = 5;
 		cfg_uart_flow_ctl = 1;
+		cfg_cursor_reposition = 1;
 		cfg_auto_prog_min_bytes = 16;
 	}
 }
@@ -1795,6 +1879,7 @@ void settings_save(void){
 	new_cfg.uart_enabled = cfg_uart_enabled;
 	new_cfg.uart_baud_idx = cfg_uart_baud_idx;
 	new_cfg.uart_flow_ctl = cfg_uart_flow_ctl;
+	new_cfg.cursor_reposition = cfg_cursor_reposition ? 1 : 0;
 	new_cfg.auto_prog_min_bytes = cfg_auto_prog_min_bytes;
 	new_cfg.checksum = calc_settings_checksum(&new_cfg);
 
@@ -1828,6 +1913,7 @@ void menu_enter(void){
 	menu_page = MENU_PAGE_MAIN;
 	menu_cursor = 0;
 	lib_page = 0;
+	menu_first_render = 1;
 	menu_action_pending = -1;
 	menu_exit_requested = 0;
 	menu_needs_render = 1;
@@ -1941,6 +2027,7 @@ static uint8_t is_cmd_ci(const uint8_t *b, uint32_t len, const char *cmd){
 }
 
 uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
+	last_key_rx_tick = HAL_GetTick();
 	// Automated USB DFU trigger command (from build script or terminal)
 	if (len >= 5 && strncmp((char *)buff, "!DFU!", 5) == 0){
 		dfu_requested = 1;
@@ -2510,6 +2597,13 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			}
 			if (cfg_uart_enabled && (buff[idx] == 'f' || buff[idx] == 'F')){
 				menu_cursor = 10 + c_extra + 1 + s_extra + 2;
+				menu_action_pending = menu_cursor;
+				menu_action_dir = 1;
+				return 1;
+			}
+			if (buff[idx] == 'r' || buff[idx] == 'R'){
+				uint8_t count = get_menu_item_count();
+				menu_cursor = count - 2;
 				menu_action_pending = menu_cursor;
 				menu_action_dir = 1;
 				return 1;
