@@ -69,6 +69,14 @@ extern volatile uint8_t  uart_tx_box[UART_TX_BUF_SIZE];
 extern volatile uint16_t uart_tx_head;
 extern volatile uint16_t uart_tx_tail;
 extern uint16_t uart_pause_watermark;
+extern volatile uint8_t  btn_is_pressed;
+extern volatile uint32_t btn_press_tick;
+extern volatile uint32_t btn_release_tick;
+extern volatile uint8_t  btn_held_1s;
+extern volatile uint8_t  btn_held_3s;
+extern volatile uint8_t  btn_held_8s;
+extern volatile uint8_t  btn_action_pending;
+extern volatile uint32_t btn_action_duration;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -246,6 +254,49 @@ void USB_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+
+/**
+  * @brief This function handles EXTI lines 4 to 15 interrupts (PC4 - BRD_RST).
+  */
+void EXTI4_15_IRQHandler(void)
+{
+  /* USER CODE BEGIN EXTI4_15_IRQn 0 */
+  if (EXTI->PR & EXTI_PR_PR4){
+    // 1. Clear EXTI line 4 pending flag
+    EXTI->PR = EXTI_PR_PR4;
+
+    uint32_t now = HAL_GetTick();
+    uint8_t pin_state = (BRD_RST_GPIO_Port->IDR & BRD_RST_Pin) ? 1 : 0;
+
+    if (pin_state == 0){
+      // Falling edge: Button PRESSED
+      // Software debounce: reject rapid contact chatter within 15ms of release
+      if (!btn_is_pressed && ((now - btn_release_tick) >= 15)){
+        btn_is_pressed = 1;
+        btn_press_tick = now;
+        btn_held_1s = 0;
+        btn_held_3s = 0;
+        btn_held_8s = 0;
+        // Instantly halt FPGA soft-processor in hardware (< 1 µs)!
+        HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+      }
+    } else {
+      // Rising edge: Button RELEASED
+      if (btn_is_pressed){
+        uint32_t duration = now - btn_press_tick;
+        if (duration >= 15){ // Software debounce: ignore contact chatter < 15ms
+          btn_is_pressed = 0;
+          btn_release_tick = now;
+          btn_action_pending = 1;
+          btn_action_duration = duration;
+        }
+      }
+    }
+    return;
+  }
+  /* USER CODE END EXTI4_15_IRQn 0 */
+  HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_4);
+}
 
 /* USER CODE END 1 */
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

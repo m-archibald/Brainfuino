@@ -257,14 +257,15 @@ char cmd_lib_add_name[LIB_NAME_MAX_LEN] = {0};
 volatile uint8_t lib_auto_verify = 0;
 volatile uint8_t cmd_restore_requested = 0;
 
-// Button debounce and hold tracking
-uint8_t  btn_is_pressed = 0;
-uint8_t  btn_last_sample = 1;
-uint32_t btn_last_stable_tick = 0;
-uint32_t btn_press_tick = 0;
-uint8_t  btn_held_1s = 0;
-uint8_t  btn_held_3s = 0;
-uint8_t  btn_held_8s = 0;
+// Button debounce, EXTI interrupt, and hold tracking
+volatile uint8_t  btn_is_pressed = 0;
+volatile uint32_t btn_press_tick = 0;
+volatile uint32_t btn_release_tick = 0;
+volatile uint8_t  btn_held_1s = 0;
+volatile uint8_t  btn_held_3s = 0;
+volatile uint8_t  btn_held_8s = 0;
+volatile uint8_t  btn_action_pending = 0;
+volatile uint32_t btn_action_duration = 0;
 
 // Dedicated program mode buffers and state
 uint8_t prog_buffer[PROG_BUF_SIZE];
@@ -567,12 +568,46 @@ void uart_write(const uint8_t *data, uint32_t len){
 	if (!cfg_uart_enabled || !data || len == 0) return;
 	for (uint32_t i = 0; i < len; i++){
 		uint16_t next_tail = (uart_tx_tail + 1) % UART_TX_BUF_SIZE;
-		uint32_t timeout = 50000;
-		while ((next_tail == uart_tx_head) && --timeout);
+		uint32_t start_tick = HAL_GetTick();
+		while ((next_tail == uart_tx_head) && ((HAL_GetTick() - start_tick) < 200)){
+			USART2->CR1 |= USART_CR1_TXEIE;
+		}
 		if (next_tail != uart_tx_head){
 			uart_tx_box[uart_tx_tail] = data[i];
 			uart_tx_tail = next_tail;
 			USART2->CR1 |= USART_CR1_TXEIE;
+		}
+	}
+}
+
+void drain_tx_buffers(uint32_t timeout_ms){
+	if ((head == tail) && (!cfg_uart_enabled || ((uart_tx_head == uart_tx_tail) && (USART2->ISR & USART_ISR_TC)))){
+		return;
+	}
+	uint32_t start = HAL_GetTick();
+	if (cfg_uart_enabled && (uart_tx_head != uart_tx_tail)){
+		USART2->CR1 |= USART_CR1_TXEIE;
+	}
+	while ((HAL_GetTick() - start) < timeout_ms){
+		// Drain USB CDC outbox
+		if ((head != tail) && !TxBusy()){
+			uint32_t cur_tail = tail;
+			if (head < cur_tail){
+				uint32_t chunk = (cur_tail - head > 60) ? 60 : (cur_tail - head);
+				CDC_Transmit_FS(outbox + head, chunk);
+				head += chunk;
+			} else {
+				uint32_t chunk = (OUTBOX_CAPACITY - head > 60) ? 60 : (OUTBOX_CAPACITY - head);
+				CDC_Transmit_FS(outbox + head, chunk);
+				head = (head + chunk >= OUTBOX_CAPACITY) ? 0 : (head + chunk);
+			}
+		}
+
+		// Check if both USB outbox and UART tx buffer are drained
+		uint8_t usb_empty = (head == tail) && !TxBusy();
+		uint8_t uart_empty = !cfg_uart_enabled || ((uart_tx_head == uart_tx_tail) && (USART2->ISR & USART_ISR_TC));
+		if (usb_empty && uart_empty){
+			break;
 		}
 	}
 }
@@ -2745,10 +2780,11 @@ int main(void)
   set_freq(freq);
 
   uint8_t init_btn = HAL_GPIO_ReadPin(BRD_RST_GPIO_Port, BRD_RST_Pin);
-  btn_last_sample = init_btn;
   btn_is_pressed = (init_btn == GPIO_PIN_RESET) ? 1 : 0;
-  btn_last_stable_tick = HAL_GetTick();
-  btn_press_tick = 0;
+  btn_press_tick = (btn_is_pressed) ? HAL_GetTick() : 0;
+  btn_release_tick = 0;
+  btn_action_pending = 0;
+  btn_action_duration = 0;
   btn_held_1s = 0;
   btn_held_3s = 0;
   btn_held_8s = 0;
@@ -2868,8 +2904,9 @@ int main(void)
 			  state = STATE_RUN;
 			  CDC_Print("\r\n[Running program]\r\n");
 		  } else {
-			  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
 			  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+			  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+			  drain_tx_buffers(500);
 			  HAL_Delay(10);
 			  initROMNormal();
 			  HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
@@ -2877,10 +2914,6 @@ int main(void)
 			  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
 			  HAL_Delay(60);
 			  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-			  head = 0;
-			  tail = 0;
-			  uart_tx_head = 0;
-			  uart_tx_tail = 0;
 			  mco_throttled = 0;
 			  manual_step_ticks_pending = 0;
 			  serial_inbox_head = 0;
@@ -2896,115 +2929,97 @@ int main(void)
 		  }
 	  }
 
-	  // 1. Rock-solid debounced button state machine (15ms stable window to filter mechanical chatter)
-	  uint8_t btn_raw = HAL_GPIO_ReadPin(BRD_RST_GPIO_Port, BRD_RST_Pin);
+	  // Check for completed button action from EXTI interrupt
+	  if (btn_action_pending){
+		  btn_action_pending = 0;
+		  uint32_t press_duration = btn_action_duration;
 
-	  if (btn_raw != btn_last_sample){
-		  btn_last_sample = btn_raw;
-		  btn_last_stable_tick = HAL_GetTick();
-	  }
-	  else if ((HAL_GetTick() - btn_last_stable_tick) >= 15){
-		  if ((btn_raw == GPIO_PIN_RESET) && !btn_is_pressed){
-			  // Button officially PRESSED (held down)
-			  btn_is_pressed = 1;
-			  btn_press_tick = HAL_GetTick();
-			  btn_held_1s = 0;
-			  btn_held_3s = 0;
-			  btn_held_8s = 0;
-			  // Hold FPGA in reset while physical button is held down
-			  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+		  if (btn_held_8s || (press_duration >= 8000)){
+			  // Held >= 8s: Restore Default Brainfuino ASCII Logo Demo!
+			  flashDefaultLogoProgram();
 		  }
-		  else if ((btn_raw == GPIO_PIN_SET) && btn_is_pressed){
-			  // Button officially RELEASED
-			  btn_is_pressed = 0;
-			  uint32_t press_duration = HAL_GetTick() - btn_press_tick;
+		  else if (btn_held_3s || (press_duration >= 3000)){
+			  // Held >= 3s: Enter Interactive Configuration Menu
+			  menu_enter();
+		  }
+		  else if (btn_held_1s || (press_duration >= 1000)){
+			  // Held >= 1s: Enter Program Mode
+			  state = STATE_PROGRAM;
+			  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+			  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET); // Hold soft-processor in reset
 
-			  if (btn_held_8s || (press_duration >= 8000)){
-				  // Held >= 8s: Restore Default Brainfuino ASCII Logo Demo!
-				  flashDefaultLogoProgram();
-			  }
-			  else if (btn_held_3s || (press_duration >= 3000)){
-				  // Held >= 3s: Enter Interactive Configuration Menu
-				  menu_enter();
-			  }
-			  else if (btn_held_1s || (press_duration >= 1000)){
-				  // Held >= 1s: Enter Program Mode
-				  state = STATE_PROGRAM;
-				  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET); // Hold soft-processor in reset
+			  prog_rx_count = 0;
+			  prog_total_received = 0;
+			  prog_raw_received = 0;
+			  prog_flash_addr = 0;
+			  prog_active = 0;
+			  prog_is_streaming = 0;
+			  staging_head = 0;
+			  staging_tail = 0;
+			  stream_init_done = 0;
 
-				  prog_rx_count = 0;
-				  prog_total_received = 0;
-				  prog_raw_received = 0;
-				  prog_flash_addr = 0;
-				  prog_active = 0;
-				  prog_is_streaming = 0;
-				  staging_head = 0;
-				  staging_tail = 0;
-				  stream_init_done = 0;
-
-				  CDC_Print("\r\n\r\n=== BRAINFUINO PROGRAM MODE ===\r\nPaste Brainfuck code now (up to 256 kB)...\r\n");
-				  CDC_Resume_Rx();
+			  CDC_Print("\r\n\r\n=== BRAINFUINO PROGRAM MODE ===\r\nPaste Brainfuck code now (up to 256 kB)...\r\n");
+			  CDC_Resume_Rx();
+		  }
+		  else {
+			  // Short tap (< 1s)
+			  if (state == STATE_CONFIG){
+				  // In Config Menu: short press exits menu and resumes program
+				  menu_exit(settings_dirty);
 			  }
-			  else if (press_duration >= 15){
-				  // Short tap (< 1s)
-				  if (state == STATE_CONFIG){
-					  // In Config Menu: short press exits menu and resumes program
-					  menu_exit(settings_dirty);
-				  }
-				  else if (state == STATE_PROGRAM){
-					  // In Program Mode: short press exits Program Mode and runs the program
-					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-					  initROMNormal();
-					  wait(1000);
-					  HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
-					  wait(1000);
-					  // Pulse FPGA reset
-					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
-					  HAL_Delay(10);
-					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
-					  head = 0;
-					  tail = 0;
-					  uart_tx_head = 0;
-					  uart_tx_tail = 0;
-					  mco_throttled = 0;
-					  serial_inbox_head = 0;
-					  serial_inbox_tail = 0;
-					  serial_input = 0;
-					  state = STATE_RUN;
-					  CDC_Print("\r\n[Running program]\r\n");
-				  }
-				  else {
-					  // In Run Mode: short press resets the running soft-processor and blips the LED!
-					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
-					  HAL_Delay(10);
-					  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
-					  HAL_Delay(60);
-					  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-					  head = 0;
-					  tail = 0;
-					  uart_tx_head = 0;
-					  uart_tx_tail = 0;
-					  mco_throttled = 0;
-					  manual_step_ticks_pending = 0;
-					  serial_inbox_head = 0;
-					  serial_inbox_tail = 0;
-					  serial_input = 0;
-					  set_freq(freq);
-					  CDC_Printf_MCU("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
-					  if (cfg_manual_step_enabled){
-						  CDC_Printf("[Manual Step Mode Active: Press %s to step %s]\r\n",
-						             get_step_key_name(cfg_manual_step_key), get_step_ticks_name(cfg_manual_step_ticks));
-					  }
-				  }
-			  }
-			  btn_held_1s = 0;
-			  btn_held_3s = 0;
-			  btn_held_8s = 0;
-			  if (state == STATE_RUN){
+			  else if (state == STATE_PROGRAM){
+				  // In Program Mode: short press exits Program Mode and runs the program
 				  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+				  initROMNormal();
+				  wait(1000);
+				  HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
+				  wait(1000);
+				  // Pulse FPGA reset
+				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+				  HAL_Delay(10);
+				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+				  mco_throttled = 0;
+				  serial_inbox_head = 0;
+				  serial_inbox_tail = 0;
+				  serial_input = 0;
+				  state = STATE_RUN;
+				  CDC_Print("\r\n[Running program]\r\n");
 			  }
+			  else {
+				  // In Run Mode: short press resets the running soft-processor
+				  // 1. Drain serial buffers so all characters already computed by FPGA are output!
+				  drain_tx_buffers(500);
+
+				  // 2. Pulse LED and perform clean FPGA restart
+				  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
+				  HAL_Delay(10);
+				  initROMNormal();
+				  HAL_GPIO_WritePin(OE_GPIO_Port, OE_Pin, GPIO_PIN_RESET);
+				  wait(1000);
+				  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_SET);
+				  HAL_Delay(60);
+				  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+
+				  mco_throttled = 0;
+				  manual_step_ticks_pending = 0;
+				  serial_inbox_head = 0;
+				  serial_inbox_tail = 0;
+				  serial_input = 0;
+				  state = STATE_RUN;
+				  set_freq(freq);
+				  CDC_Printf_MCU("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
+				  if (cfg_manual_step_enabled){
+					  CDC_Printf("[Manual Step Mode Active: Press %s to step %s]\r\n",
+					             get_step_key_name(cfg_manual_step_key), get_step_ticks_name(cfg_manual_step_ticks));
+				  }
+			  }
+		  }
+		  btn_held_1s = 0;
+		  btn_held_3s = 0;
+		  btn_held_8s = 0;
+		  if (state == STATE_RUN){
+			  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 		  }
 	  }
 
@@ -3909,7 +3924,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : BRD_RST_Pin */
   GPIO_InitStruct.Pin = BRD_RST_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(BRD_RST_GPIO_Port, &GPIO_InitStruct);
 
@@ -3973,6 +3988,9 @@ static void MX_GPIO_Init(void)
 
   HAL_NVIC_SetPriority(EXTI2_3_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI2_3_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI4_15_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(EXTI4_15_IRQn);
 
 }
 
