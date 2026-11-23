@@ -844,6 +844,7 @@ static volatile const ProgramDescriptor *lib_toc = (volatile const ProgramDescri
 // Cached array of active slots for display in library menu
 static uint8_t lib_display_slots[MAX_LIB_SLOTS];
 static uint8_t lib_display_count = 0;
+static uint8_t lib_page = 0;
 
 uint8_t lib_get_active_count(void){
 	uint8_t count = 0;
@@ -1198,7 +1199,10 @@ static uint8_t get_menu_item_count(void){
 		return 13 + custom_extra + step_extra + uart_extra;
 	} else if (menu_page == MENU_PAGE_LIBRARY){
 		lib_refresh_display_list();
-		return lib_display_count + 2;
+		uint8_t start_idx = lib_page * 10;
+		uint8_t progs_on_page = (start_idx < lib_display_count) ? (lib_display_count - start_idx) : 0;
+		if (progs_on_page > 10) progs_on_page = 10;
+		return 1 + progs_on_page;
 	}
 	return 6;
 }
@@ -1408,61 +1412,59 @@ void menu_render_library(void){
 	char color_buf[24];
 	get_mcu_color_ansi(cfg_mcu_color_idx, color_buf, sizeof(color_buf));
 	lib_refresh_display_list();
-	uint8_t count = lib_display_count + 2;
+
+	uint8_t total_pages = (lib_display_count > 0) ? ((lib_display_count + 9) / 10) : 1;
+	if (lib_page >= total_pages) lib_page = total_pages - 1;
+
+	uint8_t start_idx = lib_page * 10;
+	uint8_t progs_on_page = (start_idx < lib_display_count) ? (lib_display_count - start_idx) : 0;
+	if (progs_on_page > 10) progs_on_page = 10;
+	uint8_t count = 1 + progs_on_page;
 	if (menu_cursor >= count) menu_cursor = count - 1;
 
+	char pg_info[16];
+	snprintf(pg_info, sizeof(pg_info), "(PAGE %d/%d)", lib_page + 1, total_pages);
+	char hdr_buf[64];
+	snprintf(hdr_buf, sizeof(hdr_buf), "|     BRAINFUINO PROGRAM LIBRARY   %-12.12s    |\r\n", pg_info);
+
 	CDC_Print("+--------------------------------------------------+\r\n");
-	CDC_Print("|            BRAINFUINO PROGRAM LIBRARY            |\r\n");
-	CDC_Print("+--------------------------------------------------+\r\n");
-	CDC_Print("|   [Enter/E] Run [A] Add [D/Del] Del [B/0] Back   |\r\n");
+	CDC_Print(hdr_buf);
 	CDC_Print("+--------------------------------------------------+\r\n");
 
-	for (int i = 0; i < count; i++){
-		char line_buf[100];
-		if (i < lib_display_count){
-			uint8_t slot = lib_display_slots[i];
-			const char *pname = (slot == 0) ? "Brainfuino Demo" : (const char *)lib_toc[slot].name;
-			uint32_t psize = (slot == 0) ? (sizeof(DEFAULT_BRAINFUINO_LOGO_BF) - 1) : lib_toc[slot].size;
-			char size_str[16];
-			if (psize < 1024){
-				snprintf(size_str, sizeof(size_str), "%3lu B", (unsigned long)psize);
-			} else {
-				snprintf(size_str, sizeof(size_str), "%2lu.%1lukB", (unsigned long)(psize / 1024), (unsigned long)((psize % 1024) * 10 / 1024));
-			}
+	// Row 0: Add New Program
+	if (menu_cursor == 0){
+		if (color_buf[0] != '\0'){
+			CDC_Printf("| \x1b[1m> A. [ + Add New Program ]                     <\x1b[22m%s |\r\n", color_buf);
+		} else {
+			CDC_Print("| \x1b[1m> A. [ + Add New Program ]                     < |\r\n");
+		}
+	} else {
+		CDC_Print("|   A. [ + Add New Program ]                       |\r\n");
+	}
 
-			if (i == menu_cursor){
-				if (color_buf[0] != '\0'){
-					snprintf(line_buf, sizeof(line_buf), "| \x1b[1m> %02d. %-26.26s  [ %8.8s ] <\x1b[22m%s |", i, pname, size_str, color_buf);
-				} else {
-					snprintf(line_buf, sizeof(line_buf), "| \x1b[1m> %02d. %-26.26s  [ %8.8s ] <\x1b[22m |", i, pname, size_str);
-				}
-			} else {
-				snprintf(line_buf, sizeof(line_buf), "|   %02d. %-26.26s  [ %8.8s ]   |", i, pname, size_str);
-			}
+	// Rows 1..progs_on_page: Programs labeled 0..9 on current page
+	for (uint8_t k = 0; k < progs_on_page; k++){
+		uint8_t prog_idx = start_idx + k;
+		uint8_t slot = lib_display_slots[prog_idx];
+		const char *pname = (slot == 0) ? "Brainfuino Demo" : (const char *)lib_toc[slot].name;
+		uint32_t psize = (slot == 0) ? (sizeof(DEFAULT_BRAINFUINO_LOGO_BF) - 1) : lib_toc[slot].size;
+		char size_str[16];
+		if (psize < 1024){
+			snprintf(size_str, sizeof(size_str), "%3lu B", (unsigned long)psize);
+		} else {
+			snprintf(size_str, sizeof(size_str), "%2lu.%1lukB", (unsigned long)(psize / 1024), (unsigned long)((psize % 1024) * 10 / 1024));
 		}
-		else if (i == lib_display_count){
-			if (i == menu_cursor){
-				if (color_buf[0] != '\0'){
-					snprintf(line_buf, sizeof(line_buf), "| \x1b[1m> [ + Add New Program ]                        <\x1b[22m%s |", color_buf);
-				} else {
-					snprintf(line_buf, sizeof(line_buf), "| \x1b[1m> [ + Add New Program ]                        <\x1b[22m |");
-				}
+
+		uint8_t row_idx = 1 + k;
+		if (row_idx == menu_cursor){
+			if (color_buf[0] != '\0'){
+				CDC_Printf("| \x1b[1m> %d. %-28.28s  [ %7.7s ] <\x1b[22m%s |\r\n", k, pname, size_str, color_buf);
 			} else {
-				snprintf(line_buf, sizeof(line_buf), "|   [ + Add New Program ]                          |");
+				CDC_Printf("| \x1b[1m> %d. %-28.28s  [ %7.7s ] <\x1b[22m |\r\n", k, pname, size_str);
 			}
+		} else {
+			CDC_Printf("|   %d. %-28.28s  [ %7.7s ]   |\r\n", k, pname, size_str);
 		}
-		else {
-			if (i == menu_cursor){
-				if (color_buf[0] != '\0'){
-					snprintf(line_buf, sizeof(line_buf), "| \x1b[1m> 0. Back to Main Menu            [   BACK   ] <\x1b[22m%s |", color_buf);
-				} else {
-					snprintf(line_buf, sizeof(line_buf), "| \x1b[1m> 0. Back to Main Menu            [   BACK   ] <\x1b[22m |");
-				}
-			} else {
-				snprintf(line_buf, sizeof(line_buf), "|   0. Back to Main Menu            [   BACK   ]   |");
-			}
-		}
-		CDC_Printf("%s\r\n", line_buf);
 	}
 
 	CDC_Print("+--------------------------------------------------+\r\n");
@@ -1472,7 +1474,10 @@ void menu_render_library(void){
 	CDC_Printf("|   Library: %2d / 63 Progs | Used: %2lu.%1lu / 76 kB    |\r\n",
 	           lib_display_count - 1, (unsigned long)used_kb, (unsigned long)used_frac);
 	CDC_Print("+--------------------------------------------------+\r\n");
-	CDC_Print("Select program [Enter/E=Run, D/Del=Delete, B=Back, A=Add]: ");
+	CDC_Print("| Run: [Enter/E]  Add: [A]  Del: [Del]  Back: [ESC]|\r\n");
+	CDC_Print("| Select: [0-9]   Scroll: [Up/Dn]   Page: [PgUp/Dn]|\r\n");
+	CDC_Print("+--------------------------------------------------+\r\n");
+	CDC_Print("Select program: ");
 }
 
 void menu_render_confirm_exit(void){
@@ -1517,7 +1522,8 @@ void menu_execute_action(uint8_t item, int8_t dir){
 		switch(item){
 			case 0:
 				menu_page = MENU_PAGE_LIBRARY;
-				menu_cursor = 0;
+				lib_page = 0;
+				menu_cursor = 1;
 				menu_needs_render = 1;
 				break;
 			case 1:
@@ -1660,17 +1666,15 @@ void menu_execute_action(uint8_t item, int8_t dir){
 	}
 	else if (menu_page == MENU_PAGE_LIBRARY){
 		lib_refresh_display_list();
-		if (item < lib_display_count){
-			uint8_t slot = lib_display_slots[item];
-			lib_load_and_run(slot);
-		}
-		else if (item == lib_display_count){
+		if (item == 0){
 			lib_start_add_program();
-		}
-		else {
-			menu_page = MENU_PAGE_MAIN;
-			menu_cursor = 0;
-			menu_needs_render = 1;
+		} else {
+			uint8_t start_idx = lib_page * 10;
+			uint8_t prog_idx = start_idx + (item - 1);
+			if (prog_idx < lib_display_count){
+				uint8_t slot = lib_display_slots[prog_idx];
+				lib_load_and_run(slot);
+			}
 		}
 	}
 }
@@ -1823,6 +1827,7 @@ void menu_enter(void){
 	state = STATE_CONFIG;
 	menu_page = MENU_PAGE_MAIN;
 	menu_cursor = 0;
+	lib_page = 0;
 	menu_action_pending = -1;
 	menu_exit_requested = 0;
 	menu_needs_render = 1;
@@ -2205,13 +2210,6 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 
 		uint8_t count = get_menu_item_count();
 
-		// Standalone Spacebar: execute/toggle selected item
-		if (len == 1 && buff[0] == ' '){
-			menu_action_pending = menu_cursor;
-			menu_action_dir = 1;
-			return 1;
-		}
-
 		uint32_t idx = 0;
 		while (idx < len && (buff[idx] == ' ' || buff[idx] == '\t')) idx++;
 		if (idx >= len) return 1;
@@ -2223,15 +2221,34 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			}
 			if (menu_esc_len >= 3 && (menu_esc_buf[1] == '[' || menu_esc_buf[1] == 'O')){
 				if (menu_esc_buf[2] == 'A'){ // Up Arrow
-					menu_cursor--;
-					if (menu_cursor < 0) menu_cursor = count - 1;
+					if (menu_page == MENU_PAGE_LIBRARY){
+						if (menu_cursor > 0){
+							menu_cursor--;
+						} else if (lib_page > 0){
+							lib_page--;
+							menu_cursor = get_menu_item_count() - 1;
+						}
+					} else {
+						menu_cursor--;
+						if (menu_cursor < 0) menu_cursor = count - 1;
+					}
 					menu_needs_render = 1;
 					menu_esc_len = 0;
 					return 1;
 				}
 				else if (menu_esc_buf[2] == 'B'){ // Down Arrow
-					menu_cursor++;
-					if (menu_cursor >= count) menu_cursor = 0;
+					if (menu_page == MENU_PAGE_LIBRARY){
+						uint8_t total_pages = (lib_display_count > 0) ? ((lib_display_count + 9) / 10) : 1;
+						if (menu_cursor < count - 1){
+							menu_cursor++;
+						} else if (lib_page + 1 < total_pages){
+							lib_page++;
+							menu_cursor = 1;
+						}
+					} else {
+						menu_cursor++;
+						if (menu_cursor >= count) menu_cursor = 0;
+					}
 					menu_needs_render = 1;
 					menu_esc_len = 0;
 					return 1;
@@ -2252,11 +2269,36 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 					menu_esc_len = 0;
 					return 1;
 				}
+				else if (menu_esc_buf[2] == '5' && menu_esc_len >= 4 && menu_esc_buf[3] == '~'){ // Page Up
+					if (menu_page == MENU_PAGE_LIBRARY && lib_page > 0){
+						lib_page--;
+						menu_cursor = 1;
+						menu_needs_render = 1;
+					}
+					menu_esc_len = 0;
+					return 1;
+				}
+				else if (menu_esc_buf[2] == '6' && menu_esc_len >= 4 && menu_esc_buf[3] == '~'){ // Page Down
+					if (menu_page == MENU_PAGE_LIBRARY){
+						uint8_t total_pages = (lib_display_count > 0) ? ((lib_display_count + 9) / 10) : 1;
+						if (lib_page + 1 < total_pages){
+							lib_page++;
+							menu_cursor = 1;
+							menu_needs_render = 1;
+						}
+					}
+					menu_esc_len = 0;
+					return 1;
+				}
 				else if (menu_esc_buf[2] == '3' && menu_esc_len >= 4 && menu_esc_buf[3] == '~'){ // VT100 Delete Key
-					if (menu_page == MENU_PAGE_LIBRARY && menu_cursor < lib_display_count){
-						uint8_t slot = lib_display_slots[menu_cursor];
-						if (slot > 0){
-							lib_delete_pending_slot = slot;
+					if (menu_page == MENU_PAGE_LIBRARY && menu_cursor >= 1){
+						uint8_t start_idx = lib_page * 10;
+						uint8_t prog_idx = start_idx + (menu_cursor - 1);
+						if (prog_idx < lib_display_count){
+							uint8_t slot = lib_display_slots[prog_idx];
+							if (slot > 0){
+								lib_delete_pending_slot = slot;
+							}
 						}
 					}
 					menu_esc_len = 0;
@@ -2273,14 +2315,33 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		if (buff[idx] == 0x1B){
 			if (idx + 2 < len && (buff[idx+1] == '[' || buff[idx+1] == 'O')){
 				if (buff[idx+2] == 'A'){ // Up Arrow
-					menu_cursor--;
-					if (menu_cursor < 0) menu_cursor = count - 1;
+					if (menu_page == MENU_PAGE_LIBRARY){
+						if (menu_cursor > 0){
+							menu_cursor--;
+						} else if (lib_page > 0){
+							lib_page--;
+							menu_cursor = get_menu_item_count() - 1;
+						}
+					} else {
+						menu_cursor--;
+						if (menu_cursor < 0) menu_cursor = count - 1;
+					}
 					menu_needs_render = 1;
 					return 1;
 				}
 				else if (buff[idx+2] == 'B'){ // Down Arrow
-					menu_cursor++;
-					if (menu_cursor >= count) menu_cursor = 0;
+					if (menu_page == MENU_PAGE_LIBRARY){
+						uint8_t total_pages = (lib_display_count > 0) ? ((lib_display_count + 9) / 10) : 1;
+						if (menu_cursor < count - 1){
+							menu_cursor++;
+						} else if (lib_page + 1 < total_pages){
+							lib_page++;
+							menu_cursor = 1;
+						}
+					} else {
+						menu_cursor++;
+						if (menu_cursor >= count) menu_cursor = 0;
+					}
 					menu_needs_render = 1;
 					return 1;
 				}
@@ -2298,11 +2359,34 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 					}
 					return 1;
 				}
+				else if (buff[idx+2] == '5' && idx + 3 < len && buff[idx+3] == '~'){ // Page Up
+					if (menu_page == MENU_PAGE_LIBRARY && lib_page > 0){
+						lib_page--;
+						menu_cursor = 1;
+						menu_needs_render = 1;
+					}
+					return 1;
+				}
+				else if (buff[idx+2] == '6' && idx + 3 < len && buff[idx+3] == '~'){ // Page Down
+					if (menu_page == MENU_PAGE_LIBRARY){
+						uint8_t total_pages = (lib_display_count > 0) ? ((lib_display_count + 9) / 10) : 1;
+						if (lib_page + 1 < total_pages){
+							lib_page++;
+							menu_cursor = 1;
+							menu_needs_render = 1;
+						}
+					}
+					return 1;
+				}
 				else if (buff[idx+2] == '3' && idx + 3 < len && buff[idx+3] == '~'){ // VT100 Delete Key
-					if (menu_page == MENU_PAGE_LIBRARY && menu_cursor < lib_display_count){
-						uint8_t slot = lib_display_slots[menu_cursor];
-						if (slot > 0){
-							lib_delete_pending_slot = slot;
+					if (menu_page == MENU_PAGE_LIBRARY && menu_cursor >= 1){
+						uint8_t start_idx = lib_page * 10;
+						uint8_t prog_idx = start_idx + (menu_cursor - 1);
+						if (prog_idx < lib_display_count){
+							uint8_t slot = lib_display_slots[prog_idx];
+							if (slot > 0){
+								lib_delete_pending_slot = slot;
+							}
 						}
 					}
 					return 1;
@@ -2353,7 +2437,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				menu_exit_save_choice = 0;
 				return 1;
 			}
-			else if (buff[idx] == 0x1B || buff[idx] == 'c' || buff[idx] == 'C' || buff[idx] == 0x08 || buff[idx] == 0x7F){
+			else if (buff[idx] == 0x1B || buff[idx] == 'c' || buff[idx] == 'C'){
 				menu_page = MENU_PAGE_MAIN;
 				menu_cursor = 0;
 				menu_needs_render = 1;
@@ -2371,7 +2455,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				menu_action_dir = 1;
 				return 1;
 			}
-			if (buff[idx] == '0' || buff[idx] == 'q' || buff[idx] == 'Q' || buff[idx] == 'b' || buff[idx] == 'B' || buff[idx] == 0x08 || buff[idx] == 0x7F){
+			if (buff[idx] == '0'){
 				menu_cursor = 5; // Exit without saving
 				menu_action_pending = 5;
 				menu_action_dir = 1;
@@ -2430,8 +2514,8 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				menu_action_dir = 1;
 				return 1;
 			}
-			// 'b', 'B', '0', 'q', 'Q', Backspace (0x08, 0x7F) -> Back to main menu
-			if (buff[idx] == '0' || buff[idx] == 'q' || buff[idx] == 'Q' || buff[idx] == 'b' || buff[idx] == 'B' || buff[idx] == 0x08 || buff[idx] == 0x7F){
+			// '0' -> Back to main menu
+			if (buff[idx] == '0'){
 				menu_page = MENU_PAGE_MAIN;
 				menu_cursor = 1;
 				menu_needs_render = 1;
@@ -2439,10 +2523,14 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			}
 		}
 		else if (menu_page == MENU_PAGE_LIBRARY){
-			if (buff[idx] >= '1' && buff[idx] <= '9'){
-				uint8_t sel_idx = buff[idx] - '0';
-				if (sel_idx < lib_display_count){
-					menu_cursor = sel_idx;
+			uint8_t start_idx = lib_page * 10;
+			uint8_t progs_on_page = (start_idx < lib_display_count) ? (lib_display_count - start_idx) : 0;
+			if (progs_on_page > 10) progs_on_page = 10;
+
+			if (buff[idx] >= '0' && buff[idx] <= '9'){
+				uint8_t d = buff[idx] - '0';
+				if (d < progs_on_page){
+					menu_cursor = 1 + d;
 					menu_needs_render = 1;
 				}
 				return 1;
@@ -2453,8 +2541,8 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			}
 			// 'd', 'D', 'x', 'X' -> Delete selected program
 			if (buff[idx] == 'd' || buff[idx] == 'D' || buff[idx] == 'x' || buff[idx] == 'X'){
-				if (menu_cursor < lib_display_count){
-					uint8_t slot = lib_display_slots[menu_cursor];
+				if (menu_cursor >= 1 && menu_cursor <= progs_on_page){
+					uint8_t slot = lib_display_slots[start_idx + (menu_cursor - 1)];
 					if (slot > 0){
 						lib_delete_pending_slot = slot;
 					}
@@ -2463,40 +2551,30 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			}
 			// 'e', 'E', 'l', 'L' -> Run selected program
 			if (buff[idx] == 'e' || buff[idx] == 'E' || buff[idx] == 'l' || buff[idx] == 'L'){
-				if (menu_cursor < lib_display_count){
-					uint8_t slot = lib_display_slots[menu_cursor];
+				if (menu_cursor == 0){
+					lib_start_add_requested = 1;
+				} else if (menu_cursor <= progs_on_page){
+					uint8_t slot = lib_display_slots[start_idx + (menu_cursor - 1)];
 					lib_load_pending_slot = slot;
 				}
 				return 1;
 			}
 			// 'v', 'V' -> Dump/View selected program
 			if (buff[idx] == 'v' || buff[idx] == 'V'){
-				if (menu_cursor < lib_display_count){
-					uint8_t slot = lib_display_slots[menu_cursor];
+				if (menu_cursor >= 1 && menu_cursor <= progs_on_page){
+					uint8_t slot = lib_display_slots[start_idx + (menu_cursor - 1)];
 					lib_dump_pending_slot = slot;
 				}
 				return 1;
 			}
-			// 'b', 'B', '0', 'q', 'Q', Backspace (0x08, 0x7F) -> Back to main menu
-			if (buff[idx] == 'b' || buff[idx] == 'B' || buff[idx] == '0' || buff[idx] == 'q' || buff[idx] == 'Q' || buff[idx] == 0x08 || buff[idx] == 0x7F){
-				menu_page = MENU_PAGE_MAIN;
-				menu_cursor = 0;
-				menu_needs_render = 1;
-				return 1;
-			}
 		}
 
-		// 3. Enter / Return or Space: execute selected cursor item
+		// 3. Enter / Return: execute selected cursor item
 		if (buff[idx] == '\r' || buff[idx] == '\n'){
 			if (HAL_GetTick() - last_num_key_tick > 100){
 				menu_action_pending = menu_cursor;
 				menu_action_dir = 1;
 			}
-			return 1;
-		}
-		if (buff[idx] == ' '){
-			menu_action_pending = menu_cursor;
-			menu_action_dir = 1;
 			return 1;
 		}
 

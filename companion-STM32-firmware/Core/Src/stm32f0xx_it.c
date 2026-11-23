@@ -270,8 +270,8 @@ void EXTI4_15_IRQHandler(void)
 
     if (pin_state == 0){
       // Falling edge: Button PRESSED
-      // Software debounce: reject rapid contact chatter within 15ms of release
-      if (!btn_is_pressed && ((now - btn_release_tick) >= 15)){
+      // Software debounce: reject rapid contact chatter within 50ms of release
+      if (!btn_is_pressed && ((now - btn_release_tick) >= 50)){
         btn_is_pressed = 1;
         btn_press_tick = now;
         btn_held_1s = 0;
@@ -284,7 +284,7 @@ void EXTI4_15_IRQHandler(void)
       // Rising edge: Button RELEASED
       if (btn_is_pressed){
         uint32_t duration = now - btn_press_tick;
-        if (duration >= 15){ // Software debounce: ignore contact chatter < 15ms
+        if (duration >= 50){ // Software debounce: ignore contact chatter < 50ms
           btn_is_pressed = 0;
           btn_release_tick = now;
           btn_action_pending = 1;
