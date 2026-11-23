@@ -612,7 +612,7 @@ void uart_init(void){
 		               ((2U << (3 * 2)) | (2U << (4 * 2)));
 		GPIOD->AFR[0] &= ~((0xFU << (3 * 4)) | (0xFU << (4 * 4))); // AF0
 		GPIOD->OSPEEDR |= (3U << (3 * 2)) | (3U << (4 * 2));
-		GPIOD->PUPDR = (GPIOD->PUPDR & ~((3U << (3 * 2)) | (3U << (4 * 2)))) | (1U << (3 * 2)); // Pull-up on CTS
+		GPIOD->PUPDR = (GPIOD->PUPDR & ~((3U << (3 * 2)) | (3U << (4 * 2)))) | (2U << (3 * 2)); // Pull-down on CTS (active-low nCTS -> defaults to Clear to Send when floating)
 	} else {
 		// Return PD3, PD4 to standard input floating
 		GPIOD->MODER &= ~((3U << (3 * 2)) | (3U << (4 * 2)));
