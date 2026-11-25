@@ -2158,6 +2158,31 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		return 1;
 	}
 
+	// Software-triggered Dedicated Program Mode (!PRGM, !PROG, !PROGRAM)
+	if (is_cmd_ci(buff, len, "!PRGM") || is_cmd_ci(buff, len, "!PROG") || is_cmd_ci(buff, len, "!PROGRAM")){
+		state = STATE_PROGRAM;
+		menu_buffering = 0;
+		menu_buf_len = 0;
+		menu_needs_render = 0;
+		HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+		HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET); // Hold soft-processor in reset
+
+		prog_rx_count = 0;
+		prog_total_received = 0;
+		prog_raw_received = 0;
+		prog_flash_addr = 0;
+		prog_active = 0;
+		prog_is_streaming = 0;
+		staging_head = 0;
+		staging_tail = 0;
+		stream_init_done = 0;
+		prog_last_rx_tick = HAL_GetTick();
+
+		CDC_Print_MCU("\r\n=== BRAINFUINO PROGRAM MODE ===\r\nPaste Brainfuck code now (up to 256 kB)...\r\n");
+		CDC_Resume_Rx();
+		return 1;
+	}
+
 	// Program ROM Dump (only !DUMP)
 	if (is_cmd_ci(buff, len, "!DUMP")){
 		code_dump = 1;

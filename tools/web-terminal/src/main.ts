@@ -3078,11 +3078,8 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
       postSystemMessage(`Streaming '${name}' (${code.length} B) to Brainfuino ROM...`, 'info');
       appendTextToTerminal(terminalScreen, `\r\n\x1b[36m[WRITE] Streaming '${name}' (${code.length} B) to Brainfuino ROM...\x1b[0m\r\n`, mainTerminalState);
 
-      await sendCmd('!SET:12=1\r\n');
-      await new Promise(r => setTimeout(r, 40));
-
-      await sendCmd('!RST\r\n');
-      await new Promise(r => setTimeout(r, 80));
+      await sendCmd('!PRGM\r\n');
+      await new Promise(r => setTimeout(r, 60));
 
       const enc = new TextEncoder();
       const chunkSize = 128;
@@ -3267,13 +3264,8 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
         postSystemMessage(`Flashing '${file.name}' (${text.length} B) to Brainfuino ROM...`, 'info');
         appendTextToTerminal(terminalScreen, `\r\n\x1b[36m[WRITE] Streaming '${file.name}' (${text.length} B) to Brainfuino ROM...\x1b[0m\r\n`, mainTerminalState);
 
-        // Ensure Auto-Program on Paste is enabled on companion MCU
-        await sendCmd('!SET:12=1\r\n');
-        await new Promise(r => setTimeout(r, 40));
-
-        // Pulse soft reset and stream code payload
-        await sendCmd('!RST\r\n');
-        await new Promise(r => setTimeout(r, 80));
+        await sendCmd('!PRGM\r\n');
+        await new Promise(r => setTimeout(r, 60));
 
         const enc = new TextEncoder();
         const chunkSize = 128;
@@ -3596,13 +3588,8 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
       postSystemMessage(`Streaming '${progName}' (${code.length} B) to Brainfuino ROM...`, 'info');
       appendTextToTerminal(terminalScreen, `\r\n\x1b[36m[WRITE] Streaming '${progName}' (${code.length} B) to Brainfuino ROM...\x1b[0m\r\n`, mainTerminalState);
 
-      // Ensure Auto-Program on Paste is enabled on companion MCU
-      await sendCmd('!SET:12=1\r\n');
-      await new Promise(r => setTimeout(r, 40));
-
-      // Pulse soft reset and stream code payload
-      await sendCmd('!RST\r\n');
-      await new Promise(r => setTimeout(r, 80));
+      await sendCmd('!PRGM\r\n');
+      await new Promise(r => setTimeout(r, 60));
 
       const enc = new TextEncoder();
       const chunkSize = 128;

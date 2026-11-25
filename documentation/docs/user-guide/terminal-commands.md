@@ -32,6 +32,7 @@ You can send commands directly over the serial connection (via the Web Terminal 
 | Command | Action | Description |
 | :--- | :--- | :--- |
 | **`!RESET`** or **`!RST`** | Soft Reset FPGA | Pulses the FPGA soft-processor reset line (`BF_RST`) and restarts execution from address 0. |
+| **`!PRGM`** or **`!PROG`** | Dedicated Program Mode | Holds FPGA soft-processor in reset and arms companion MCU for incoming Brainfuck stream (up to 256 kB). |
 | **`!MENU`** or **`!CONFIG`** | Configuration Menu | Enters the interactive multi-page VT100 configuration menu. |
 | **`!CLK+`** / **`!CLOCK+`** | Clock Step Up | Steps the FPGA clock up one frequency tier silently. |
 | **`!CLK-`** / **`!CLOCK-`** | Clock Step Down | Steps the FPGA clock down one frequency tier silently. |
