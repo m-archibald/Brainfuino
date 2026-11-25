@@ -575,16 +575,15 @@ void uart_write(const uint8_t *data, uint32_t len){
 	if (!cfg_uart_enabled || !data || len == 0) return;
 	for (uint32_t i = 0; i < len; i++){
 		uint16_t next_tail = (uart_tx_tail + 1) % UART_TX_BUF_SIZE;
-		uint32_t start_tick = HAL_GetTick();
-		while ((next_tail == uart_tx_head) && ((HAL_GetTick() - start_tick) < 200)){
+		if (next_tail == uart_tx_head){
+			// Buffer full: arm TXE interrupt to drain and discard remaining data
 			USART2->CR1 |= USART_CR1_TXEIE;
+			break;
 		}
-		if (next_tail != uart_tx_head){
-			uart_tx_box[uart_tx_tail] = data[i];
-			uart_tx_tail = next_tail;
-			USART2->CR1 |= USART_CR1_TXEIE;
-		}
+		uart_tx_box[uart_tx_tail] = data[i];
+		uart_tx_tail = next_tail;
 	}
+	USART2->CR1 |= USART_CR1_TXEIE;
 }
 
 void drain_tx_buffers(uint32_t timeout_ms){
@@ -625,6 +624,12 @@ void uart_print(const char *str){
 }
 
 void uart_init(void){
+	// Clear ring buffers
+	uart_tx_head = 0;
+	uart_tx_tail = 0;
+	uart_rx_head = 0;
+	uart_rx_tail = 0;
+
 	// 1. Enable Clocks for GPIOD and USART2
 	RCC->AHBENR |= RCC_AHBENR_GPIODEN;
 	RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
