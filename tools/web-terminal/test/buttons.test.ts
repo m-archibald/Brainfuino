@@ -239,7 +239,7 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
       expect(optgroups.length).toBe(6);
 
       const options = select.querySelectorAll('option');
-      expect(options.length).toBe(36);
+      expect(options.length).toBe(37);
 
       // Select banner.b and run
       select.value = 'basic/banner.b';
@@ -261,7 +261,7 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
       expect(modal.style.display).toBe('flex');
 
       const tbody = document.getElementById('suite-programs-tbody')!;
-      expect(tbody.querySelectorAll('tr').length).toBe(36);
+      expect(tbody.querySelectorAll('tr').length).toBe(37);
 
       // Search filter
       win.filterSuiteModalPrograms('fractal');
@@ -269,7 +269,7 @@ describe('Web Terminal Buttons & Interactive Handlers Test Suite', () => {
 
       // Reset search filter
       win.filterSuiteModalPrograms('');
-      expect(tbody.querySelectorAll('tr').length).toBe(36);
+      expect(tbody.querySelectorAll('tr').length).toBe(37);
 
       // Run demo from modal closes modal and loads program
       await win.runSuiteProgramFromModal('basic/hello.b');

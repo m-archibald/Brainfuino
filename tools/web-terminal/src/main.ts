@@ -716,7 +716,7 @@
 
         // Auto-query current hardware clock speed on connect
         setTimeout(() => {
-          if (port && writer) queryClockSpeed();
+          if (port && writer) queryClockSpeed(true);
         }, 400);
       } else {
         if (splitBtn) splitBtn.classList.remove('connected');
@@ -766,7 +766,10 @@
       await sendCmd('!clk-\r\n');
     }
 
-    async function queryClockSpeed() {
+    let isSilentClockQuery = false;
+
+    async function queryClockSpeed(silent = false) {
+      if (silent) isSilentClockQuery = true;
       await sendCmd('!clk\r\n');
     }
 
@@ -1400,6 +1403,11 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
         const foundIdx = CLOCK_FREQUENCIES.findIndex(f => f.toLowerCase() === parsedSpeed.toLowerCase());
         if (foundIdx !== -1) {
           updateClockDisplay(foundIdx);
+        }
+        if (isSilentClockQuery) {
+          isSilentClockQuery = false;
+          rawText = rawText.replace(/\[?Clock:\s*[^\]\r\n]+\]?(\r\n|\n)?/gi, '');
+          if (!rawText) return;
         }
       }
 
@@ -2894,7 +2902,8 @@ function appendTextToTerminal(screenEl, rawText, state, options = {}) {
       {
         category: "Visuals & ASCII Art",
         programs: [
-          { name: "Mandelbrot Fractal", filename: "mandelbrot.b", path: "fractals/mandelbrot.b", size: "11.5 kB", desc: "Deep loops ASCII Mandelbrot set renderer" },
+          { name: "Mandelbrot Fractal (128x48)", filename: "mandelbrot.b", path: "fractals/mandelbrot.b", size: "11.5 kB", desc: "Classic 128-col Mandelbrot (132-col or wide terminal)" },
+          { name: "Mandelbrot (80-col / 24-line)", filename: "mandelbrot_80col.b", path: "fractals/mandelbrot_80col.b", size: "11.5 kB", desc: "65x24 Mandelbrot set for standard 80-col terminals" },
           { name: "Sierpinski Triangle", filename: "sierpinski.b", path: "fractals/sierpinski.b", size: "1.8 kB", desc: "Recursive fractal triangle generator" },
           { name: "Christmas Tree", filename: "xmastree.b", path: "fractals/xmastree.b", size: "235 B", desc: "Decorated holiday pine tree in ASCII" },
           { name: "Text Pyramid", filename: "pyramid.b", path: "fractals/pyramid.b", size: "252 B", desc: "Symmetrical expanding character pyramid" },

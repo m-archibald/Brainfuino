@@ -216,6 +216,13 @@ static volatile uint8_t serial_inbox_tail = 0;
 // Manual clock stepping accumulator queue
 volatile uint32_t manual_step_ticks_pending = 0;
 
+// Command interface routing
+#define CMD_SRC_USB   0
+#define CMD_SRC_UART  1
+static volatile uint8_t dynamic_lib_src = CMD_SRC_USB;
+static volatile uint8_t cmd_lib_action_src = CMD_SRC_USB;
+static volatile uint8_t dump_src = CMD_SRC_USB;
+
 // Delayed Flash wear-leveling timer
 uint8_t  settings_dirty = 0;
 uint32_t settings_dirty_tick = 0;
@@ -307,6 +314,13 @@ void initROMWrite(void);
 
 void CDC_Print(const char *str);
 void CDC_Printf(const char *format, ...);
+void CDC_Print_USB(const char *str);
+void CDC_Printf_USB(const char *format, ...);
+void uart_printf(const char *format, ...);
+void fpga_clock_pause(void);
+void fpga_clock_resume(void);
+void flush_outbox(void);
+uint8_t Handle_Command_Input(uint8_t *buff, uint32_t len, uint8_t src);
 void menu_buf_reset(void);
 void menu_buf_append(const char *str);
 void menu_buf_flush(void);
@@ -572,19 +586,71 @@ void speed_step_down(void){
 	}
 }
 
+void fpga_clock_pause(void){
+	if (active_is_tim1){
+		TIM1->CR1 &= ~TIM_CR1_CEN;
+	} else {
+		RCC->CFGR &= ~RCC_CFGR_MCO;
+	}
+}
+
+void fpga_clock_resume(void){
+	if (mco_throttled || cfg_manual_step_enabled) return;
+	if (active_is_tim1){
+		TIM1->CR1 |= TIM_CR1_CEN;
+	} else {
+		RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCO | RCC_CFGR_MCOPRE)) | active_mco_cfg;
+	}
+}
+
+void flush_outbox(void){
+	uint32_t start = HAL_GetTick();
+	while ((head != tail || TxBusy()) && (HAL_GetTick() - start < 150)){
+		if ((head != tail) && !TxBusy()){
+			uint32_t cur_tail = tail;
+			if (head < cur_tail){
+				uint32_t chunk = (cur_tail - head > 60) ? 60 : (cur_tail - head);
+				CDC_Transmit_FS(outbox + head, chunk);
+				head += chunk;
+			} else {
+				uint32_t chunk = (OUTBOX_CAPACITY - head > 60) ? 60 : (OUTBOX_CAPACITY - head);
+				CDC_Transmit_FS(outbox + head, chunk);
+				head = (head + chunk >= OUTBOX_CAPACITY) ? 0 : (head + chunk);
+			}
+		}
+	}
+}
+
 void uart_write(const uint8_t *data, uint32_t len){
 	if (!cfg_uart_enabled || !data || len == 0) return;
 	for (uint32_t i = 0; i < len; i++){
-		uint16_t next_tail = (uart_tx_tail + 1) % UART_TX_BUF_SIZE;
-		if (next_tail == uart_tx_head){
-			// Buffer full: arm TXE interrupt to drain and discard remaining data
+		uint32_t wait_count = 100000;
+		while (wait_count > 0){
+			__disable_irq();
+			uint16_t next_tail = (uart_tx_tail + 1) % UART_TX_BUF_SIZE;
+			if (next_tail != uart_tx_head){
+				uart_tx_box[uart_tx_tail] = data[i];
+				uart_tx_tail = next_tail;
+				USART2->CR1 |= USART_CR1_TXEIE;
+				__enable_irq();
+				break;
+			}
 			USART2->CR1 |= USART_CR1_TXEIE;
-			break;
+			__enable_irq();
+			wait_count--;
 		}
-		uart_tx_box[uart_tx_tail] = data[i];
-		uart_tx_tail = next_tail;
 	}
 	USART2->CR1 |= USART_CR1_TXEIE;
+}
+
+void uart_printf(const char *format, ...){
+	if (!cfg_uart_enabled || !format) return;
+	char msg[128];
+	va_list args;
+	va_start(args, format);
+	vsnprintf(msg, sizeof(msg), format, args);
+	va_end(args);
+	uart_print(msg);
 }
 
 void drain_tx_buffers(uint32_t timeout_ms){
@@ -767,6 +833,7 @@ void menu_buf_flush(void){
 	if (cfg_uart_enabled){
 		uart_write((const uint8_t *)prog_buffer, menu_buf_len);
 	}
+	flush_outbox();
 	uint32_t offset = 0;
 	while (offset < menu_buf_len){
 		if (menu_needs_render){
@@ -785,15 +852,9 @@ void menu_buf_flush(void){
 	menu_buf_len = 0;
 }
 
-void CDC_Print(const char *str){
+void CDC_Print_USB(const char *str){
 	if (!str) return;
-	if (menu_buffering){
-		menu_buf_append(str);
-		return;
-	}
-	if (cfg_uart_enabled){
-		uart_print(str);
-	}
+	flush_outbox();
 	uint32_t len = strlen(str);
 	uint32_t offset = 0;
 	while (offset < len){
@@ -808,10 +869,53 @@ void CDC_Print(const char *str){
 	while (TxBusy() && --timeout);
 }
 
+void CDC_Printf_USB(const char *format, ...){
+	char msg[128];
+	va_list args;
+	va_start(args, format);
+	vsnprintf(msg, sizeof(msg), format, args);
+	va_end(args);
+	CDC_Print_USB(msg);
+}
+
+void CDC_Print(const char *str){
+	if (!str) return;
+	if (menu_buffering){
+		menu_buf_append(str);
+		return;
+	}
+	uint8_t pause_clk = (state == STATE_RUN);
+	if (pause_clk) fpga_clock_pause();
+
+	if (cfg_uart_enabled){
+		uart_print(str);
+	}
+	flush_outbox();
+	uint32_t len = strlen(str);
+	uint32_t offset = 0;
+	while (offset < len){
+		uint16_t chunk = (len - offset > 60) ? 60 : (uint16_t)(len - offset);
+		uint32_t timeout = 200000;
+		while (TxBusy() && --timeout);
+		if (TxBusy()) break;
+		CDC_Transmit_FS((uint8_t *)(str + offset), chunk);
+		offset += chunk;
+	}
+	uint32_t timeout = 200000;
+	while (TxBusy() && --timeout);
+
+	if (pause_clk) fpga_clock_resume();
+}
+
 void CDC_Write(const uint8_t *data, uint32_t len){
+	if (!data || len == 0) return;
+	uint8_t pause_clk = (state == STATE_RUN);
+	if (pause_clk) fpga_clock_pause();
+
 	if (cfg_uart_enabled){
 		uart_write(data, len);
 	}
+	flush_outbox();
 	uint32_t offset = 0;
 	while (offset < len){
 		uint16_t chunk = (len - offset > 64) ? 64 : (uint16_t)(len - offset);
@@ -822,6 +926,8 @@ void CDC_Write(const uint8_t *data, uint32_t len){
 		while (TxBusy() && --timeout);
 		offset += chunk;
 	}
+
+	if (pause_clk) fpga_clock_resume();
 }
 
 void CDC_Printf(const char *format, ...){
@@ -842,7 +948,7 @@ void print_speed_badge(void){
 	const char *col = (color_ansi[0] != '\0') ? color_ansi : "\x1b[2m";
 	snprintf(inner, sizeof(inner), "[Clock: %s]", get_freq_name(freq));
 	snprintf(badge, sizeof(badge), "%-18s", inner);
-	CDC_Printf("\x1b[s%s%s\x1b[0m\x1b[u", col, badge);
+	CDC_Printf_USB("\x1b[s%s%s\x1b[0m\x1b[u", col, badge);
 	speed_overlay_remaining = SPEED_BADGE_WIDTH;
 }
 
@@ -1227,12 +1333,33 @@ void lib_dump_program(uint8_t slot){
 		psize = lib_toc[slot].size;
 	}
 
-	CDC_Printf("!DUMP:START:%u:%s:%lu\r\n", (unsigned int)slot, pname, (unsigned long)psize);
-	CDC_Write(src, psize);
-	CDC_Print("\r\n!DUMP:END\r\n");
 	if (state == STATE_CONFIG){
+		CDC_Printf("!DUMP:START:%u:%s:%lu\r\n", (unsigned int)slot, pname, (unsigned long)psize);
+		CDC_Write(src, psize);
+		CDC_Print("\r\n!DUMP:END\r\n");
 		CDC_Print("Press any key to return to library menu...\r\n");
 		lib_dump_viewing = 1;
+	} else {
+		char hdr[80];
+		snprintf(hdr, sizeof(hdr), "!DUMP:START:%u:%s:%lu\r\n", (unsigned int)slot, pname, (unsigned long)psize);
+		if (cmd_lib_action_src == CMD_SRC_UART){
+			uart_print(hdr);
+			uart_write(src, psize);
+			uart_print("\r\n!DUMP:END\r\n");
+		} else {
+			CDC_Print_USB(hdr);
+			uint32_t offset = 0;
+			while (offset < psize){
+				uint16_t chunk = (psize - offset > 64) ? 64 : (uint16_t)(psize - offset);
+				uint32_t timeout = 200000;
+				while (TxBusy() && --timeout);
+				CDC_Transmit_FS((uint8_t *)(src + offset), chunk);
+				timeout = 200000;
+				while (TxBusy() && --timeout);
+				offset += chunk;
+			}
+			CDC_Print_USB("\r\n!DUMP:END\r\n");
+		}
 	}
 }
 
@@ -2033,23 +2160,31 @@ void lib_export_dynamic_schema(void){
 		if (lib_toc[s].status == 0x01) count++;
 	}
 	uint32_t used = lib_get_total_used_bytes();
-	CDC_Printf("!LIB:START:%u:%lu:%lu\r\n", (unsigned int)count, (unsigned long)used, (unsigned long)LIBRARY_POOL_SIZE);
+	char line[96];
+	snprintf(line, sizeof(line), "!LIB:START:%u:%lu:%lu\r\n", (unsigned int)count, (unsigned long)used, (unsigned long)LIBRARY_POOL_SIZE);
+	if (dynamic_lib_src == CMD_SRC_UART) uart_print(line);
+	else CDC_Print_USB(line);
 
 	// Slot 0: Brainfuino Factory Demo (Protected)
 	uint32_t demo_size = sizeof(DEFAULT_BRAINFUINO_LOGO_BF) - 1;
-	CDC_Printf("!LIB:PROG:0;Brainfuino;%lu;1;1\r\n", (unsigned long)demo_size);
+	snprintf(line, sizeof(line), "!LIB:PROG:0;Brainfuino;%lu;1;1\r\n", (unsigned long)demo_size);
+	if (dynamic_lib_src == CMD_SRC_UART) uart_print(line);
+	else CDC_Print_USB(line);
 
 	// Slots 1..63: User-installed programs
 	for (uint8_t s = 1; s < MAX_LIB_SLOTS; s++){
 		if (lib_toc[s].status == 0x01){
-			CDC_Printf("!LIB:PROG:%u;%s;%lu;%u;0\r\n",
+			snprintf(line, sizeof(line), "!LIB:PROG:%u;%s;%lu;%u;0\r\n",
 			           (unsigned int)s,
 			           lib_toc[s].name,
 			           (unsigned long)lib_toc[s].size,
 			           (unsigned int)lib_toc[s].pruned);
+			if (dynamic_lib_src == CMD_SRC_UART) uart_print(line);
+			else CDC_Print_USB(line);
 		}
 	}
-	CDC_Print("!LIB:END\r\n");
+	if (dynamic_lib_src == CMD_SRC_UART) uart_print("!LIB:END\r\n");
+	else CDC_Print_USB("!LIB:END\r\n");
 }
 
 static uint8_t is_prefix_ci(const uint8_t *b, uint32_t len, const char *prefix){
@@ -2146,6 +2281,10 @@ static void menu_nav_pgdn(void){
 }
 
 uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
+	return Handle_Command_Input(buff, len, CMD_SRC_USB);
+}
+
+uint8_t Handle_Command_Input(uint8_t *buff, uint32_t len, uint8_t src){
 	last_key_rx_tick = HAL_GetTick();
 	// Automated USB DFU trigger command (from build script or terminal)
 	if (len >= 5 && strncmp((char *)buff, "!DFU!", 5) == 0){
@@ -2186,12 +2325,14 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 	// Program ROM Dump (only !DUMP)
 	if (is_cmd_ci(buff, len, "!DUMP")){
 		code_dump = 1;
+		dump_src = src;
 		return 1;
 	}
 
 	// Dynamic Program Library Schema Query (!LIB* or !LIB:LIST)
 	if (is_cmd_ci(buff, len, "!LIB*") || is_cmd_ci(buff, len, "!LIB:LIST")){
 		dynamic_lib_requested = 1;
+		dynamic_lib_src = src;
 		return 1;
 	}
 
@@ -2204,6 +2345,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			p++;
 		}
 		cmd_lib_run_slot = (int8_t)slot;
+		cmd_lib_action_src = src;
 		return 1;
 	}
 
@@ -2216,6 +2358,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			p++;
 		}
 		cmd_lib_dump_slot = (int8_t)slot;
+		cmd_lib_action_src = src;
 		return 1;
 	}
 
@@ -2228,6 +2371,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			p++;
 		}
 		cmd_lib_del_slot = (int8_t)slot;
+		cmd_lib_action_src = src;
 		return 1;
 	}
 
@@ -2248,6 +2392,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		cmd_lib_add_name[nlen] = '\0';
 		cmd_lib_add_verify = 2; // 2 = direct commit without verification test
 		cmd_lib_add_requested = 1;
+		cmd_lib_action_src = src;
 		return 1;
 	}
 
@@ -2268,6 +2413,7 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		cmd_lib_add_name[nlen] = '\0';
 		cmd_lib_add_verify = 1; // 1 = with 10s verification
 		cmd_lib_add_requested = 1;
+		cmd_lib_action_src = src;
 		return 1;
 	}
 
@@ -2305,7 +2451,15 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 		return 1;
 	}
 	if (is_cmd_ci(buff, len, "!CLK") || is_cmd_ci(buff, len, "!CLOCK")){
-		CDC_Printf("[Clock: %s]\r\n", get_freq_name(freq));
+		fpga_clock_pause();
+		drain_tx_buffers(50);
+		if (src == CMD_SRC_UART){
+			uart_printf("[Clock: %s]\r\n", get_freq_name(freq));
+		} else {
+			CDC_Printf_USB("[Clock: %s]\r\n", get_freq_name(freq));
+		}
+		drain_tx_buffers(50);
+		fpga_clock_resume();
 		return 1;
 	}
 
@@ -3041,7 +3195,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 
   while (1){
-	  // Drain hardware UART RX buffer into CDC_Receive_Callback() for mirrored input handling
+	  // Drain hardware UART RX buffer into Handle_Command_Input() for mirrored input handling
 	  if (cfg_uart_enabled && (uart_rx_head != uart_rx_tail)){
 		  uint8_t rx_chunk[32];
 		  uint32_t rx_len = 0;
@@ -3050,7 +3204,7 @@ int main(void)
 			  uart_rx_head = (uart_rx_head + 1) % UART_RX_BUF_SIZE;
 		  }
 		  if (rx_len > 0){
-			  CDC_Receive_Callback(rx_chunk, rx_len);
+			  Handle_Command_Input(rx_chunk, rx_len, CMD_SRC_UART);
 		  }
 	  }
 
@@ -3064,7 +3218,11 @@ int main(void)
 	  if (cmd_lib_run_slot >= 0){
 		  uint8_t s = (uint8_t)cmd_lib_run_slot;
 		  cmd_lib_run_slot = -1;
-		  CDC_Printf("!LIB:RUN:OK:%u\r\n", (unsigned int)s);
+		  if (cmd_lib_action_src == CMD_SRC_UART){
+			  uart_printf("!LIB:RUN:OK:%u\r\n", (unsigned int)s);
+		  } else {
+			  CDC_Printf_USB("!LIB:RUN:OK:%u\r\n", (unsigned int)s);
+		  }
 		  lib_load_and_run(s);
 	  }
 	  if (cmd_lib_dump_slot >= 0){
@@ -3076,8 +3234,13 @@ int main(void)
 		  uint8_t s = (uint8_t)cmd_lib_del_slot;
 		  cmd_lib_del_slot = -1;
 		  lib_delete_program(s);
-		  CDC_Printf("!LIB:DEL:OK:%u\r\n", (unsigned int)s);
+		  if (cmd_lib_action_src == CMD_SRC_UART){
+			  uart_printf("!LIB:DEL:OK:%u\r\n", (unsigned int)s);
+		  } else {
+			  CDC_Printf_USB("!LIB:DEL:OK:%u\r\n", (unsigned int)s);
+		  }
 		  dynamic_lib_requested = 1;
+		  dynamic_lib_src = cmd_lib_action_src;
 	  }
 	  if (cmd_lib_add_requested){
 		  cmd_lib_add_requested = 0;
@@ -3097,7 +3260,11 @@ int main(void)
 		  lib_add_last_rx_tick = HAL_GetTick();
 		  state = STATE_LIB_ADD;
 		  lib_add_substate = LIB_ADD_PASTE;
-		  CDC_Printf("!LIB:ADD:READY:%s\r\n", lib_name_buf);
+		  if (cmd_lib_action_src == CMD_SRC_UART){
+			  uart_printf("!LIB:ADD:READY:%s\r\n", lib_name_buf);
+		  } else {
+			  CDC_Printf_USB("!LIB:ADD:READY:%s\r\n", lib_name_buf);
+		  }
 	  }
 
 	  // Check for restore factory demo request in Thread Mode
@@ -3814,7 +3981,8 @@ int main(void)
 		  HAL_GPIO_WritePin(BF_RST_GPIO_Port, BF_RST_Pin, GPIO_PIN_RESET);
 		  HAL_Delay(10);
 
-		  CDC_Print("[Firmware Dump]\r\n\r\n");
+		  if (dump_src == CMD_SRC_UART) uart_print("[Firmware Dump]\r\n\r\n");
+		  else CDC_Print_USB("[Firmware Dump]\r\n\r\n");
 
 		  initROMProgramming();
 		  setDataBusModeInput();
@@ -3829,17 +3997,21 @@ int main(void)
 			  dump_chunk[dump_len++] = b;
 			  total_dumped++;
 			  if (dump_len == sizeof(dump_chunk)){
-				  CDC_Write(dump_chunk, dump_len);
+				  if (dump_src == CMD_SRC_UART) uart_write(dump_chunk, dump_len);
+				  else CDC_Write(dump_chunk, dump_len);
 				  dump_len = 0;
 			  }
 		  }
 		  if (dump_len > 0){
-			  CDC_Write(dump_chunk, dump_len);
+			  if (dump_src == CMD_SRC_UART) uart_write(dump_chunk, dump_len);
+			  else CDC_Write(dump_chunk, dump_len);
 		  }
 		  if (total_dumped == 0){
-			  CDC_Print("[ROM Empty: No program in Flash]\r\n");
+			  if (dump_src == CMD_SRC_UART) uart_print("[ROM Empty: No program in Flash]\r\n");
+			  else CDC_Print_USB("[ROM Empty: No program in Flash]\r\n");
 		  } else {
-			  CDC_Print("\r\n");
+			  if (dump_src == CMD_SRC_UART) uart_print("\r\n");
+			  else CDC_Print_USB("\r\n");
 		  }
 
 		  // Return bus to normal input mode and keep FPGA in reset (do not run program)

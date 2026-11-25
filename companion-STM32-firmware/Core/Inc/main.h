@@ -67,6 +67,12 @@ void uart_init(void);
 void uart_deinit(void);
 void uart_print(const char *str);
 void uart_write(const uint8_t *data, uint32_t len);
+void uart_printf(const char *format, ...);
+void CDC_Print_USB(const char *str);
+void CDC_Printf_USB(const char *format, ...);
+void fpga_clock_pause(void);
+void fpga_clock_resume(void);
+void flush_outbox(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
