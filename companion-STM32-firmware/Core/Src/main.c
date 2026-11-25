@@ -167,6 +167,7 @@ uint8_t  cfg_uart_baud_idx        = 5;   // Default index 5 -> 9600 baud
 uint8_t  cfg_uart_flow_ctl        = 1;   // 0 = None, 1 = RTS/CTS (Hardware flow control)
 uint8_t  cfg_cursor_reposition    = 1;   // 1 = In-place cursor reposition (\x1b[H), 0 = Full clear (\x1b[2J)
 static uint8_t menu_first_render  = 1;   // 1 = initial render on menu enter must clear screen
+static uint8_t menu_last_page     = 0xFF;// Last rendered menu page to detect page transitions
 volatile uint32_t last_key_rx_tick = 0; // Tick when latest key arrived
 
 // Hardware Serial TX ring buffer
@@ -1559,9 +1560,10 @@ void menu_render(void){
 	menu_buffering = 1;
 	menu_buf_reset();
 
-	if (menu_first_render || !cfg_cursor_reposition){
+	if (menu_first_render || !cfg_cursor_reposition || (menu_page != menu_last_page)){
 		CDC_Print("\x1b[2J\r\n");
 		menu_first_render = 0;
+		menu_last_page = menu_page;
 	} else {
 		CDC_Print("\x1b[H");
 	}
@@ -1578,10 +1580,6 @@ void menu_render(void){
 		menu_render_library();
 	} else if (menu_page == MENU_PAGE_CONFIRM_EXIT){
 		menu_render_confirm_exit();
-	}
-
-	if (cfg_cursor_reposition){
-		CDC_Print("\x1b[J");
 	}
 
 	if (color_buf[0] != '\0'){
@@ -1911,6 +1909,7 @@ void menu_enter(void){
 	settings_dirty = 0;
 	state = STATE_CONFIG;
 	menu_page = MENU_PAGE_MAIN;
+	menu_last_page = 0xFF;
 	menu_cursor = 0;
 	lib_page = 0;
 	menu_first_render = 1;

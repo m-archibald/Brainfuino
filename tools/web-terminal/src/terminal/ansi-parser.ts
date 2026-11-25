@@ -305,15 +305,18 @@ export function appendTextToTerminal(
         }
       }
     } else if (command === 'J') {
-      // Clear screen: \x1b[2J or \x1b[J
-      screenEl.innerHTML = '';
-      fragment = document.createDocumentFragment();
-      state.totalRenderedLines = 0;
-      state.atLineStart = true;
-      state.cursorRow = 0;
-      state.cursorCol = 0;
-      state.lineMap = [];
-      state.is2D = false;
+      // Clear screen: \x1b[2J (only mode 2 clears entire display)
+      const mode = (params && params.length > 0 && params[0] !== undefined) ? params[0] : 0;
+      if (mode === 2) {
+        screenEl.innerHTML = '';
+        fragment = document.createDocumentFragment();
+        state.totalRenderedLines = 0;
+        state.atLineStart = true;
+        state.cursorRow = 0;
+        state.cursorCol = 0;
+        state.lineMap = [];
+        state.is2D = false;
+      }
     } else if (command === 'H' || command === 'f') {
       // Cursor Home: \x1b[H or \x1b[row;colH
       const r = (params && params[0] > 0) ? params[0] - 1 : 0;
