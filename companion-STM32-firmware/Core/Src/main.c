@@ -166,6 +166,7 @@ uint8_t  cfg_uart_enabled         = 0;   // 0 = Disabled (Default), 1 = Enabled
 uint8_t  cfg_uart_baud_idx        = 5;   // Default index 5 -> 9600 baud
 uint8_t  cfg_uart_flow_ctl        = 1;   // 0 = None, 1 = RTS/CTS (Hardware flow control)
 uint8_t  cfg_cursor_reposition    = 1;   // 1 = In-place cursor reposition (\x1b[H), 0 = Full clear (\x1b[2J)
+uint8_t  cfg_terminal_compat      = 0;   // 0 = Standard ANSI / VT100, 1 = Wyse-50 Old Terminal Compatibility
 static uint8_t menu_first_render  = 1;   // 1 = initial render on menu enter must clear screen
 static uint8_t menu_last_page     = 0xFF;// Last rendered menu page to detect page transitions
 volatile uint32_t last_key_rx_tick = 0; // Tick when latest key arrived
@@ -501,7 +502,7 @@ uint8_t cfg_mcu_custom_g  = 2;  // 0 - 5
 uint8_t cfg_mcu_custom_b  = 0;  // 0 - 5
 
 const char *get_mcu_color_ansi(uint8_t idx, char *buf, size_t buflen){
-	if (idx == 0){
+	if (cfg_terminal_compat || idx == 0){
 		buf[0] = '\0';
 		return buf;
 	}
@@ -833,6 +834,7 @@ void CDC_Printf(const char *format, ...){
 }
 
 void print_speed_badge(void){
+	if (cfg_terminal_compat) return; // Wyse-50 compatibility mode: disable ANSI save/restore overlay badge
 	char inner[24];
 	char badge[32];
 	char color_ansi[20];
@@ -1234,13 +1236,29 @@ void lib_dump_program(uint8_t slot){
 	}
 }
 
+void menu_clear_screen(void){
+	if (cfg_terminal_compat){
+		CDC_Print("\x1b+\x1e"); // Wyse-50: Clear display to spaces (\x1b+) and home cursor (\x1e)
+	} else {
+		CDC_Print("\x1b[2J\r\n"); // ANSI VT100: Clear entire screen
+	}
+}
+
+void menu_home_cursor(void){
+	if (cfg_terminal_compat){
+		CDC_Print("\x1e"); // Wyse-50: Home cursor (RS / 0x1E)
+	} else {
+		CDC_Print("\x1b[H"); // ANSI VT100: Cursor Home
+	}
+}
+
 void lib_start_add_program(void){
 	lib_code_size = 0;
 	lib_name_len = 0;
 	memset(lib_name_buf, 0, sizeof(lib_name_buf));
 	lib_add_substate = LIB_ADD_NAME;
 	state = STATE_LIB_ADD;
-	CDC_Print("\x1b[2J\r\n");
+	menu_clear_screen();
 	CDC_Print("+-------------------------------------------------+\r\n");
 	CDC_Print("|            ADD PROGRAM TO LIBRARY               |\r\n");
 	CDC_Print("+-------------------------------------------------+\r\n");
@@ -1254,7 +1272,7 @@ static uint8_t get_menu_item_count(void){
 		uint8_t custom_extra = (cfg_mcu_color_idx == 17) ? 3 : 0;
 		uint8_t step_extra = cfg_manual_step_enabled ? 2 : 0;
 		uint8_t uart_extra = cfg_uart_enabled ? 2 : 0;
-		return 14 + custom_extra + step_extra + uart_extra;
+		return 15 + custom_extra + step_extra + uart_extra;
 	} else if (menu_page == MENU_PAGE_LIBRARY){
 		lib_refresh_display_list();
 		uint8_t start_idx = lib_page * 10;
@@ -1317,10 +1335,12 @@ void menu_render_main(void){
 
 	for (int i = 0; i < 6; i++){
 		if (i == menu_cursor){
-			if (color_buf[0] != '\0'){
+			if (!cfg_terminal_compat && color_buf[0] != '\0'){
 				CDC_Printf("| \x1b[1m> %s : %s <\x1b[22m%s |\r\n", labels[i], vals[i], color_buf);
-			} else {
+			} else if (!cfg_terminal_compat){
 				CDC_Printf("| \x1b[1m> %s : %s <\x1b[22m |\r\n", labels[i], vals[i]);
+			} else {
+				CDC_Printf("| > %s : %s < |\r\n", labels[i], vals[i]);
 			}
 		} else {
 			CDC_Printf("|   %s : %s   |\r\n", labels[i], vals[i]);
@@ -1346,7 +1366,7 @@ void menu_render_settings(void){
 	uint8_t custom_extra = is_custom ? 3 : 0;
 	uint8_t step_extra = cfg_manual_step_enabled ? 2 : 0;
 	uint8_t uart_extra = cfg_uart_enabled ? 2 : 0;
-	uint8_t count = 13 + custom_extra + step_extra + uart_extra;
+	uint8_t count = get_menu_item_count();
 	if (menu_cursor >= count) menu_cursor = count - 1;
 
 	for (int i = 0; i < count; i++){
@@ -1442,6 +1462,9 @@ void menu_render_settings(void){
 					if (extra_idx == 1){
 						label = "R. In-Place Cursor Redraw    ";
 						snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_cursor_reposition ? "ENABLED" : "DISABLED");
+					} else if (extra_idx == 2){
+						label = "W. Old Terminal Mode (WY-50) ";
+						snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_terminal_compat ? "ENABLED" : "DISABLED");
 					} else {
 						label = "0. Back to Main Menu         ";
 						snprintf(val_str, sizeof(val_str), "[   BACK   ]");
@@ -1451,10 +1474,12 @@ void menu_render_settings(void){
 		}
 
 		if (i == menu_cursor){
-			if (color_buf[0] != '\0'){
+			if (!cfg_terminal_compat && color_buf[0] != '\0'){
 				CDC_Printf("| \x1b[1m> %s : %s <\x1b[22m%s |\r\n", label, val_str, color_buf);
-			} else {
+			} else if (!cfg_terminal_compat){
 				CDC_Printf("| \x1b[1m> %s : %s <\x1b[22m |\r\n", label, val_str);
+			} else {
+				CDC_Printf("| > %s : %s < |\r\n", label, val_str);
 			}
 		} else {
 			CDC_Printf("|   %s : %s   |\r\n", label, val_str);
@@ -1497,10 +1522,12 @@ void menu_render_library(void){
 
 	// Row 0: Add New Program
 	if (menu_cursor == 0){
-		if (color_buf[0] != '\0'){
+		if (!cfg_terminal_compat && color_buf[0] != '\0'){
 			CDC_Printf("| \x1b[1m> A. [ + Add New Program ]                     <\x1b[22m%s |\r\n", color_buf);
-		} else {
+		} else if (!cfg_terminal_compat){
 			CDC_Print("| \x1b[1m> A. [ + Add New Program ]                     < |\r\n");
+		} else {
+			CDC_Print("| > A. [ + Add New Program ]                     < |\r\n");
 		}
 	} else {
 		CDC_Print("|   A. [ + Add New Program ]                       |\r\n");
@@ -1521,10 +1548,12 @@ void menu_render_library(void){
 
 		uint8_t row_idx = 1 + k;
 		if (row_idx == menu_cursor){
-			if (color_buf[0] != '\0'){
+			if (!cfg_terminal_compat && color_buf[0] != '\0'){
 				CDC_Printf("| \x1b[1m> %d. %-28.28s  [ %7.7s ] <\x1b[22m%s |\r\n", k, pname, size_str, color_buf);
-			} else {
+			} else if (!cfg_terminal_compat){
 				CDC_Printf("| \x1b[1m> %d. %-28.28s  [ %7.7s ] <\x1b[22m |\r\n", k, pname, size_str);
+			} else {
+				CDC_Printf("| > %d. %-28.28s  [ %7.7s ] < |\r\n", k, pname, size_str);
 			}
 		} else {
 			CDC_Printf("|   %d. %-28.28s  [ %7.7s ]   |\r\n", k, pname, size_str);
@@ -1566,14 +1595,14 @@ void menu_render(void){
 	menu_buf_reset();
 
 	if (menu_first_render || !cfg_cursor_reposition || (menu_page != menu_last_page)){
-		CDC_Print("\x1b[2J\r\n");
+		menu_clear_screen();
 		menu_first_render = 0;
 		menu_last_page = menu_page;
 	} else {
-		CDC_Print("\x1b[H");
+		menu_home_cursor();
 	}
 
-	if (color_buf[0] != '\0'){
+	if (!cfg_terminal_compat && color_buf[0] != '\0'){
 		CDC_Print(color_buf);
 	}
 
@@ -1587,7 +1616,7 @@ void menu_render(void){
 		menu_render_confirm_exit();
 	}
 
-	if (color_buf[0] != '\0'){
+	if (!cfg_terminal_compat && color_buf[0] != '\0'){
 		CDC_Print("\x1b[0m");
 	}
 
@@ -1739,6 +1768,9 @@ void menu_execute_action(uint8_t item, int8_t dir){
 					int extra_idx = uart_idx - (1 + uart_extra);
 					if (extra_idx == 1){
 						cfg_cursor_reposition = !cfg_cursor_reposition;
+					} else if (extra_idx == 2){
+						cfg_terminal_compat = !cfg_terminal_compat;
+						menu_first_render = 1;
 					} else {
 						menu_page = MENU_PAGE_MAIN;
 						menu_cursor = 1;
@@ -1764,7 +1796,7 @@ void menu_execute_action(uint8_t item, int8_t dir){
 }
 
 #define SETTINGS_FLASH_ADDR   0x0801F800UL
-#define SETTINGS_MAGIC        0xBF072C05UL
+#define SETTINGS_MAGIC        0xBF072C06UL
 
 typedef struct {
 	uint32_t magic;
@@ -1787,6 +1819,7 @@ typedef struct {
 	uint8_t  uart_baud_idx;
 	uint8_t  uart_flow_ctl;
 	uint8_t  cursor_reposition;
+	uint8_t  terminal_compat;
 	uint32_t auto_prog_min_bytes;
 	uint32_t checksum;
 } PersistentSettings;
@@ -1801,7 +1834,7 @@ static uint32_t calc_settings_checksum(const PersistentSettings *s){
 	       (uint32_t)s->mcu_custom_r + (uint32_t)s->mcu_custom_g +
 	       (uint32_t)s->mcu_custom_b + (uint32_t)s->uart_enabled +
 	       (uint32_t)s->uart_baud_idx + (uint32_t)s->uart_flow_ctl +
-	       (uint32_t)s->cursor_reposition +
+	       (uint32_t)s->cursor_reposition + (uint32_t)s->terminal_compat +
 	       s->auto_prog_min_bytes;
 }
 
@@ -1830,6 +1863,7 @@ void settings_load(void){
 		cfg_uart_baud_idx = (flash_cfg->uart_baud_idx < UART_BAUD_COUNT) ? flash_cfg->uart_baud_idx : 5;
 		cfg_uart_flow_ctl = flash_cfg->uart_flow_ctl ? 1 : 0;
 		cfg_cursor_reposition = flash_cfg->cursor_reposition ? 1 : 0;
+		cfg_terminal_compat = flash_cfg->terminal_compat ? 1 : 0;
 
 		if (flash_cfg->auto_prog_min_bytes >= 4 && flash_cfg->auto_prog_min_bytes <= 64){
 			cfg_auto_prog_min_bytes = flash_cfg->auto_prog_min_bytes;
@@ -1856,6 +1890,7 @@ void settings_load(void){
 		cfg_uart_baud_idx = 5;
 		cfg_uart_flow_ctl = 1;
 		cfg_cursor_reposition = 1;
+		cfg_terminal_compat = 0;
 		cfg_auto_prog_min_bytes = 16;
 	}
 }
@@ -1883,6 +1918,7 @@ void settings_save(void){
 	new_cfg.uart_baud_idx = cfg_uart_baud_idx;
 	new_cfg.uart_flow_ctl = cfg_uart_flow_ctl;
 	new_cfg.cursor_reposition = cfg_cursor_reposition ? 1 : 0;
+	new_cfg.terminal_compat = cfg_terminal_compat ? 1 : 0;
 	new_cfg.auto_prog_min_bytes = cfg_auto_prog_min_bytes;
 	new_cfg.checksum = calc_settings_checksum(&new_cfg);
 
@@ -1947,7 +1983,7 @@ void menu_exit(uint8_t save){
 	mco_throttled = 0;
 
 	// Clear screen and home cursor so menu is cleanly wiped from terminal
-	CDC_Print("\x1b[2J\r\n");
+	menu_clear_screen();
 
 	state = STATE_RUN;
 	manual_step_ticks_pending = 0;
@@ -2028,6 +2064,70 @@ static uint8_t is_cmd_ci(const uint8_t *b, uint32_t len, const char *cmd){
 		if (b[i] != '\r' && b[i] != '\n' && b[i] != ' ' && b[i] != '\t') return 0;
 	}
 	return 1;
+}
+
+static void menu_nav_up(uint8_t count){
+	if (menu_page == MENU_PAGE_LIBRARY){
+		if (menu_cursor > 0){
+			menu_cursor--;
+		} else if (lib_page > 0){
+			lib_page--;
+			menu_cursor = get_menu_item_count() - 1;
+		}
+	} else {
+		menu_cursor--;
+		if (menu_cursor < 0) menu_cursor = count - 1;
+	}
+	menu_needs_render = 1;
+}
+
+static void menu_nav_down(uint8_t count){
+	if (menu_page == MENU_PAGE_LIBRARY){
+		uint8_t total_pages = (lib_display_count > 0) ? ((lib_display_count + 9) / 10) : 1;
+		if (menu_cursor < count - 1){
+			menu_cursor++;
+		} else if (lib_page + 1 < total_pages){
+			lib_page++;
+			menu_cursor = 1;
+		}
+	} else {
+		menu_cursor++;
+		if (menu_cursor >= count) menu_cursor = 0;
+	}
+	menu_needs_render = 1;
+}
+
+static void menu_nav_left(uint8_t count){
+	if (menu_page == MENU_PAGE_SETTINGS && menu_cursor < count - 1){
+		menu_action_pending = menu_cursor;
+		menu_action_dir = -1;
+	}
+}
+
+static void menu_nav_right(uint8_t count){
+	if (menu_page == MENU_PAGE_SETTINGS && menu_cursor < count - 1){
+		menu_action_pending = menu_cursor;
+		menu_action_dir = 1;
+	}
+}
+
+static void menu_nav_pgup(void){
+	if (menu_page == MENU_PAGE_LIBRARY && lib_page > 0){
+		lib_page--;
+		menu_cursor = 1;
+		menu_needs_render = 1;
+	}
+}
+
+static void menu_nav_pgdn(void){
+	if (menu_page == MENU_PAGE_LIBRARY){
+		uint8_t total_pages = (lib_display_count > 0) ? ((lib_display_count + 9) / 10) : 1;
+		if (lib_page + 1 < total_pages){
+			lib_page++;
+			menu_cursor = 1;
+			menu_needs_render = 1;
+		}
+	}
 }
 
 uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
@@ -2310,181 +2410,92 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			while (idx < len && menu_esc_len < sizeof(menu_esc_buf) - 1){
 				menu_esc_buf[menu_esc_len++] = buff[idx++];
 			}
+			// Check 2-byte Wyse-50 sequences first (\x1bj, \x1bk, \x1bl, \x1bh, \x1bJ, \x1bK)
+			if (menu_esc_len >= 2 && menu_esc_buf[0] == 0x1B){
+				if (menu_esc_buf[1] == 'j'){ menu_nav_up(count); menu_esc_len = 0; return 1; }
+				else if (menu_esc_buf[1] == 'k'){ menu_nav_down(count); menu_esc_len = 0; return 1; }
+				else if (menu_esc_buf[1] == 'l'){ menu_nav_right(count); menu_esc_len = 0; return 1; }
+				else if (menu_esc_buf[1] == 'h'){ menu_nav_left(count); menu_esc_len = 0; return 1; }
+				else if (menu_esc_buf[1] == 'J'){ menu_nav_pgup(); menu_esc_len = 0; return 1; }
+				else if (menu_esc_buf[1] == 'K'){ menu_nav_pgdn(); menu_esc_len = 0; return 1; }
+			}
 			if (menu_esc_len >= 3 && (menu_esc_buf[1] == '[' || menu_esc_buf[1] == 'O')){
-				if (menu_esc_buf[2] == 'A'){ // Up Arrow
-					if (menu_page == MENU_PAGE_LIBRARY){
-						if (menu_cursor > 0){
-							menu_cursor--;
-						} else if (lib_page > 0){
-							lib_page--;
-							menu_cursor = get_menu_item_count() - 1;
-						}
-					} else {
-						menu_cursor--;
-						if (menu_cursor < 0) menu_cursor = count - 1;
-					}
-					menu_needs_render = 1;
-					menu_esc_len = 0;
-					return 1;
-				}
-				else if (menu_esc_buf[2] == 'B'){ // Down Arrow
-					if (menu_page == MENU_PAGE_LIBRARY){
-						uint8_t total_pages = (lib_display_count > 0) ? ((lib_display_count + 9) / 10) : 1;
-						if (menu_cursor < count - 1){
-							menu_cursor++;
-						} else if (lib_page + 1 < total_pages){
-							lib_page++;
-							menu_cursor = 1;
-						}
-					} else {
-						menu_cursor++;
-						if (menu_cursor >= count) menu_cursor = 0;
-					}
-					menu_needs_render = 1;
-					menu_esc_len = 0;
-					return 1;
-				}
-				else if (menu_esc_buf[2] == 'C'){ // Right Arrow -> cycle forward in Settings only
-					if (menu_page == MENU_PAGE_SETTINGS && menu_cursor < count - 1){
-						menu_action_pending = menu_cursor;
-						menu_action_dir = 1;
-					}
-					menu_esc_len = 0;
-					return 1;
-				}
-				else if (menu_esc_buf[2] == 'D'){ // Left Arrow -> cycle backward in Settings only
-					if (menu_page == MENU_PAGE_SETTINGS && menu_cursor < count - 1){
-						menu_action_pending = menu_cursor;
-						menu_action_dir = -1;
-					}
-					menu_esc_len = 0;
-					return 1;
-				}
-				else if (menu_esc_buf[2] == '5' && menu_esc_len >= 4 && menu_esc_buf[3] == '~'){ // Page Up
-					if (menu_page == MENU_PAGE_LIBRARY && lib_page > 0){
-						lib_page--;
-						menu_cursor = 1;
-						menu_needs_render = 1;
-					}
-					menu_esc_len = 0;
-					return 1;
-				}
-				else if (menu_esc_buf[2] == '6' && menu_esc_len >= 4 && menu_esc_buf[3] == '~'){ // Page Down
-					if (menu_page == MENU_PAGE_LIBRARY){
-						uint8_t total_pages = (lib_display_count > 0) ? ((lib_display_count + 9) / 10) : 1;
-						if (lib_page + 1 < total_pages){
-							lib_page++;
-							menu_cursor = 1;
-							menu_needs_render = 1;
-						}
-					}
-					menu_esc_len = 0;
-					return 1;
-				}
-				else if (menu_esc_buf[2] == '3' && menu_esc_len >= 4 && menu_esc_buf[3] == '~'){ // VT100 Delete Key
+				if (menu_esc_buf[2] == 'A'){ menu_nav_up(count); menu_esc_len = 0; return 1; }
+				else if (menu_esc_buf[2] == 'B'){ menu_nav_down(count); menu_esc_len = 0; return 1; }
+				else if (menu_esc_buf[2] == 'C'){ menu_nav_right(count); menu_esc_len = 0; return 1; }
+				else if (menu_esc_buf[2] == 'D'){ menu_nav_left(count); menu_esc_len = 0; return 1; }
+				else if (menu_esc_buf[2] == '5' && menu_esc_len >= 4 && menu_esc_buf[3] == '~'){ menu_nav_pgup(); menu_esc_len = 0; return 1; }
+				else if (menu_esc_buf[2] == '6' && menu_esc_len >= 4 && menu_esc_buf[3] == '~'){ menu_nav_pgdn(); menu_esc_len = 0; return 1; }
+				else if (menu_esc_buf[2] == '3' && menu_esc_len >= 4 && menu_esc_buf[3] == '~'){
 					if (menu_page == MENU_PAGE_LIBRARY && menu_cursor >= 1){
 						uint8_t start_idx = lib_page * 10;
 						uint8_t prog_idx = start_idx + (menu_cursor - 1);
 						if (prog_idx < lib_display_count){
 							uint8_t slot = lib_display_slots[prog_idx];
-							if (slot > 0){
-								lib_delete_pending_slot = slot;
-							}
+							if (slot > 0) lib_delete_pending_slot = slot;
 						}
 					}
 					menu_esc_len = 0;
 					return 1;
 				}
 			}
-			if (menu_esc_len < 3){
+			if (menu_esc_len < 3 && (menu_esc_buf[1] == '[' || menu_esc_buf[1] == 'O')){
 				return 1;
 			}
 			menu_esc_len = 0;
 		}
 
-		// 1. ANSI / VT100 arrow keys & Escape
+		// Wyse-50 native single-byte control keys
+		if (buff[idx] == 0x0B){ // Ctrl-K: Wyse-50 Up Arrow
+			menu_nav_up(count);
+			return 1;
+		}
+		if (buff[idx] == 0x0C){ // Ctrl-L: Wyse-50 Right Arrow
+			menu_nav_right(count);
+			return 1;
+		}
+		if (buff[idx] == 0x01 || buff[idx] == 0x1E){ // Ctrl-A / ^^: Wyse-50 Home
+			menu_cursor = 0;
+			menu_needs_render = 1;
+			return 1;
+		}
+		if (buff[idx] == 0x08 && menu_page == MENU_PAGE_SETTINGS){ // Backspace / Ctrl-H: Left Arrow in Settings
+			menu_nav_left(count);
+			return 1;
+		}
+
+		// 1. ANSI / VT100 & Wyse-50 arrow keys & Escape
 		if (buff[idx] == 0x1B){
+			// Wyse-50 2-byte escape sequences
+			if (idx + 1 < len){
+				if (buff[idx+1] == 'j'){ menu_nav_up(count); return 1; }
+				else if (buff[idx+1] == 'k'){ menu_nav_down(count); return 1; }
+				else if (buff[idx+1] == 'l'){ menu_nav_right(count); return 1; }
+				else if (buff[idx+1] == 'h'){ menu_nav_left(count); return 1; }
+				else if (buff[idx+1] == 'J'){ menu_nav_pgup(); return 1; }
+				else if (buff[idx+1] == 'K'){ menu_nav_pgdn(); return 1; }
+			}
+
 			if (idx + 2 < len && (buff[idx+1] == '[' || buff[idx+1] == 'O')){
-				if (buff[idx+2] == 'A'){ // Up Arrow
-					if (menu_page == MENU_PAGE_LIBRARY){
-						if (menu_cursor > 0){
-							menu_cursor--;
-						} else if (lib_page > 0){
-							lib_page--;
-							menu_cursor = get_menu_item_count() - 1;
-						}
-					} else {
-						menu_cursor--;
-						if (menu_cursor < 0) menu_cursor = count - 1;
-					}
-					menu_needs_render = 1;
-					return 1;
-				}
-				else if (buff[idx+2] == 'B'){ // Down Arrow
-					if (menu_page == MENU_PAGE_LIBRARY){
-						uint8_t total_pages = (lib_display_count > 0) ? ((lib_display_count + 9) / 10) : 1;
-						if (menu_cursor < count - 1){
-							menu_cursor++;
-						} else if (lib_page + 1 < total_pages){
-							lib_page++;
-							menu_cursor = 1;
-						}
-					} else {
-						menu_cursor++;
-						if (menu_cursor >= count) menu_cursor = 0;
-					}
-					menu_needs_render = 1;
-					return 1;
-				}
-				else if (buff[idx+2] == 'C'){ // Right Arrow -> cycle forward in Settings only
-					if (menu_page == MENU_PAGE_SETTINGS && menu_cursor < count - 1){
-						menu_action_pending = menu_cursor;
-						menu_action_dir = 1;
-					}
-					return 1;
-				}
-				else if (buff[idx+2] == 'D'){ // Left Arrow -> cycle backward in Settings only
-					if (menu_page == MENU_PAGE_SETTINGS && menu_cursor < count - 1){
-						menu_action_pending = menu_cursor;
-						menu_action_dir = -1;
-					}
-					return 1;
-				}
-				else if (buff[idx+2] == '5' && idx + 3 < len && buff[idx+3] == '~'){ // Page Up
-					if (menu_page == MENU_PAGE_LIBRARY && lib_page > 0){
-						lib_page--;
-						menu_cursor = 1;
-						menu_needs_render = 1;
-					}
-					return 1;
-				}
-				else if (buff[idx+2] == '6' && idx + 3 < len && buff[idx+3] == '~'){ // Page Down
-					if (menu_page == MENU_PAGE_LIBRARY){
-						uint8_t total_pages = (lib_display_count > 0) ? ((lib_display_count + 9) / 10) : 1;
-						if (lib_page + 1 < total_pages){
-							lib_page++;
-							menu_cursor = 1;
-							menu_needs_render = 1;
-						}
-					}
-					return 1;
-				}
-				else if (buff[idx+2] == '3' && idx + 3 < len && buff[idx+3] == '~'){ // VT100 Delete Key
+				if (buff[idx+2] == 'A'){ menu_nav_up(count); return 1; }
+				else if (buff[idx+2] == 'B'){ menu_nav_down(count); return 1; }
+				else if (buff[idx+2] == 'C'){ menu_nav_right(count); return 1; }
+				else if (buff[idx+2] == 'D'){ menu_nav_left(count); return 1; }
+				else if (buff[idx+2] == '5' && idx + 3 < len && buff[idx+3] == '~'){ menu_nav_pgup(); return 1; }
+				else if (buff[idx+2] == '6' && idx + 3 < len && buff[idx+3] == '~'){ menu_nav_pgdn(); return 1; }
+				else if (buff[idx+2] == '3' && idx + 3 < len && buff[idx+3] == '~'){
 					if (menu_page == MENU_PAGE_LIBRARY && menu_cursor >= 1){
 						uint8_t start_idx = lib_page * 10;
 						uint8_t prog_idx = start_idx + (menu_cursor - 1);
 						if (prog_idx < lib_display_count){
 							uint8_t slot = lib_display_slots[prog_idx];
-							if (slot > 0){
-								lib_delete_pending_slot = slot;
-							}
+							if (slot > 0) lib_delete_pending_slot = slot;
 						}
 					}
 					return 1;
 				}
 			}
-			else if (idx + 2 >= len){
-				// Incomplete escape sequence (packet split across USB boundaries): buffer and wait for next packet
+			else if (idx + 1 >= len || (idx + 2 >= len && (buff[idx+1] == '[' || buff[idx+1] == 'O'))){
 				menu_esc_len = 0;
 				while (idx < len && menu_esc_len < sizeof(menu_esc_buf) - 1){
 					menu_esc_buf[menu_esc_len++] = buff[idx++];
@@ -2606,6 +2617,13 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				return 1;
 			}
 			if (buff[idx] == 'r' || buff[idx] == 'R'){
+				uint8_t count = get_menu_item_count();
+				menu_cursor = count - 3;
+				menu_action_pending = menu_cursor;
+				menu_action_dir = 1;
+				return 1;
+			}
+			if (buff[idx] == 'w' || buff[idx] == 'W'){
 				uint8_t count = get_menu_item_count();
 				menu_cursor = count - 2;
 				menu_action_pending = menu_cursor;
@@ -3097,7 +3115,7 @@ int main(void)
 			  serial_input = 0;
 			  state = STATE_RUN;
 			  set_freq(freq);
-			  CDC_Printf_MCU("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
+			  CDC_Printf_MCU("\r\n[bf_%sP reset] %s\r\n", cfg_terminal_compat ? "u" : "\xC2\xB5", get_freq_name(freq));
 			  if (cfg_manual_step_enabled){
 				  CDC_Printf("[Manual Step Mode Active: Press %s to step %s]\r\n",
 				             get_step_key_name(cfg_manual_step_key), get_step_ticks_name(cfg_manual_step_ticks));
@@ -3184,7 +3202,7 @@ int main(void)
 				  serial_input = 0;
 				  state = STATE_RUN;
 				  set_freq(freq);
-				  CDC_Printf_MCU("\r\n[bf_\xC2\xB5P reset] %s\r\n", get_freq_name(freq));
+				  CDC_Printf_MCU("\r\n[bf_%sP reset] %s\r\n", cfg_terminal_compat ? "u" : "\xC2\xB5", get_freq_name(freq));
 				  if (cfg_manual_step_enabled){
 					  CDC_Printf("[Manual Step Mode Active: Press %s to step %s]\r\n",
 					             get_step_key_name(cfg_manual_step_key), get_step_ticks_name(cfg_manual_step_ticks));
@@ -3629,12 +3647,17 @@ int main(void)
 			  uint8_t c = outbox[head];
 			  if (c == '\r' || c == '\n'){
 				  // FPGA produced newline before speed overlay was fully overwritten:
-				  // Transmit \x1b[K to erase rest of line, plus the newline byte(s), in one single USB packet!
+				  // Transmit erase rest of line (\x1bT for Wyse-50, \x1b[K for ANSI), plus newline byte(s)
 				  uint8_t nl_pkt[16];
 				  uint8_t nlen = 0;
-				  nl_pkt[nlen++] = 0x1B;
-				  nl_pkt[nlen++] = '[';
-				  nl_pkt[nlen++] = 'K';
+				  if (cfg_terminal_compat){
+					  nl_pkt[nlen++] = 0x1B;
+					  nl_pkt[nlen++] = 'T';
+				  } else {
+					  nl_pkt[nlen++] = 0x1B;
+					  nl_pkt[nlen++] = '[';
+					  nl_pkt[nlen++] = 'K';
+				  }
 
 				  while ((head != cur_tail) && (outbox[head] == '\r' || outbox[head] == '\n') && (nlen < sizeof(nl_pkt))){
 					  nl_pkt[nlen++] = outbox[head];

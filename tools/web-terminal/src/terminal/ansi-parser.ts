@@ -133,6 +133,27 @@ export function appendTextToTerminal(
   }
   if (!rawText) return;
 
+  // Wyse-50 Clear Screen (\x1b+) and Cursor Home (\x1e) support
+  if (rawText.includes('\x1b+')) {
+    screenEl.innerHTML = '';
+    fragment = document.createDocumentFragment();
+    state.totalRenderedLines = 0;
+    state.atLineStart = true;
+    state.cursorRow = 0;
+    state.cursorCol = 0;
+    state.lineMap = [];
+    state.is2D = false;
+    rawText = rawText.split('\x1b+').pop() || '';
+  }
+
+  if (rawText.includes('\x1e')) {
+    state.cursorRow = 0;
+    state.cursorCol = 0;
+    state.is2D = true;
+    state.lineMap = state.lineMap || [];
+    rawText = rawText.replace(/\x1e/g, '');
+  }
+
   // Regex matching ANSI escape sequences: \x1b[...m or \x1b[...H / J / K / s / u / etc.
   const ansiRegex = /\x1b\[([0-9;]*)([a-zA-Z])/g;
   let lastIndex = 0;
