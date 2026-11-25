@@ -149,7 +149,7 @@ volatile uint8_t  mco_throttled = 0;
 volatile uint8_t  active_is_tim1 = 0;
 
 // Runtime configuration settings (modifiable in interactive configuration menu)
-uint8_t  cfg_auto_prog_run_mode   = 1;   // 1 = Auto-enter program mode if code paste detected in RUN mode
+uint8_t  cfg_auto_prog_run_mode   = 0;   // 0 = Disabled (Default), 1 = Auto-enter program mode if code paste detected in RUN mode
 uint32_t cfg_auto_prog_min_bytes  = 16;  // Minimum packet size to trigger upload (safe against 3-5 byte ANSI escape keys)
 uint8_t  cfg_auto_reset_after_pgm = 1;   // 1 = Automatically reset and launch program after write finishes
 uint8_t  cfg_append_endless_loop  = 1;   // 1 = Automatically append '[-]+[]' infinite loop at EOF to halt PC cleanly
@@ -162,7 +162,7 @@ uint8_t  cfg_prune_in_library     = 1;   // 0 = Disabled, 1 = Strip non-BF comma
 uint8_t  cfg_cr_to_lf             = 1;   // 1 = Convert Windows \r (CR) -> \n (LF) in RUN mode
 
 // Hardware Serial (USART2) runtime configuration settings
-uint8_t  cfg_uart_enabled         = 0;   // 0 = Disabled (Default), 1 = Enabled
+uint8_t  cfg_uart_enabled         = 1;   // 1 = Enabled (Default), 0 = Disabled
 uint8_t  cfg_uart_baud_idx        = 5;   // Default index 5 -> 9600 baud
 uint8_t  cfg_uart_flow_ctl        = 1;   // 0 = None, 1 = RTS/CTS (Hardware flow control)
 uint8_t  cfg_cursor_reposition    = 1;   // 1 = In-place cursor reposition (\x1b[H), 0 = Full clear (\x1b[2J)
@@ -1269,10 +1269,11 @@ static uint8_t get_menu_item_count(void){
 	if (menu_page == MENU_PAGE_MAIN){
 		return 6;
 	} else if (menu_page == MENU_PAGE_SETTINGS){
+		uint8_t thresh_extra = cfg_auto_prog_run_mode ? 1 : 0;
 		uint8_t custom_extra = (cfg_mcu_color_idx == 17) ? 3 : 0;
 		uint8_t step_extra = cfg_manual_step_enabled ? 2 : 0;
 		uint8_t uart_extra = cfg_uart_enabled ? 2 : 0;
-		return 15 + custom_extra + step_extra + uart_extra;
+		return 14 + thresh_extra + custom_extra + step_extra + uart_extra;
 	} else if (menu_page == MENU_PAGE_LIBRARY){
 		lib_refresh_display_list();
 		uint8_t start_idx = lib_page * 10;
@@ -1362,6 +1363,8 @@ void menu_render_settings(void){
 	CDC_Print("|     Use [Up/Down], [Left/Right], or [Enter]      |\r\n");
 	CDC_Print("+--------------------------------------------------+\r\n");
 
+	uint8_t thresh_extra = cfg_auto_prog_run_mode ? 1 : 0;
+	uint8_t num_numbered = 8 + thresh_extra;
 	uint8_t is_custom = (cfg_mcu_color_idx == 17);
 	uint8_t custom_extra = is_custom ? 3 : 0;
 	uint8_t step_extra = cfg_manual_step_enabled ? 2 : 0;
@@ -1371,10 +1374,12 @@ void menu_render_settings(void){
 
 	for (int i = 0; i < count; i++){
 		char val_str[64];
+		char label_buf[36];
 		const char *label = "";
 
-		if (i <= 8){
-			switch(i){
+		if (i < num_numbered){
+			int opt = (i == 0) ? 0 : (cfg_auto_prog_run_mode ? i : i + 1);
+			switch(opt){
 				case 0:
 					label = "1. Auto-Program on Paste     ";
 					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_prog_run_mode ? "ENABLED" : "DISABLED");
@@ -1384,31 +1389,38 @@ void menu_render_settings(void){
 					snprintf(val_str, sizeof(val_str), "[   %2lu B   ]", (unsigned long)cfg_auto_prog_min_bytes);
 					break;
 				case 2:
-					label = "3. Auto-Reset after Flash    ";
+					snprintf(label_buf, sizeof(label_buf), "%d. Auto-Reset after Flash    ", i + 1);
+					label = label_buf;
 					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_auto_reset_after_pgm ? "ENABLED" : "DISABLED");
 					break;
 				case 3:
-					label = "4. Append Endless Loop       ";
+					snprintf(label_buf, sizeof(label_buf), "%d. Append Endless Loop       ", i + 1);
+					label = label_buf;
 					snprintf(val_str, sizeof(val_str), "[  %-6s  ]", cfg_append_endless_loop ? "[-]+[]" : "NONE");
 					break;
 				case 4:
-					label = "5. FPGA Clock Frequency      ";
+					snprintf(label_buf, sizeof(label_buf), "%d. FPGA Clock Frequency      ", i + 1);
+					label = label_buf;
 					snprintf(val_str, sizeof(val_str), "[ %-8s ]", get_freq_name(freq));
 					break;
 				case 5:
-					label = "6. Prune non-BF on Paste     ";
+					snprintf(label_buf, sizeof(label_buf), "%d. Prune non-BF on Paste     ", i + 1);
+					label = label_buf;
 					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_prune_on_paste ? "ENABLED" : "DISABLED");
 					break;
 				case 6:
-					label = "7. Prune non-BF in Library   ";
+					snprintf(label_buf, sizeof(label_buf), "%d. Prune non-BF in Library   ", i + 1);
+					label = label_buf;
 					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_prune_in_library ? "ENABLED" : "DISABLED");
 					break;
 				case 7:
-					label = "8. Serial Input CR -> LF     ";
+					snprintf(label_buf, sizeof(label_buf), "%d. Serial Input CR -> LF     ", i + 1);
+					label = label_buf;
 					snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_cr_to_lf ? "ENABLED" : "DISABLED");
 					break;
 				case 8:
-					label = "9. Run Mode Speed Hotkeys    ";
+					snprintf(label_buf, sizeof(label_buf), "%d. Run Mode Speed Hotkeys    ", i + 1);
+					label = label_buf;
 					{
 						const char *hname = "NONE";
 						if (cfg_speed_hotkey_mode == SPEED_HOTKEY_PGUP_PGDN) hname = "PgUp/Dn";
@@ -1419,24 +1431,24 @@ void menu_render_settings(void){
 					break;
 			}
 		}
-		else if (i == 9){
+		else if (i == num_numbered){
 			label = "C. Companion MCU Output Color";
 			snprintf(val_str, sizeof(val_str), "[ %-8.8s ]", mcu_colors[cfg_mcu_color_idx].name);
 		}
-		else if (is_custom && i >= 10 && i <= 12){
-			if (i == 10){
+		else if (is_custom && i >= (num_numbered + 1) && i <= (num_numbered + 3)){
+			if (i == (num_numbered + 1)){
 				label = "   |-- Red   (R: 0-5)        ";
 				snprintf(val_str, sizeof(val_str), "[   %d / 5  ]", (int)cfg_mcu_custom_r);
-			} else if (i == 11){
+			} else if (i == (num_numbered + 2)){
 				label = "   |-- Green (G: 0-5)        ";
 				snprintf(val_str, sizeof(val_str), "[   %d / 5  ]", (int)cfg_mcu_custom_g);
-			} else if (i == 12){
+			} else if (i == (num_numbered + 3)){
 				label = "   +-- Blue  (B: 0-5)        ";
 				snprintf(val_str, sizeof(val_str), "[   %d / 5  ]", (int)cfg_mcu_custom_b);
 			}
 		}
 		else {
-			int rem_idx = i - (9 + custom_extra);
+			int rem_idx = i - (num_numbered + custom_extra);
 			if (rem_idx == 1){
 				label = "A. Manual Stepping Mode      ";
 				snprintf(val_str, sizeof(val_str), "[ %-8s ]", cfg_manual_step_enabled ? "ENABLED" : "DISABLED");
@@ -1657,13 +1669,16 @@ void menu_execute_action(uint8_t item, int8_t dir){
 	}
 	else if (menu_page == MENU_PAGE_SETTINGS){
 		settings_dirty = 1;
+		uint8_t thresh_extra = cfg_auto_prog_run_mode ? 1 : 0;
+		uint8_t num_numbered = 8 + thresh_extra;
 		uint8_t is_custom = (cfg_mcu_color_idx == 17);
 		uint8_t custom_extra = is_custom ? 3 : 0;
 		uint8_t step_extra = cfg_manual_step_enabled ? 2 : 0;
 		uint8_t uart_extra = cfg_uart_enabled ? 2 : 0;
 
-		if (item <= 8){
-			switch(item){
+		if (item < num_numbered){
+			int opt = (item == 0) ? 0 : (cfg_auto_prog_run_mode ? item : item + 1);
+			switch(opt){
 				case 0:
 					cfg_auto_prog_run_mode = !cfg_auto_prog_run_mode;
 					break;
@@ -1713,27 +1728,27 @@ void menu_execute_action(uint8_t item, int8_t dir){
 					break;
 			}
 		}
-		else if (item == 9){
+		else if (item == num_numbered){
 			if (dir > 0){
 				cfg_mcu_color_idx = (cfg_mcu_color_idx + 1) % MCU_COLOR_COUNT;
 			} else {
 				cfg_mcu_color_idx = (cfg_mcu_color_idx + MCU_COLOR_COUNT - 1) % MCU_COLOR_COUNT;
 			}
 		}
-		else if (is_custom && item >= 10 && item <= 12){
-			if (item == 10){
+		else if (is_custom && item >= (num_numbered + 1) && item <= (num_numbered + 3)){
+			if (item == (num_numbered + 1)){
 				if (dir > 0) cfg_mcu_custom_r = (cfg_mcu_custom_r + 1) % 6;
 				else cfg_mcu_custom_r = (cfg_mcu_custom_r + 5) % 6;
-			} else if (item == 11){
+			} else if (item == (num_numbered + 2)){
 				if (dir > 0) cfg_mcu_custom_g = (cfg_mcu_custom_g + 1) % 6;
 				else cfg_mcu_custom_g = (cfg_mcu_custom_g + 5) % 6;
-			} else if (item == 12){
+			} else if (item == (num_numbered + 3)){
 				if (dir > 0) cfg_mcu_custom_b = (cfg_mcu_custom_b + 1) % 6;
 				else cfg_mcu_custom_b = (cfg_mcu_custom_b + 5) % 6;
 			}
 		}
 		else {
-			int rem_idx = item - (9 + custom_extra);
+			int rem_idx = item - (num_numbered + custom_extra);
 			if (rem_idx == 1){
 				cfg_manual_step_enabled = !cfg_manual_step_enabled;
 			} else if (cfg_manual_step_enabled && rem_idx == 2){
@@ -1796,7 +1811,7 @@ void menu_execute_action(uint8_t item, int8_t dir){
 }
 
 #define SETTINGS_FLASH_ADDR   0x0801F800UL
-#define SETTINGS_MAGIC        0xBF072C06UL
+#define SETTINGS_MAGIC        0xBF072C07UL
 
 typedef struct {
 	uint32_t magic;
@@ -1872,7 +1887,7 @@ void settings_load(void){
 		}
 	} else {
 		freq = DEFAULT_FREQ_INDEX;
-		cfg_auto_prog_run_mode = 1;
+		cfg_auto_prog_run_mode = 0;
 		cfg_auto_reset_after_pgm = 1;
 		cfg_append_endless_loop = 1;
 		cfg_speed_hotkey_mode = SPEED_HOTKEY_PGUP_PGDN;
@@ -1886,7 +1901,7 @@ void settings_load(void){
 		cfg_mcu_custom_r = 5;
 		cfg_mcu_custom_g = 2;
 		cfg_mcu_custom_b = 0;
-		cfg_uart_enabled = 0;
+		cfg_uart_enabled = 1;
 		cfg_uart_baud_idx = 5;
 		cfg_uart_flow_ctl = 1;
 		cfg_cursor_reposition = 1;
@@ -2565,7 +2580,9 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 			}
 		}
 		else if (menu_page == MENU_PAGE_SETTINGS){
-			if (buff[idx] >= '1' && buff[idx] <= '9'){
+			uint8_t thresh_extra = cfg_auto_prog_run_mode ? 1 : 0;
+			uint8_t num_numbered = 8 + thresh_extra;
+			if (buff[idx] >= '1' && buff[idx] <= ('0' + num_numbered)){
 				last_num_key_tick = HAL_GetTick();
 				menu_cursor = buff[idx] - '1';
 				menu_action_pending = menu_cursor;
@@ -2573,45 +2590,45 @@ uint8_t CDC_Receive_Callback(uint8_t *buff, uint32_t len){
 				return 1;
 			}
 			if (buff[idx] == 'c' || buff[idx] == 'C'){
-				menu_cursor = 9;
-				menu_action_pending = 9;
+				menu_cursor = num_numbered;
+				menu_action_pending = menu_cursor;
 				menu_action_dir = 1;
 				return 1;
 			}
 			uint8_t c_extra = (cfg_mcu_color_idx == 17) ? 3 : 0;
 			uint8_t s_extra = cfg_manual_step_enabled ? 2 : 0;
 			if (buff[idx] == 'a' || buff[idx] == 'A'){
-				menu_cursor = 10 + c_extra;
+				menu_cursor = num_numbered + 1 + c_extra;
 				menu_action_pending = menu_cursor;
 				menu_action_dir = 1;
 				return 1;
 			}
 			if (cfg_manual_step_enabled && (buff[idx] == 't' || buff[idx] == 'T')){
-				menu_cursor = 11 + c_extra;
+				menu_cursor = num_numbered + 1 + c_extra + 1;
 				menu_action_pending = menu_cursor;
 				menu_action_dir = 1;
 				return 1;
 			}
 			if (cfg_manual_step_enabled && (buff[idx] == 'k' || buff[idx] == 'K')){
-				menu_cursor = 12 + c_extra;
+				menu_cursor = num_numbered + 1 + c_extra + 2;
 				menu_action_pending = menu_cursor;
 				menu_action_dir = 1;
 				return 1;
 			}
 			if (buff[idx] == 's' || buff[idx] == 'S'){
-				menu_cursor = 10 + c_extra + 1 + s_extra;
+				menu_cursor = num_numbered + 1 + c_extra + 1 + s_extra;
 				menu_action_pending = menu_cursor;
 				menu_action_dir = 1;
 				return 1;
 			}
 			if (cfg_uart_enabled && (buff[idx] == 'u' || buff[idx] == 'U')){
-				menu_cursor = 10 + c_extra + 1 + s_extra + 1;
+				menu_cursor = num_numbered + 1 + c_extra + 1 + s_extra + 1;
 				menu_action_pending = menu_cursor;
 				menu_action_dir = 1;
 				return 1;
 			}
 			if (cfg_uart_enabled && (buff[idx] == 'f' || buff[idx] == 'F')){
-				menu_cursor = 10 + c_extra + 1 + s_extra + 2;
+				menu_cursor = num_numbered + 1 + c_extra + 1 + s_extra + 2;
 				menu_action_pending = menu_cursor;
 				menu_action_dir = 1;
 				return 1;

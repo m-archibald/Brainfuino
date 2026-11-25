@@ -78,25 +78,29 @@ Select program [Enter/L=Run, A=Add, D=Dump, X=Del, 0=Back]:
 +--------------------------------------------------+
 |     Use [Up/Down], [Left/Right], or [Enter]      |
 +--------------------------------------------------+
-| > 1. Auto-Program on Paste     : [ ENABLED  ] < |
-|   2. Paste Upload Threshold    : [   16 B   ]   |
-|   3. Auto-Reset after Flash    : [ ENABLED  ]   |
-|   4. Append Endless Loop       : [  [-]+[]  ]   |
-|   5. FPGA Clock Frequency      : [ 500 kHz  ]   |
-|   6. Prune non-BF on Paste     : [ ENABLED  ]   |
-|   7. Prune non-BF in Library   : [ ENABLED  ]   |
-|   8. Serial Input CR -> LF     : [ ENABLED  ]   |
-|   9. Run Mode Speed Hotkeys    : [ PgUp/Dn  ]   |
-|   C. Companion MCU Output Color: [ NONE     ]   |
-|   A. Manual Stepping Mode      : [ DISABLED ]   |
-|   0. Back to Main Menu         : [   BACK   ]   |
+| > 1. Auto-Program on Paste      : [ DISABLED ] < |
+|   2. Auto-Reset after Flash     : [ ENABLED  ]   |
+|   3. Append Endless Loop        : [  [-]+[]  ]   |
+|   4. FPGA Clock Frequency       : [ 500 kHz  ]   |
+|   5. Prune non-BF on Paste      : [ DISABLED ]   |
+|   6. Prune non-BF in Library    : [ ENABLED  ]   |
+|   7. Serial Input CR -> LF      : [ ENABLED  ]   |
+|   8. Run Mode Speed Hotkeys     : [ PgUp/Dn  ]   |
+|   C. Companion MCU Output Color : [ NONE     ]   |
+|   A. Manual Stepping Mode       : [ DISABLED ]   |
+|   S. Hardware Serial (PD5/PD6)  : [ ENABLED  ]   |
+|   U. Serial Baud Rate           : [ 9600     ]   |
+|   F. Serial Flow Control        : [ RTS/CTS  ]   |
+|   R. In-Place Cursor Redraw     : [ ENABLED  ]   |
+|   W. Old Terminal Mode (WY-50)  : [ DISABLED ]   |
+|   0. Back to Main Menu          : [   BACK   ]   |
 +--------------------------------------------------+
 |    Hardware: STM32F072 | Parallel ROM: 256 kB    |
 +--------------------------------------------------+
 Select option or use arrows + Enter: 
 ```
 
-*(When **Companion MCU Output Color** is set to `CUSTOM`, sub-options for Red, Green, and Blue (0–5) dynamically expand. When **Manual Stepping Mode** is `ENABLED`, sub-options for Step Advance Ticks and Step Trigger Key appear).*
+*(When **Auto-Program on Paste** is `ENABLED`, the sub-option for Paste Upload Threshold dynamically appears at option #2. When **Companion MCU Output Color** is set to `CUSTOM`, sub-options for Red, Green, and Blue (0–5) dynamically expand. When **Manual Stepping Mode** is `ENABLED`, sub-options for Step Advance Ticks and Step Trigger Key appear. When **Hardware Serial** is `ENABLED`, Baud Rate and Flow Control options appear).*
 
 ---
 
@@ -170,12 +174,12 @@ From the **Program Library** submenu:
 ## Configurable Hardware Options
 
 ### 1. Auto-Program on Paste
-* **Options:** `ENABLED` *(default)*, `DISABLED`
-* **Description:** When enabled, pasting Brainfuck code in standard Run Mode automatically transitions to Program Mode and flashes the new code to parallel ROM. When disabled, code uploads can only occur after deliberately entering Dedicated Program Mode (via 1-second button hold).
+* **Options:** `DISABLED` *(default)*, `ENABLED`
+* **Description:** When enabled, pasting Brainfuck code in standard Run Mode automatically transitions to Program Mode and flashes the new code to parallel ROM. When disabled *(default)*, code uploads can only occur after deliberately entering Dedicated Program Mode (via 1-second button hold), and the **Paste Upload Threshold** option is hidden.
 
-### 2. Paste Upload Threshold
+### 2. Paste Upload Threshold (when Auto-Program is ENABLED)
 * **Options:** `4 B`, `8 B`, `16 B` *(default)*, `32 B`, `64 B`
-* **Description:** The minimum byte burst size required to trigger auto-programming. Setting this to 16 bytes ensures that terminal escape sequences (such as arrow keys `\x1b[A` or function keys) are never misinterpreted as code uploads while interacting with running Brainfuck programs.
+* **Description:** The minimum byte burst size required to trigger auto-programming. Setting this to 16 bytes ensures that terminal escape sequences (such as arrow keys `\x1b[A` or function keys) are never misinterpreted as code uploads while interacting with running Brainfuck programs. Only visible when **Auto-Program on Paste** is `ENABLED`.
 
 ### 3. Auto-Reset after Flash
 * **Options:** `ENABLED` *(default)*, `DISABLED`
