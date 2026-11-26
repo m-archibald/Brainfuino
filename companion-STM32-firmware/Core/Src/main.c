@@ -587,20 +587,9 @@ void speed_step_down(void){
 }
 
 void fpga_clock_pause(void){
-	if (active_is_tim1){
-		TIM1->CR1 &= ~TIM_CR1_CEN;
-	} else {
-		RCC->CFGR &= ~RCC_CFGR_MCO;
-	}
 }
 
 void fpga_clock_resume(void){
-	if (mco_throttled || cfg_manual_step_enabled) return;
-	if (active_is_tim1){
-		TIM1->CR1 |= TIM_CR1_CEN;
-	} else {
-		RCC->CFGR = (RCC->CFGR & ~(RCC_CFGR_MCO | RCC_CFGR_MCOPRE)) | active_mco_cfg;
-	}
 }
 
 void flush_outbox(void){
@@ -884,8 +873,6 @@ void CDC_Print(const char *str){
 		menu_buf_append(str);
 		return;
 	}
-	uint8_t pause_clk = (state == STATE_RUN);
-	if (pause_clk) fpga_clock_pause();
 
 	if (cfg_uart_enabled){
 		uart_print(str);
@@ -903,14 +890,10 @@ void CDC_Print(const char *str){
 	}
 	uint32_t timeout = 200000;
 	while (TxBusy() && --timeout);
-
-	if (pause_clk) fpga_clock_resume();
 }
 
 void CDC_Write(const uint8_t *data, uint32_t len){
 	if (!data || len == 0) return;
-	uint8_t pause_clk = (state == STATE_RUN);
-	if (pause_clk) fpga_clock_pause();
 
 	if (cfg_uart_enabled){
 		uart_write(data, len);
@@ -926,8 +909,6 @@ void CDC_Write(const uint8_t *data, uint32_t len){
 		while (TxBusy() && --timeout);
 		offset += chunk;
 	}
-
-	if (pause_clk) fpga_clock_resume();
 }
 
 void CDC_Printf(const char *format, ...){
@@ -2292,7 +2273,7 @@ uint8_t Handle_Command_Input(uint8_t *buff, uint32_t len, uint8_t src){
 		return 1;
 	}
 
-	if (is_prefix_ci(buff, len, "!RESET") || is_prefix_ci(buff, len, "!RST") || is_prefix_ci(buff, len, "!RUN")){
+	if (is_cmd_ci(buff, len, "!RESET") || is_cmd_ci(buff, len, "!RST") || is_cmd_ci(buff, len, "!RUN")){
 		reset_requested = 1;
 		return 1;
 	}
@@ -2451,15 +2432,11 @@ uint8_t Handle_Command_Input(uint8_t *buff, uint32_t len, uint8_t src){
 		return 1;
 	}
 	if (is_cmd_ci(buff, len, "!CLK") || is_cmd_ci(buff, len, "!CLOCK")){
-		fpga_clock_pause();
-		drain_tx_buffers(50);
 		if (src == CMD_SRC_UART){
 			uart_printf("[Clock: %s]\r\n", get_freq_name(freq));
 		} else {
 			CDC_Printf_USB("[Clock: %s]\r\n", get_freq_name(freq));
 		}
-		drain_tx_buffers(50);
-		fpga_clock_resume();
 		return 1;
 	}
 
